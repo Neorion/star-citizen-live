@@ -1,1 +1,39 @@
-node_modules
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment
+.env
+settings/local.js
+
+# Logs
+*.log
+logs/
+
+# Stores
+stores/
+
+# Test coverage
+coverage/
+.nyc_output/
+reports/coverage/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+
+# Temporary
+tmp/
+temp/
+*.tmp
