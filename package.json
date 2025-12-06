@@ -3,7 +3,18 @@
   "version": "0.1.0-dev",
   "description": "Fabric connectivity for the Star Citizen universe with Discord integration.",
   "main": "services/StarCitizen.js",
+  "exports": {
+    ".": "./services/StarCitizen.js",
+    "./components/StarCitizenHome": "./components/StarCitizenHome.js",
+    "./components/MissionHome": "./components/MissionHome.js",
+    "./components/Interface": "./components/Interface.js",
+    "./services/MissionManager": "./services/MissionManager.js",
+    "./types/Mission": "./types/Mission.js",
+    "./types/MissionApplication": "./types/MissionApplication.js"
+  },
   "scripts": {
+    "build": "npm run make:api && npm run build:browser",
+    "build:browser": "node scripts/build.js",
     "coverage": "c8 npm test",
     "make:api": "jsdoc2md --configure jsdoc.json --files types/*.js services/*.js README.md > API.md",
     "report:install": "rm -rf node_modules && echo \"\n\" > package-lock.json && echo \"$ npm i\" > reports/install.log && npm i >> reports/install.log",
@@ -22,7 +33,12 @@
     "bitcoin",
     "discord",
     "gaming",
-    "rsi"
+    "rsi",
+    "missions",
+    "secp256k1",
+    "musig2",
+    "multisig",
+    "contracts"
   ],
   "author": "Fabric Labs",
   "license": "MIT",

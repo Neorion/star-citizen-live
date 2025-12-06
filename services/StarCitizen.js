@@ -14,6 +14,9 @@ const screenshot = require('screenshot-desktop');
 const Actor = require('@fabric/core/types/actor');
 const Hub = require('@fabric/hub');
 
+// Local Services
+const MissionManager = require('./MissionManager');
+
 // TODO: render GoonCitizen/goon.vc static site / import / upgrade it to use this tool
 /**
  * Core service for Star Citizen.
@@ -52,39 +55,63 @@ class StarCitizen extends Hub {
         announceKills: true,
         announcePlayerJoins: true
       },
+      missions: {
+        enable: true,
+        enableMusig2: true,
+        autoApprove: false,
+        maxApplicationsPerMission: 10
+      },
       state: {
         status: 'STOPPED',
         activities: {},
         logs: {},
         players: {},
         vehicles: {},
-        kills: {}
+        kills: {},
+        missions: {}
       },
       http: {
         port: 3041
       }
     }, settings);
 
-    // HTTP Server
+    // HTTP Server Routes
+    // Note: Hub/Fabric HTTP expects 'route' key, not 'path'
     this.routes = [
       // TODO: prefix with /services/star-citizen only when imported as library
-      { path: '/services/star-citizen', method: 'GET', handler: this.handleGenericRequest.bind(this) },
-      { path: '/services/star-citizen', method: 'POST', handler: this.handleGenericRequest.bind(this) },
-      { path: '/services/star-citizen/activities', method: 'GET', handler: this.handleGetActivitiesRequest.bind(this) },
-      { path: '/services/star-citizen/activities', method: 'POST', handler: this.handleCreateActivityRequest.bind(this) },
+      { method: 'GET', route: '/services/star-citizen', handler: this.handleGenericRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen', handler: this.handleGenericRequest.bind(this) },
+      { method: 'GET', route: '/services/star-citizen/activities', handler: this.handleGetActivitiesRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/activities', handler: this.handleCreateActivityRequest.bind(this) },
       // TODO: match GN API as much as possible
-      { path: '/services/star-citizen/players', method: 'GET', handler: this.handleGetPlayersRequest.bind(this) },
-      { path: '/services/star-citizen/players', method: 'POST', handler: this.handleCreatePlayerRequest.bind(this) },
-      { path: '/services/star-citizen/vehicles', method: 'GET', handler: this.handleGetVehiclesRequest.bind(this) },
-      { path: '/services/star-citizen/vehicles', method: 'POST', handler: this.handleCreateVehicleRequest.bind(this) },
-      { path: '/services/star-citizen/messages', method: 'GET', handler: this.handleGetMessagesRequest.bind(this) },
-      { path: '/services/star-citizen/messages', method: 'POST', handler: this.handleCreateMessageRequest.bind(this) },
-      { path: '/services/star-citizen/kills', method: 'GET', handler: this.handleGetKillsRequest.bind(this) },
-      { path: '/services/star-citizen/kills', method: 'POST', handler: this.handleCreateKillRequest.bind(this) }
+      { method: 'GET', route: '/services/star-citizen/players', handler: this.handleGetPlayersRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/players', handler: this.handleCreatePlayerRequest.bind(this) },
+      { method: 'GET', route: '/services/star-citizen/vehicles', handler: this.handleGetVehiclesRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/vehicles', handler: this.handleCreateVehicleRequest.bind(this) },
+      { method: 'GET', route: '/services/star-citizen/messages', handler: this.handleGetMessagesRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/messages', handler: this.handleCreateMessageRequest.bind(this) },
+      { method: 'GET', route: '/services/star-citizen/kills', handler: this.handleGetKillsRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/kills', handler: this.handleCreateKillRequest.bind(this) },
+      // Mission endpoints
+      { method: 'GET', route: '/services/star-citizen/missions', handler: this.handleGetMissionsRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/missions', handler: this.handleCreateMissionRequest.bind(this) },
+      { method: 'GET', route: '/services/star-citizen/missions/:id', handler: this.handleGetMissionRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/missions/:id/complete', handler: this.handleCompleteMissionRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/missions/:id/fail', handler: this.handleFailMissionRequest.bind(this) },
+      { method: 'GET', route: '/services/star-citizen/missions/:id/applications', handler: this.handleGetMissionApplicationsRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/missions/:id/applications', handler: this.handleSubmitApplicationRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/applications/:id/approve', handler: this.handleApproveApplicationRequest.bind(this) },
+      { method: 'POST', route: '/services/star-citizen/applications/:id/reject', handler: this.handleRejectApplicationRequest.bind(this) }
     ];
 
     this.logwatcher = null;
     this.discord = null;
+
+    // Initialize Mission Manager
+    if (this.settings.missions && this.settings.missions.enable) {
+      this.missionManager = new MissionManager(this.settings.missions);
+      this._wireMissionManager();
+    }
 
     // State
     this._state = {
@@ -104,6 +131,10 @@ class StarCitizen extends Hub {
     return Object.values(this.state.activities || {});
   }
 
+  get applications () {
+    return this.missionManager ? this.missionManager.applications : [];
+  }
+
   get logs () {
     return Object.values(this.state.logs || {});
   }
@@ -120,6 +151,10 @@ class StarCitizen extends Hub {
     return Object.values(this.state.kills || {});
   }
 
+  get missions () {
+    return this.missionManager ? this.missionManager.missions : [];
+  }
+
   get status () {
     return this.state.status;
   }
@@ -134,6 +169,125 @@ class StarCitizen extends Hub {
     this.on('kill', this._handleKillForDiscord.bind(this));
     this.on('player:join', this._handlePlayerJoinForDiscord.bind(this));
     this.on('log', this._handleLogForDiscord.bind(this));
+  }
+
+  /**
+   * Wire Mission Manager events.
+   * @private
+   */
+  _wireMissionManager () {
+    if (!this.missionManager) return;
+
+    // Forward mission events
+    this.missionManager.on('mission:created', (mission) => {
+      this.emit('mission:created', mission);
+      if (this.settings.discord && this.settings.discord.enable) {
+        this._announceMissionToDiscord(mission, 'created');
+      }
+    });
+
+    this.missionManager.on('application:submitted', (application) => {
+      this.emit('application:submitted', application);
+      if (this.settings.discord && this.settings.discord.enable) {
+        this._announceApplicationToDiscord(application, 'submitted');
+      }
+    });
+
+    this.missionManager.on('application:approved', (application) => {
+      this.emit('application:approved', application);
+      if (this.settings.discord && this.settings.discord.enable) {
+        this._announceApplicationToDiscord(application, 'approved');
+      }
+    });
+
+    this.missionManager.on('mission:completed', (mission) => {
+      this.emit('mission:completed', mission);
+      if (this.settings.discord && this.settings.discord.enable) {
+        this._announceMissionToDiscord(mission, 'completed');
+      }
+    });
+  }
+
+  /**
+   * Announce mission to Discord.
+   * @param {Object} mission - Mission data.
+   * @param {String} action - Action type.
+   * @private
+   */
+  async _announceMissionToDiscord (mission, action) {
+    if (!this.settings.discord.webhook) return;
+
+    const colors = {
+      created: 0x00FF00,
+      completed: 0x0000FF,
+      failed: 0xFF0000
+    };
+
+    const icons = {
+      created: '📋',
+      completed: '✅',
+      failed: '❌'
+    };
+
+    try {
+      await this.postToDiscord({
+        embeds: [{
+          title: `${icons[action]} Mission ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+          description: mission.title,
+          fields: [
+            { name: 'Type', value: mission.type, inline: true },
+            { name: 'Reward', value: `${mission.reward} UEC`, inline: true },
+            { name: 'Status', value: mission.status, inline: true },
+            { name: 'Contract Type', value: mission.contract.type, inline: true }
+          ],
+          color: colors[action] || 0xFFFFFF,
+          timestamp: new Date().toISOString()
+        }]
+      });
+    } catch (error) {
+      console.error('[STAR-CITIZEN]', '[DISCORD]', 'Error announcing mission:', error);
+    }
+  }
+
+  /**
+   * Announce application to Discord.
+   * @param {Object} application - Application data.
+   * @param {String} action - Action type.
+   * @private
+   */
+  async _announceApplicationToDiscord (application, action) {
+    if (!this.settings.discord.webhook) return;
+
+    const colors = {
+      submitted: 0xFFFF00,
+      approved: 0x00FF00,
+      rejected: 0xFF0000
+    };
+
+    const icons = {
+      submitted: '📝',
+      approved: '✅',
+      rejected: '❌'
+    };
+
+    try {
+      await this.postToDiscord({
+        embeds: [{
+          title: `${icons[action]} Application ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+          description: application.message || 'Mission application',
+          fields: [
+            { name: 'Mission ID', value: application.missionId, inline: true },
+            { name: 'Applicant', value: application.applicantId, inline: true },
+            { name: 'Type', value: application.isMultisig ? 'Multisig' : 'Single', inline: true },
+            { name: 'Verified', value: application.verified ? 'Yes' : 'No', inline: true }
+          ],
+          color: colors[action] || 0xFFFFFF,
+          timestamp: new Date().toISOString()
+        }]
+      });
+    } catch (error) {
+      console.error('[STAR-CITIZEN]', '[DISCORD]', 'Error announcing application:', error);
+    }
   }
 
   /**
@@ -449,9 +603,161 @@ class StarCitizen extends Hub {
     });
   }
 
+  // Mission HTTP Request Handlers
+  handleGetMissionsRequest (req, res, next) {
+    if (!this.missionManager) {
+      return res.status(503).send({ error: 'Mission system not available' });
+    }
+
+    const status = req.query.status;
+    let missions = this.missions;
+
+    if (status) {
+      missions = missions.filter(m => m.status === status);
+    }
+
+    return res.send({
+      type: 'Collection',
+      data: missions
+    });
+  }
+
+  async handleCreateMissionRequest (req, res, next) {
+    if (!this.missionManager) {
+      return res.status(503).send({ error: 'Mission system not available' });
+    }
+
+    try {
+      const mission = await this.missionManager.createMission(req.body);
+      return res.send({
+        type: 'Mission',
+        data: mission.toJSON()
+      });
+    } catch (error) {
+      return res.status(400).send({ error: error.message });
+    }
+  }
+
+  handleGetMissionRequest (req, res, next) {
+    if (!this.missionManager) {
+      return res.status(503).send({ error: 'Mission system not available' });
+    }
+
+    const mission = this.missionManager.getMission(req.params.id);
+    if (!mission) {
+      return res.status(404).send({ error: 'Mission not found' });
+    }
+
+    return res.send({
+      type: 'Mission',
+      data: mission.toJSON()
+    });
+  }
+
+  async handleCompleteMissionRequest (req, res, next) {
+    if (!this.missionManager) {
+      return res.status(503).send({ error: 'Mission system not available' });
+    }
+
+    try {
+      const mission = await this.missionManager.completeMission(req.params.id, req.body);
+      return res.send({
+        type: 'Mission',
+        data: mission.toJSON()
+      });
+    } catch (error) {
+      return res.status(400).send({ error: error.message });
+    }
+  }
+
+  async handleFailMissionRequest (req, res, next) {
+    if (!this.missionManager) {
+      return res.status(503).send({ error: 'Mission system not available' });
+    }
+
+    try {
+      const mission = await this.missionManager.failMission(req.params.id, req.body.reason);
+      return res.send({
+        type: 'Mission',
+        data: mission.toJSON()
+      });
+    } catch (error) {
+      return res.status(400).send({ error: error.message });
+    }
+  }
+
+  handleGetMissionApplicationsRequest (req, res, next) {
+    if (!this.missionManager) {
+      return res.status(503).send({ error: 'Mission system not available' });
+    }
+
+    const applications = this.missionManager.getMissionApplications(req.params.id);
+    return res.send({
+      type: 'Collection',
+      data: applications
+    });
+  }
+
+  async handleSubmitApplicationRequest (req, res, next) {
+    if (!this.missionManager) {
+      return res.status(503).send({ error: 'Mission system not available' });
+    }
+
+    try {
+      const applicationData = {
+        ...req.body,
+        missionId: req.params.id
+      };
+      const application = await this.missionManager.submitApplication(applicationData);
+      return res.send({
+        type: 'MissionApplication',
+        data: application.toJSON()
+      });
+    } catch (error) {
+      return res.status(400).send({ error: error.message });
+    }
+  }
+
+  async handleApproveApplicationRequest (req, res, next) {
+    if (!this.missionManager) {
+      return res.status(503).send({ error: 'Mission system not available' });
+    }
+
+    try {
+      const application = await this.missionManager.approveApplication(req.params.id);
+      return res.send({
+        type: 'MissionApplication',
+        data: application.toJSON()
+      });
+    } catch (error) {
+      return res.status(400).send({ error: error.message });
+    }
+  }
+
+  async handleRejectApplicationRequest (req, res, next) {
+    if (!this.missionManager) {
+      return res.status(503).send({ error: 'Mission system not available' });
+    }
+
+    try {
+      const application = await this.missionManager.rejectApplication(req.params.id, req.body.reason);
+      return res.send({
+        type: 'MissionApplication',
+        data: application.toJSON()
+      });
+    } catch (error) {
+      return res.status(400).send({ error: error.message });
+    }
+  }
+
   async start () {
     console.log('[STAR-CITIZEN]', 'Starting service...');
     this._state.content.status = 'STARTING';
+
+    // Start Mission Manager
+    if (this.missionManager) {
+      await this.missionManager.start();
+    }
 
     if (this.settings.http && this.settings.http.enable) {
       await this.http.start();
@@ -475,6 +781,11 @@ class StarCitizen extends Hub {
     if (this.logwatcher) {
       this.logwatcher.unwatch();
       this.logwatcher = null;
+    }
+
+    // Stop Mission Manager
+    if (this.missionManager) {
+      await this.missionManager.stop();
     }
 
     if (this.settings.http && this.settings.http.enable) {

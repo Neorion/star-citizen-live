@@ -95,11 +95,13 @@ The service exposes the following declarative properties on instances:
 
 ### Properties
 - `activities` - Collection of all activities
-- `players` - Collection of known players
-- `vehicles` - Collection of known vehicles
+- `applications` - Collection of mission applications
 - `kills` - Collection of kill events
 - `logs` - Collection of log entries
+- `missions` - Collection of missions
+- `players` - Collection of known players
 - `status` - Current service status
+- `vehicles` - Collection of known vehicles
 
 ### HTTP Endpoints
 When HTTP is enabled, the following endpoints are available:

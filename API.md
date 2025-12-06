@@ -1,6 +1,18 @@
 ## Classes
 
 <dl>
+<dt><a href="#Mission">Mission</a> ⇐ <code>Entity</code></dt>
+<dd><p>Represents a Mission in the Star Citizen universe.
+Missions can be accepted by signing with secp256k1 or Musig2 multisig.</p>
+</dd>
+<dt><a href="#MissionApplication">MissionApplication</a> ⇐ <code>Entity</code></dt>
+<dd><p>Represents an application to accept a Mission.</p>
+</dd>
+<dt><a href="#MissionManager">MissionManager</a></dt>
+<dd><p>Mission Manager service.
+Handles mission lifecycle, applications, and cryptographic verification.
+Supports both single secp256k1 signatures and Musig2 multisig.</p>
+</dd>
 <dt><a href="#StarCitizen">StarCitizen</a> ⇐ <code>Hub</code></dt>
 <dd><p>Core service for Star Citizen.
 Provides a Fabric-compatible declarative API with Discord integration.</p>
@@ -151,6 +163,394 @@ Stops monitoring the game log and stops HTTP server if running.
 **Kind**: instance method of [<code>StarCitizenAPI</code>](#StarCitizenAPI)  
 **Returns**: [<code>Promise.&lt;StarCitizenAPI&gt;</code>](#StarCitizenAPI) - Returns this for chaining  
 **Emits**: <code>event:stopped When service is fully stopped</code>  
+<a name="Mission"></a>
+
+## Mission ⇐ <code>Entity</code>
+Represents a Mission in the Star Citizen universe.
+Missions can be accepted by signing with secp256k1 or Musig2 multisig.
+
+**Kind**: global class  
+**Extends**: <code>Entity</code>  
+
+* [Mission](#Mission) ⇐ <code>Entity</code>
+    * [new Mission(data)](#new_Mission_new)
+    * [.meetsRequirements(player)](#Mission+meetsRequirements) ⇒ <code>Boolean</code>
+    * [.isExpired()](#Mission+isExpired) ⇒ <code>Boolean</code>
+    * [.isOpen()](#Mission+isOpen) ⇒ <code>Boolean</code>
+    * [.isMultisig()](#Mission+isMultisig) ⇒ <code>Boolean</code>
+    * [.getRequiredSignatures()](#Mission+getRequiredSignatures) ⇒ <code>Number</code>
+    * [.hasEnoughSignatures()](#Mission+hasEnoughSignatures) ⇒ <code>Boolean</code>
+    * [.generateContractCommitment()](#Mission+generateContractCommitment) ⇒ <code>String</code>
+    * [.toJSON()](#Mission+toJSON) ⇒ <code>Object</code>
+
+<a name="new_Mission_new"></a>
+
+### new Mission(data)
+Create a Mission instance.
+
+
+| Param | Type | Description |
+| --- | --- | --- |
+| data | <code>Object</code> | Mission data. |
+| data.id | <code>String</code> | Unique mission identifier. |
+| data.title | <code>String</code> | Mission title. |
+| data.description | <code>String</code> | Mission description. |
+| data.type | <code>String</code> | Mission type (e.g., 'bounty', 'cargo', 'exploration'). |
+| data.reward | <code>Number</code> | Reward amount in UEC. |
+| data.status | <code>String</code> | Mission status ('open', 'assigned', 'completed', 'failed'). |
+| data.requirements | <code>Object</code> | Mission requirements. |
+| [data.requirements.minReputation] | <code>Number</code> | Minimum reputation required. |
+| [data.requirements.skills] | <code>Array.&lt;String&gt;</code> | Required skills. |
+| [data.requirements.vehicleType] | <code>String</code> | Required vehicle type. |
+| data.location | <code>Object</code> | Mission location. |
+| data.location.system | <code>String</code> | Star system. |
+| data.location.planet | <code>String</code> | Planet or station. |
+| data.contract | <code>Object</code> | Contract configuration. |
+| data.contract.type | <code>String</code> | 'single' or 'multisig'. |
+| [data.contract.requiredSignatures] | <code>Number</code> | Required signatures for multisig. |
+| [data.contract.authorizedSigners] | <code>Array.&lt;String&gt;</code> | Authorized signer public keys. |
+| data.issuer | <code>String</code> | Mission issuer ID. |
+| [data.assignee] | <code>String</code> | Current assignee ID. |
+| data.expiresAt | <code>Number</code> | Expiration timestamp. |
+| data.createdAt | <code>Number</code> | Creation timestamp. |
+
+<a name="Mission+meetsRequirements"></a>
+
+### mission.meetsRequirements(player) ⇒ <code>Boolean</code>
+Check if a player meets the mission requirements.
+
+**Kind**: instance method of [<code>Mission</code>](#Mission)  
+**Returns**: <code>Boolean</code> - Whether player meets requirements.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| player | <code>Object</code> | Player data. |
+
+<a name="Mission+isExpired"></a>
+
+### mission.isExpired() ⇒ <code>Boolean</code>
+Check if the mission is expired.
+
+**Kind**: instance method of [<code>Mission</code>](#Mission)  
+**Returns**: <code>Boolean</code> - Whether mission is expired.  
+<a name="Mission+isOpen"></a>
+
+### mission.isOpen() ⇒ <code>Boolean</code>
+Check if mission can accept more applications.
+
+**Kind**: instance method of [<code>Mission</code>](#Mission)  
+**Returns**: <code>Boolean</code> - Whether mission is open for applications.  
+<a name="Mission+isMultisig"></a>
+
+### mission.isMultisig() ⇒ <code>Boolean</code>
+Check if mission requires multisig.
+
+**Kind**: instance method of [<code>Mission</code>](#Mission)  
+**Returns**: <code>Boolean</code> - Whether mission requires multiple signatures.  
+<a name="Mission+getRequiredSignatures"></a>
+
+### mission.getRequiredSignatures() ⇒ <code>Number</code>
+Get required number of signatures.
+
+**Kind**: instance method of [<code>Mission</code>](#Mission)  
+**Returns**: <code>Number</code> - Required signature count.  
+<a name="Mission+hasEnoughSignatures"></a>
+
+### mission.hasEnoughSignatures() ⇒ <code>Boolean</code>
+Check if signature threshold is met.
+
+**Kind**: instance method of [<code>Mission</code>](#Mission)  
+**Returns**: <code>Boolean</code> - Whether enough signatures have been collected.  
+<a name="Mission+generateContractCommitment"></a>
+
+### mission.generateContractCommitment() ⇒ <code>String</code>
+Generate a contract commitment for signing.
+
+**Kind**: instance method of [<code>Mission</code>](#Mission)  
+**Returns**: <code>String</code> - Hex-encoded contract hash.  
+<a name="Mission+toJSON"></a>
+
+### mission.toJSON() ⇒ <code>Object</code>
+Convert mission to JSON.
+
+**Kind**: instance method of [<code>Mission</code>](#Mission)  
+**Returns**: <code>Object</code> - Mission data.  
+<a name="MissionApplication"></a>
+
+## MissionApplication ⇐ <code>Entity</code>
+Represents an application to accept a Mission.
+
+**Kind**: global class  
+**Extends**: <code>Entity</code>  
+
+* [MissionApplication](#MissionApplication) ⇐ <code>Entity</code>
+    * [new MissionApplication(data)](#new_MissionApplication_new)
+    * [.isMultisig()](#MissionApplication+isMultisig) ⇒ <code>Boolean</code>
+    * [.isApproved()](#MissionApplication+isApproved) ⇒ <code>Boolean</code>
+    * [.isPending()](#MissionApplication+isPending) ⇒ <code>Boolean</code>
+    * [.approve()](#MissionApplication+approve)
+    * [.reject(reason)](#MissionApplication+reject)
+    * [.toJSON()](#MissionApplication+toJSON) ⇒ <code>Object</code>
+
+<a name="new_MissionApplication_new"></a>
+
+### new MissionApplication(data)
+Create a MissionApplication instance.
+
+
+| Param | Type | Description |
+| --- | --- | --- |
+| data | <code>Object</code> | Application data. |
+| data.missionId | <code>String</code> | Mission ID being applied to. |
+| data.applicantId | <code>String</code> | Applicant's player ID. |
+| data.publicKey | <code>String</code> | Applicant's public key (secp256k1). |
+| data.signature | <code>String</code> | Application signature. |
+| [data.message] | <code>String</code> | Optional message from applicant. |
+| data.status | <code>String</code> | Application status ('pending', 'approved', 'rejected'). |
+| [data.multisigData] | <code>Object</code> | Musig2 multisig data if applicable. |
+| [data.multisigData.participantKeys] | <code>Array.&lt;String&gt;</code> | Participant public keys. |
+| [data.multisigData.aggregatedKey] | <code>String</code> | Aggregated public key. |
+| [data.multisigData.nonces] | <code>Array.&lt;Object&gt;</code> | Musig2 nonces. |
+| data.createdAt | <code>Number</code> | Application timestamp. |
+
+<a name="MissionApplication+isMultisig"></a>
+
+### missionApplication.isMultisig() ⇒ <code>Boolean</code>
+Check if application is for multisig.
+
+**Kind**: instance method of [<code>MissionApplication</code>](#MissionApplication)  
+**Returns**: <code>Boolean</code> - Whether this is a multisig application.  
+<a name="MissionApplication+isApproved"></a>
+
+### missionApplication.isApproved() ⇒ <code>Boolean</code>
+Check if application is approved.
+
+**Kind**: instance method of [<code>MissionApplication</code>](#MissionApplication)  
+**Returns**: <code>Boolean</code> - Whether application is approved.  
+<a name="MissionApplication+isPending"></a>
+
+### missionApplication.isPending() ⇒ <code>Boolean</code>
+Check if application is pending.
+
+**Kind**: instance method of [<code>MissionApplication</code>](#MissionApplication)  
+**Returns**: <code>Boolean</code> - Whether application is pending.  
+<a name="MissionApplication+approve"></a>
+
+### missionApplication.approve()
+Approve the application.
+
+**Kind**: instance method of [<code>MissionApplication</code>](#MissionApplication)  
+<a name="MissionApplication+reject"></a>
+
+### missionApplication.reject(reason)
+Reject the application.
+
+**Kind**: instance method of [<code>MissionApplication</code>](#MissionApplication)  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| reason | <code>String</code> | Rejection reason. |
+
+<a name="MissionApplication+toJSON"></a>
+
+### missionApplication.toJSON() ⇒ <code>Object</code>
+Convert application to JSON.
+
+**Kind**: instance method of [<code>MissionApplication</code>](#MissionApplication)  
+**Returns**: <code>Object</code> - Application data.  
+<a name="MissionManager"></a>
+
+## MissionManager
+Mission Manager service.
+Handles mission lifecycle, applications, and cryptographic verification.
+Supports both single secp256k1 signatures and Musig2 multisig.
+
+**Kind**: global class  
+
+* [MissionManager](#MissionManager)
+    * [new MissionManager([settings])](#new_MissionManager_new)
+    * [.createMission(data)](#MissionManager+createMission) ⇒ [<code>Mission</code>](#Mission)
+    * [.getMission(missionId)](#MissionManager+getMission) ⇒ [<code>Mission</code>](#Mission) \| <code>null</code>
+    * [.submitApplication(applicationData)](#MissionManager+submitApplication) ⇒ [<code>Promise.&lt;MissionApplication&gt;</code>](#MissionApplication)
+    * [.verifySignature(message, signature, publicKey, [multisigData])](#MissionManager+verifySignature) ⇒ <code>Promise.&lt;Boolean&gt;</code>
+    * [.verifySecp256k1Signature(message, signature, publicKey)](#MissionManager+verifySecp256k1Signature) ⇒ <code>Boolean</code>
+    * [.verifyMusig2Signature(message, signature, multisigData)](#MissionManager+verifyMusig2Signature) ⇒ <code>Promise.&lt;Boolean&gt;</code>
+    * [.approveApplication(applicationId)](#MissionManager+approveApplication) ⇒ [<code>Promise.&lt;MissionApplication&gt;</code>](#MissionApplication)
+    * [.rejectApplication(applicationId, reason)](#MissionManager+rejectApplication) ⇒ [<code>Promise.&lt;MissionApplication&gt;</code>](#MissionApplication)
+    * [.completeMission(missionId, completionData)](#MissionManager+completeMission) ⇒ [<code>Promise.&lt;Mission&gt;</code>](#Mission)
+    * [.failMission(missionId, reason)](#MissionManager+failMission) ⇒ [<code>Promise.&lt;Mission&gt;</code>](#Mission)
+    * [.getMissionApplications(missionId)](#MissionManager+getMissionApplications) ⇒ [<code>Array.&lt;MissionApplication&gt;</code>](#MissionApplication)
+    * [.getApplicantApplications(applicantId)](#MissionManager+getApplicantApplications) ⇒ [<code>Array.&lt;MissionApplication&gt;</code>](#MissionApplication)
+
+<a name="new_MissionManager_new"></a>
+
+### new MissionManager([settings])
+Create a MissionManager instance.
+
+
+| Param | Type | Description |
+| --- | --- | --- |
+| [settings] | <code>Object</code> | Configuration settings. |
+
+<a name="MissionManager+createMission"></a>
+
+### missionManager.createMission(data) ⇒ [<code>Mission</code>](#Mission)
+Create a new mission.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: [<code>Mission</code>](#Mission) - Created mission.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| data | <code>Object</code> | Mission data. |
+
+<a name="MissionManager+getMission"></a>
+
+### missionManager.getMission(missionId) ⇒ [<code>Mission</code>](#Mission) \| <code>null</code>
+Get a mission by ID.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: [<code>Mission</code>](#Mission) \| <code>null</code> - Mission instance or null.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| missionId | <code>String</code> | Mission ID. |
+
+<a name="MissionManager+submitApplication"></a>
+
+### missionManager.submitApplication(applicationData) ⇒ [<code>Promise.&lt;MissionApplication&gt;</code>](#MissionApplication)
+Submit an application to accept a mission.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: [<code>Promise.&lt;MissionApplication&gt;</code>](#MissionApplication) - Created application.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| applicationData | <code>Object</code> | Application data. |
+| applicationData.missionId | <code>String</code> | Mission ID. |
+| applicationData.applicantId | <code>String</code> | Applicant ID. |
+| applicationData.publicKey | <code>String</code> | Applicant's public key. |
+| applicationData.signature | <code>String</code> | Application signature. |
+| [applicationData.multisigData] | <code>Object</code> | Musig2 data if applicable. |
+
+<a name="MissionManager+verifySignature"></a>
+
+### missionManager.verifySignature(message, signature, publicKey, [multisigData]) ⇒ <code>Promise.&lt;Boolean&gt;</code>
+Verify a signature (single or multisig).
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: <code>Promise.&lt;Boolean&gt;</code> - Verification result.  
+
+| Param | Type | Default | Description |
+| --- | --- | --- | --- |
+| message | <code>String</code> |  | Message hash to verify. |
+| signature | <code>String</code> |  | Signature to verify. |
+| publicKey | <code>String</code> |  | Public key for single sig. |
+| [multisigData] | <code>Object</code> | <code></code> | Musig2 data for multisig. |
+
+<a name="MissionManager+verifySecp256k1Signature"></a>
+
+### missionManager.verifySecp256k1Signature(message, signature, publicKey) ⇒ <code>Boolean</code>
+Verify a single secp256k1 signature.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: <code>Boolean</code> - Verification result.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| message | <code>String</code> | Message hash. |
+| signature | <code>String</code> | Signature hex. |
+| publicKey | <code>String</code> | Public key hex. |
+
+<a name="MissionManager+verifyMusig2Signature"></a>
+
+### missionManager.verifyMusig2Signature(message, signature, multisigData) ⇒ <code>Promise.&lt;Boolean&gt;</code>
+Verify a Musig2 multisig signature.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: <code>Promise.&lt;Boolean&gt;</code> - Verification result.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| message | <code>String</code> | Message hash. |
+| signature | <code>String</code> | Aggregated signature. |
+| multisigData | <code>Object</code> | Musig2 data. |
+
+<a name="MissionManager+approveApplication"></a>
+
+### missionManager.approveApplication(applicationId) ⇒ [<code>Promise.&lt;MissionApplication&gt;</code>](#MissionApplication)
+Approve an application.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: [<code>Promise.&lt;MissionApplication&gt;</code>](#MissionApplication) - Approved application.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| applicationId | <code>String</code> | Application ID. |
+
+<a name="MissionManager+rejectApplication"></a>
+
+### missionManager.rejectApplication(applicationId, reason) ⇒ [<code>Promise.&lt;MissionApplication&gt;</code>](#MissionApplication)
+Reject an application.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: [<code>Promise.&lt;MissionApplication&gt;</code>](#MissionApplication) - Rejected application.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| applicationId | <code>String</code> | Application ID. |
+| reason | <code>String</code> | Rejection reason. |
+
+<a name="MissionManager+completeMission"></a>
+
+### missionManager.completeMission(missionId, completionData) ⇒ [<code>Promise.&lt;Mission&gt;</code>](#Mission)
+Complete a mission.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: [<code>Promise.&lt;Mission&gt;</code>](#Mission) - Completed mission.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| missionId | <code>String</code> | Mission ID. |
+| completionData | <code>Object</code> | Completion data. |
+
+<a name="MissionManager+failMission"></a>
+
+### missionManager.failMission(missionId, reason) ⇒ [<code>Promise.&lt;Mission&gt;</code>](#Mission)
+Fail a mission.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: [<code>Promise.&lt;Mission&gt;</code>](#Mission) - Failed mission.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| missionId | <code>String</code> | Mission ID. |
+| reason | <code>String</code> | Failure reason. |
+
+<a name="MissionManager+getMissionApplications"></a>
+
+### missionManager.getMissionApplications(missionId) ⇒ [<code>Array.&lt;MissionApplication&gt;</code>](#MissionApplication)
+Get applications for a mission.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: [<code>Array.&lt;MissionApplication&gt;</code>](#MissionApplication) - Mission applications.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| missionId | <code>String</code> | Mission ID. |
+
+<a name="MissionManager+getApplicantApplications"></a>
+
+### missionManager.getApplicantApplications(applicantId) ⇒ [<code>Array.&lt;MissionApplication&gt;</code>](#MissionApplication)
+Get applications by applicant.
+
+**Kind**: instance method of [<code>MissionManager</code>](#MissionManager)  
+**Returns**: [<code>Array.&lt;MissionApplication&gt;</code>](#MissionApplication) - Applicant's applications.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| applicantId | <code>String</code> | Applicant ID. |
+
 <a name="StarCitizen"></a>
 
 ## StarCitizen ⇐ <code>Hub</code>
