@@ -1,26 +1,18 @@
 {
   "name": "@rsi/star-citizen",
   "version": "0.1.0-dev",
-  "description": "Fabric connectivity for the Star Citizen universe with Discord integration.",
-  "main": "services/StarCitizen.js",
+  "description": "Fabric-free Star Citizen Game.log -> Discord/REST service (with optional missions/contracts).",
+  "main": "app/server.js",
   "exports": {
-    ".": "./services/StarCitizen.js",
-    "./components/StarCitizenHome": "./components/StarCitizenHome.js",
-    "./components/MissionHome": "./components/MissionHome.js",
-    "./components/Interface": "./components/Interface.js",
-    "./services/MissionManager": "./services/MissionManager.js",
-    "./types/Mission": "./types/Mission.js",
-    "./types/MissionApplication": "./types/MissionApplication.js"
+    ".": "./app/server.js",
+    "./parser": "./app/parser.js",
+    "./types/Mission": "./types/Mission.js"
   },
   "scripts": {
-    "build": "npm run make:api && npm run build:browser",
-    "build:browser": "node scripts/build.js",
-    "coverage": "c8 npm test",
-    "make:api": "jsdoc2md --configure jsdoc.json --files types/*.js services/*.js README.md > API.md",
-    "report:install": "rm -rf node_modules && echo \"\n\" > package-lock.json && echo \"$ npm i\" > reports/install.log && npm i >> reports/install.log",
-    "report:todo": "grep --exclude package.json --exclude-dir=.env --exclude-dir=.git --exclude-dir=_book --exclude-dir=stores --exclude-dir=assets --exclude-dir=node_modules --exclude-dir=reports --exclude-dir=coverage --exclude-dir=docs --exclude-dir=libraries -rEI \"TODO|FIXME\" . | sed 's/\\([^:]*:\\)[ ]*/\\1 /' > reports/TODO.txt",
-    "start": "node scripts/node.js",
-    "test": "mocha tests"
+    "start": "node app/server.js",
+    "replay": "node scripts/replay.js",
+    "test": "node --test test/*.test.js",
+    "start:fabric": "node scripts/node.js   # DEPRECATED original Fabric-based entry (kept for reference)"
   },
   "repository": {
     "type": "git",
@@ -46,16 +38,8 @@
     "url": "https://github.com/GoonCitizen/star-citizen-live/issues"
   },
   "homepage": "https://github.com/GoonCitizen/star-citizen-live#readme",
-  "dependencies": {
-    "@fabric/hub": "FabricLabs/hub.fabric.pub#feature/sensemaker",
-    "cross-fetch": "=4.0.0",
-    "lodash.merge": "=4.6.2",
-    "screenshot-desktop": "=1.15.1",
+  "devDependencies": {},
+  "optionalDependencies": {
     "tail": "=2.2.6"
-  },
-  "devDependencies": {
-    "jsdoc-to-markdown": "=9.0.5",
-    "mocha": "=10.8.2",
-    "c8": "=7.11.3"
   }
 }

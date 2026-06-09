@@ -58,3 +58,15 @@ here will **not** be committed.
 **M3 (headline feature)** needs a `Game.log` that contains **combat/kills** — the
 sample provided was a hangar session with none. Drop a combat log anywhere in
 this folder (it's gitignored) and the parser work can use it.
+
+## Common commands (updated at M2/M3)
+
+```bash
+npm install        # now installs in <1s (1 optional package), no Fabric
+npm start          # run the service (http://localhost:3041/services/star-citizen)
+npm test           # run the test suite (Node built-in runner, no deps)
+npm run replay /path/to/Game.log   # replay a saved log and tally detected events
+```
+
+Live tailing: set `SC_LOGFILE=/path/to/Game.log` (and `npm install` so the
+optional `tail` package is present). Discord: set `DISCORD_WEBHOOK_URL`.

@@ -5,47 +5,74 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
-## M1 — "It's alive": Fabric-free service skeleton ✅
+## M3 — Real log parser + event detection + Discord wiring ✅ (combat pending)
 **Date:** 2026-06-08
 
 **What shipped:**
-- `app/server.js` — a lightweight service with **zero external dependencies**
-  (Node built-ins only). It boots, serves the health endpoint, the collection
-  endpoints (activities/players/vehicles/kills/messages), and the mission
-  endpoints via the stub.
-- Offline **log replay** implemented (`replayLog`) so we can test without the game.
+- `app/parser.js` — a rule-based parser for the SC 4.x log format
+  (`<timestamp> [Notice] <EventType> …`). Classifies lines and extracts fields.
+- `app/server.js` — now routes parsed events into the right collections
+  (kills → kills, logins → players, vehicle destruction → vehicles), emits
+  specific events (`kill`, `player:join`, `vehicle:destroy`), and posts optional
+  Discord embeds (off by default).
 
-**Validated (actually ran):**
-- `node app/server.js` boots and prints its listening URL.
-- `GET /services/star-citizen` returns live JSON status.
-- `POST` a test kill → `GET /kills` reflects it.
-- Replayed the real uploaded `Game.log` (27,712 lines, read-only) → 13,964
-  activities ingested. Pipeline works end to end.
+**Validated against your real Game.log (read-only):**
+- **VERIFIED** events: player login (`Handle[Kersa]`), character status, level
+  loads (6), game-mode creation (6). All parse correctly.
+- 0 kills detected — correct, this was a hangar session with no combat.
 
-**What we learned:**
-- The provided `Game.log` is a hangar/menu session — **no combat/kill events in
-  it**. The SC 4.x format is `<timestamp> [Notice] <EventType> key=value …`.
-- To build the kill parser (M3) we need a **combat-containing log**, or we build
-  to the documented kill format and test against a real combat log later.
+**Honest status on combat events:**
+- Kill and vehicle-destruction parsing is built to the **documented SC 4.x
+  format** and is covered by tests, but is flagged `verified: false` in the code
+  because we have **not** confirmed it against a real combat log yet.
+- A speculative quantum-travel rule was **removed** — "Quantum" appears in ~15,000
+  lines (component names), so it produced false positives. It'll be re-added only
+  with a confirmed `<Quantum Travel>` line format.
 
-**Retro:** Removing Fabric made M1 fast and dependency-free, exactly as hoped.
-Biggest open risk for value delivery is now *getting a representative combat log*
-for the parser. Next milestone unchanged.
+**Retro:** The parser cleanly separates verified vs unverified rules, so it's
+honest about what it actually knows. **Open dependency for the headline feature:
+a Game.log captured during combat** (kills/ship destruction) to confirm those
+patterns. Until then, kill→Discord is wired but unproven on real data.
+
+---
+
+## M2 — Replay script + automated tests ✅
+**Date:** 2026-06-08
+
+**What shipped:**
+- `scripts/replay.js` — feeds a saved Game.log through the live pipeline and
+  prints a tally of detected events. (`npm run replay <path>`)
+- `test/parser.test.js`, `test/service.test.js` — 10 tests using Node's built-in
+  test runner (**no install needed**). (`npm test`)
+- `package.json` rewired: `start` runs the Fabric-free service, `npm install` now
+  pulls **only 1 optional package** (was ~400 MB of Fabric). Original Fabric entry
+  kept as `start:fabric` (deprecated).
+
+**Validated:** `npm test` → 10/10 pass. `npm install` → 0.4s, 1 package.
+
+**Retro:** Using the built-in test runner sidesteps the install fragility that
+plagued the spike. Everything stays runnable with zero setup.
+
+---
+
+## M1 — "It's alive": Fabric-free service skeleton ✅
+**Date:** 2026-06-08
+
+- `app/server.js` boots with zero dependencies, serves health + collection +
+  mission endpoints, and replays logs. Verified: health endpoint returns JSON;
+  replayed the real 27,712-line Game.log into 13,964 activities.
 
 ---
 
 ## Up next
 
-- **M2 — Core pipeline polish:** wire `replayLog` to a sample log via a small
-  script + a first mocha test; expose replayed data through the API cleanly.
-- **M3 — Real parser + Discord (headline feature):** detect kills / player joins /
-  quantum travel / spawns from real log lines and post them to a Discord channel.
-  *Blocked on: a combat-containing Game.log sample.*
+- **M3-combat (blocked on input):** get a Game.log recorded during combat; confirm
+  the kill / vehicle-destruction patterns; turn on a real kills→Discord demo.
 - **M4 — Deploy to the VPS:** stand up the always-on service (provider + DB +
   deploy). See D-003.
 - **M5 — Contracts MVP:** create/list/apply/approve missions via API/Discord,
   backed by a small database.
 - **M6+:** Discord roles for approvals, signed audit trail, polish.
 
-> Cadence: one milestone per iteration. Each ends with a demo (something you can
-> see run), a retro note here, and a quick re-prioritization before the next.
+> Cadence: one milestone per iteration, each ending with a demo, a retro note
+> here, and a quick re-prioritization.
