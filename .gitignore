@@ -2,9 +2,10 @@
 node_modules/
 package-lock.json
 
-# Environment
+# Environment / secrets — never commit these
 .env
 settings/local.js
+settings/auth.txt
 
 # Logs
 *.log
@@ -29,11 +30,3 @@ reports/coverage/
 .DS_Store
 Thumbs.db
 
-# Build
-dist/
-build/
-
-# Temporary
-tmp/
-temp/
-*.tmp
