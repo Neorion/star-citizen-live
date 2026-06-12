@@ -5,6 +5,41 @@ understands the direction. Newest at the top.
 
 ---
 
+## D-004 — Revisit decentralization: federate first (amends D-002/D-003)
+**Date:** 2026-06-12 · **Status:** Adopted (direction set; design only, no build yet)
+
+**Decision:** Re-open the decentralization question we shelved in D-002. We will
+**not** rip out the central VPS or Discord. Instead we grow a *federated* layer
+**underneath** the current setup: multiple member-run nodes that gossip
+**signed** events to each other for resilience, while **Discord stays the
+primary UI** and the VPS remains a convenient (but no-longer-required) bridge.
+Target rung now: **L1 — federated**. L2 (p2p, swappable relays) and L3 (fully
+serverless) are explicit later options, not this step. Full design and the
+M-series build plan live in `DESIGN-distributed.md`.
+
+**Why:**
+- D-002 was right that a *trustless* p2p framework is over-built for an org with
+  a trusted leadership — but it conflated **transport** (Fabric, which was the
+  fragile part) with **decentralized trust** (signed objects + multisig, which
+  we still want). We keep the second and avoid the first.
+- The crypto foundation already exists: `types/Mission.js` signs contracts with
+  **secp256k1 / musig2 multisig**, and identity-as-keypair gives free spam/sybil
+  resistance (ignore anything not signed by a key on the org roster).
+- A single VPS (D-003) is one machine and one bill away from the org's data
+  vanishing. Federation removes that single point of failure without paying the
+  full cost of pure p2p (NAT traversal, serverless discovery) up front.
+
+**Consequences:**
+- D-003's VPS becomes **one node among several / a bridge**, not the sole source
+  of truth. D-002's "single central service" framing is softened, not reversed.
+- New honest limit we accept: decentralization **authenticates** who reported a
+  game event; it cannot **verify** the event is true (only that player sees their
+  own `Game.log`). Signing proves authorship, not gameplay.
+- No blockchain. Signatures give non-repudiation + an audit trail; UEC settlement
+  stays social/in-game.
+
+---
+
 ## D-002 — Remove Fabric; build a lightweight central service
 **Date:** 2026-06-08 · **Status:** Adopted (direction set; migration in progress)
 
