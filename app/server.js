@@ -23,6 +23,11 @@ const readline = require('readline');
 const { parseLine } = require('./parser');
 let Tail; try { Tail = require('tail').Tail; } catch (_) { Tail = null; } // optional live-tail
 
+// Lines that *might* be combat/death/destruction events - including ones the
+// parser does not recognize yet. The live monitor surfaces these so we can
+// discover the real SC 4.x kill/vehicle format and turn it into a verified rule.
+const COMBAT_HINTS = /\b(kill|killed|death|died|destroy|destruct|destruction|incap|corpse|fatal|eject)\b/i;
+
 function idFor (content) {
   return crypto.createHash('sha256').update(String(content)).digest('hex').slice(0, 32);
 }
@@ -33,12 +38,16 @@ class StarCitizenService extends EventEmitter {
     this.settings = Object.assign({
       port: 3041,
       logfile: null,
+      seed: null,   // optional: replay a past log once on start to pre-fill the monitor
       discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false },
       missions: { enable: true }
     }, settings);
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false }, settings.discord || {});
 
     this.state = { status: 'STOPPED', activities: {}, players: {}, vehicles: {}, kills: {}, logs: {}, startedAt: null };
+    this.recent = [];   // rolling buffer of the latest lines (for the live monitor)
+    this.flagged = [];  // lines matching COMBAT_HINTS - combat discovery candidates
+    this._seq = 0;
     this.logwatcher = null;
     this.server = null;
 
@@ -66,6 +75,29 @@ class StarCitizenService extends EventEmitter {
     const body = async () => { const c = []; for await (const ch of req) c.push(ch); return c.length ? JSON.parse(Buffer.concat(c).toString()) : {}; };
 
     try {
+      // Live monitor web UI (read-only dashboard).
+      if (req.method === 'GET' && (path === '/' || path === `${base}/ui`)) {
+        let html;
+        try { html = this._uiHtml || (this._uiHtml = fs.readFileSync(require('path').join(__dirname, 'ui.html'), 'utf8')); }
+        catch (_) { html = '<h1>Star Citizen Live</h1><p>UI file missing (app/ui.html).</p>'; }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(html);
+      }
+      // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
+      if (req.method === 'GET' && path === `${base}/monitor`) {
+        const limit = Math.min(parseInt(url.searchParams.get('limit'), 10) || 250, 1000);
+        const newest = (arr) => arr.slice(-limit).reverse();
+        return send(200, {
+          status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
+          counts: {
+            activities: this.activities.length, players: this.players.length,
+            vehicles: this.vehicles.length, kills: this.kills.length,
+            logs: this.logs.length, flagged: this.flagged.length
+          },
+          recent: newest(this.recent),
+          flagged: newest(this.flagged)
+        });
+      }
       if (req.method === 'GET' && path === base) {
         return send(200, { type: 'StarCitizen', data: {
           status: this.status, startedAt: this.state.startedAt,
@@ -119,6 +151,16 @@ class StarCitizenService extends EventEmitter {
     this.state.logs[id] = ev;
     const activity = { type: 'StarCitizenLogEntry', id, kind: ev.kind, timestamp: ev.timestamp, object: { id, content: entry }, target: '/logs' };
     this.state.activities[id] = activity;
+
+    // Rolling buffers powering the live monitor UI.
+    const recognized = !(ev.kind === 'log:raw' || ev.kind === 'log:notice');
+    const rec = { seq: ++this._seq, kind: ev.kind, tag: ev.tag, verified: ev.verified, timestamp: ev.timestamp, recognized, raw: String(entry) };
+    this.recent.push(rec);
+    if (this.recent.length > 500) this.recent.shift();
+    if (COMBAT_HINTS.test(entry)) {
+      this.flagged.push(rec);
+      if (this.flagged.length > 2000) this.flagged.shift();
+    }
 
     // Route classified events into the right collections + emit specific events.
     switch (ev.kind) {
@@ -199,6 +241,10 @@ class StarCitizenService extends EventEmitter {
     this.state.status = 'STARTING';
     if (this.missionManager) await this.missionManager.start();
     this.openLog();
+    if (this.settings.seed) {
+      try { const n = await this.replayLog(this.settings.seed); console.log(`[STAR-CITIZEN] seeded ${n} lines from ${this.settings.seed}`); }
+      catch (e) { this.emit('error', e); }
+    }
     this.server = http.createServer((req, res) => this._handle(req, res));
     await new Promise((resolve) => this.server.listen(this.settings.port, resolve));
     this.state.status = 'STARTED';
@@ -223,6 +269,7 @@ module.exports = StarCitizenService;
 
 if (require.main === module) {
   const svc = new StarCitizenService({ port: process.env.PORT || 3041, logfile: process.env.SC_LOGFILE || null,
+    seed: process.env.SC_SEED || null,
     discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null } });
   svc.start();
 }
