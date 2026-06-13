@@ -23,10 +23,10 @@ const readline = require('readline');
 const { parseLine } = require('./parser');
 let Tail; try { Tail = require('tail').Tail; } catch (_) { Tail = null; } // optional live-tail
 
-// Lines that *might* be combat/death/destruction events - including ones the
-// parser does not recognize yet. The live monitor surfaces these so we can
-// discover the real SC 4.x kill/vehicle format and turn it into a verified rule.
-const COMBAT_HINTS = /\b(kill|killed|death|died|destroy|destruct|destruction|incap|corpse|fatal|eject)\b/i;
+// Lines worth surfacing in the monitor - combat/death hints AND mission/objective
+// activity. Includes wording the parser may not recognize yet, so we can keep
+// discovering real SC 4.x formats and promote them to verified rules.
+const INTEREST_HINTS = /\b(kill|killed|death|died|destroy|destruct|destruction|incap|corpse|fatal|eject|defeat|defeated|hostile|objective|mission|contract|bounty)\b/i;
 
 function idFor (content) {
   return crypto.createHash('sha256').update(String(content)).digest('hex').slice(0, 32);
@@ -39,12 +39,12 @@ class StarCitizenService extends EventEmitter {
       port: 3041,
       logfile: null,
       seed: null,   // optional: replay a past log once on start to pre-fill the monitor
-      discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false },
+      discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false },
       missions: { enable: true }
     }, settings);
-    this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false }, settings.discord || {});
+    this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false }, settings.discord || {});
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, vehicles: {}, kills: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, vehicles: {}, kills: {}, missionlog: {}, logs: {}, startedAt: null };
     this.recent = [];   // rolling buffer of the latest lines (for the live monitor)
     this.flagged = [];  // lines matching COMBAT_HINTS - combat discovery candidates
     this._seq = 0;
@@ -67,6 +67,7 @@ class StarCitizenService extends EventEmitter {
   get players () { return Object.values(this.state.players); }
   get vehicles () { return Object.values(this.state.vehicles); }
   get kills () { return Object.values(this.state.kills); }
+  get missionlog () { return Object.values(this.state.missionlog); }
   get logs () { return Object.values(this.state.logs); }
   get missions () { return this.missionManager ? this.missionManager.missions : []; }
   get status () { return this.state.status; }
@@ -97,6 +98,7 @@ class StarCitizenService extends EventEmitter {
           counts: {
             activities: this.activities.length, players: this.players.length,
             vehicles: this.vehicles.length, kills: this.kills.length,
+            missionlog: this.missionlog.length,
             logs: this.logs.length, flagged: this.flagged.length
           },
           recent: newest(this.recent),
@@ -108,10 +110,11 @@ class StarCitizenService extends EventEmitter {
           status: this.status, startedAt: this.state.startedAt,
           activities: this.activities.length, players: this.players.length,
           vehicles: this.vehicles.length, kills: this.kills.length,
+          missionlog: this.missionlog.length,
           logs: this.logs.length, missions: this.missions.length
         }});
       }
-      const collections = { activities: () => this.activities, players: () => this.players, vehicles: () => this.vehicles, kills: () => this.kills, messages: () => this.logs };
+      const collections = { activities: () => this.activities, players: () => this.players, vehicles: () => this.vehicles, kills: () => this.kills, missionlog: () => this.missionlog, messages: () => this.logs };
       for (const [name, getter] of Object.entries(collections)) {
         if (path === `${base}/${name}`) {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
@@ -162,7 +165,8 @@ class StarCitizenService extends EventEmitter {
     const rec = { seq: ++this._seq, kind: ev.kind, tag: ev.tag, verified: ev.verified, timestamp: ev.timestamp, recognized, raw: String(entry) };
     this.recent.push(rec);
     if (this.recent.length > 500) this.recent.shift();
-    if (COMBAT_HINTS.test(entry)) {
+    const tracked = ev.kind === 'kill' || ev.kind === 'vehicle:destroy' || (ev.kind && ev.kind.indexOf('mission:') === 0);
+    if (tracked || INTEREST_HINTS.test(entry)) {
       this.flagged.push(rec);
       if (this.flagged.length > 2000) this.flagged.shift();
     }
@@ -185,6 +189,16 @@ class StarCitizenService extends EventEmitter {
         const v = { id, vehicle: ev.vehicle, cause: ev.cause, fromLevel: ev.fromLevel, toLevel: ev.toLevel, timestamp: ev.timestamp };
         this.state.vehicles[id] = v;
         this.emit('vehicle:destroy', v);
+        break;
+      }
+      case 'mission:contract':
+      case 'mission:objective':
+      case 'mission:notification': {
+        const me = { id, kind: ev.kind, timestamp: ev.timestamp,
+          contract: ev.contract, text: ev.text, objectiveId: ev.objectiveId, missionId: ev.missionId };
+        this.state.missionlog[id] = me;
+        this.emit(ev.kind, me);
+        this.emit('mission:event', me);
         break;
       }
       default: break;
@@ -232,6 +246,12 @@ class StarCitizenService extends EventEmitter {
     this.on('kill', (k) => { if (this.settings.discord.announceKills) this._discordKill(k); });
     this.on('player:join', (p) => { if (this.settings.discord.announcePlayerJoins) this._discordJoin(p); });
     this.on('activity', (a) => { if (this.settings.discord.announceActivities) this._discordActivity(a); });
+    this.on('mission:objective', (m) => { if (this.settings.discord.announceMissions) this._discordMission(m); });
+  }
+
+  _discordMission (m) {
+    return this.postToDiscord({ embeds: [{ title: '🎯 Objective', description: m.text || 'Objective updated',
+      color: 0xF1C40F, timestamp: new Date().toISOString() }] });
   }
 
   _discordKill (k) {

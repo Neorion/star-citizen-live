@@ -57,3 +57,26 @@ test('parses documented vehicle destruction (UNVERIFIED format)', () => {
   assert.strictEqual(r.toLevel, '2');
   assert.strictEqual(r.verified, false);
 });
+
+// --- VERIFIED mission patterns (from a real combat-mission session, 2026-06-12) ---
+
+test('detects mission contract name', () => {
+  const r = parseLine("<2026-06-12T20:16:06.843Z> [Notice] <GenerateLocationProperty> Generated Locations - variablename: SubLocationType_BP, locations: (Freelancer wreck site [4221372531] [MISC_Freelancer_Space_Stanton1]) contract: FoxwellEnforcement_Stanton_DefendShipNamed_E [Team_MissionFeatures][Missions]");
+  assert.strictEqual(r.kind, 'mission:contract');
+  assert.strictEqual(r.contract, 'FoxwellEnforcement_Stanton_DefendShipNamed_E');
+});
+
+test('detects mission objective update and its text', () => {
+  const r = parseLine("<2026-06-12T20:20:11.249Z> [Notice] <CMissionLogEntry::UpdateActiveObjective> Objective updated id=3340e494-888d-96be-0192-0c08d4841aa3, flags=ShowInLog|RespectInheritedVisibility|, hidden=0, hiddenInUI=0, markerHidden=0, uiDisplay[Priority=1][Text=Defeat Hostile Ship] [Team_MissionFeatures][Missions]");
+  assert.strictEqual(r.kind, 'mission:objective');
+  assert.strictEqual(r.objectiveId, '3340e494-888d-96be-0192-0c08d4841aa3');
+  assert.strictEqual(r.text, 'Defeat Hostile Ship');
+});
+
+test('detects mission notification with mission/objective ids', () => {
+  const r = parseLine("<2026-06-12T20:20:11.252Z> [Notice] <SHUDEvent_OnNotification> Added notification \"New Objective: Defeat Hostile Ships: \" [25] to queue. New queue size: 1, MissionId: [4491dc34-bcf3-4f56-a0b8-228e3e3f40e9], ObjectiveId: [3340e494-888d-96be-0192-0c08d4841aa3] [Team_CoreGameplayFeatures][Missions][Comms]");
+  assert.strictEqual(r.kind, 'mission:notification');
+  assert.strictEqual(r.text, 'New Objective: Defeat Hostile Ships: ');
+  assert.strictEqual(r.missionId, '4491dc34-bcf3-4f56-a0b8-228e3e3f40e9');
+  assert.strictEqual(r.objectiveId, '3340e494-888d-96be-0192-0c08d4841aa3');
+});

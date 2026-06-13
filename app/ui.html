@@ -63,9 +63,10 @@
     <span id="status" class="pill off">…</span>
     <div class="counts">
       <span class="k">kills <b id="c-kills">0</b></span>
+      <span>missions <b id="c-missions">0</b></span>
       <span>players <b id="c-players">0</b></span>
       <span>vehicles <b id="c-vehicles">0</b></span>
-      <span>candidates <b id="c-flagged">0</b></span>
+      <span>activity <b id="c-flagged">0</b></span>
       <span>lines <b id="c-logs">0</b></span>
     </div>
     <div class="ctrl">
@@ -81,8 +82,8 @@
 
 <main>
   <section class="panel full">
-    <h2>⭐ Combat candidates
-      <span class="sub">— lines mentioning kill / death / destroy. This is where we find the real format.</span>
+    <h2>⭐ Mission &amp; combat activity
+      <span class="sub">— objectives, contracts &amp; any combat lines. Hit Copy all to send me new formats.</span>
       <button class="btn" id="copyAll">Copy all</button>
     </h2>
     <div class="feed" id="flagged"></div>
@@ -164,6 +165,7 @@ async function poll(){
     $('status').textContent = d.status;
     $('status').className = 'pill ' + (d.status==='STARTED'?'on':'off');
     $('c-kills').textContent = d.counts.kills;
+    $('c-missions').textContent = d.counts.missionlog;
     $('c-players').textContent = d.counts.players;
     $('c-vehicles').textContent = d.counts.vehicles;
     $('c-flagged').textContent = d.counts.flagged;

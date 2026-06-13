@@ -48,6 +48,25 @@ const RULES = [
     fields: (m) => ({ level: m[1] })
   },
 
+  // --- VERIFIED against a real combat-mission session (2026-06-12) ---
+  // The client log does NOT record explicit PVE/NPC kills, but it logs the
+  // mission/contract layer richly. These power live mission tracking.
+  {
+    kind: 'mission:contract', tag: 'GenerateLocationProperty',
+    test: /contract:\s*(\S+)/,
+    fields: (m) => ({ contract: m[1] })
+  },
+  {
+    kind: 'mission:objective', tag: 'CMissionLogEntry::UpdateActiveObjective',
+    test: /id=([0-9a-fA-F-]+).*?\[Text=([^\]]*)\]/,
+    fields: (m) => ({ objectiveId: m[1], text: m[2] })
+  },
+  {
+    kind: 'mission:notification', tag: 'SHUDEvent_OnNotification',
+    test: /Added notification "([^"]*)".*?MissionId:\s*\[([^\]]*)\].*?ObjectiveId:\s*\[([^\]]*)\]/,
+    fields: (m) => ({ text: m[1], missionId: m[2], objectiveId: m[3] })
+  },
+
   // --- UNVERIFIED: documented SC 4.x combat formats, pending a real combat log ---
   {
     kind: 'kill', tag: 'Actor Death', verified: false,

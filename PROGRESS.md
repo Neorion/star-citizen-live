@@ -5,6 +5,33 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M3.5 — Mission/objective tracking (verified on real combat-mission log) ✅
+**Date:** 2026-06-12
+
+**Key finding (validated against a real combat-mission session):** the client
+`Game.log` does **not** record explicit PVE/NPC ship kills — the word "kill"
+never appears and the documented `CActor::Kill` / `<Vehicle Destruction>` formats
+are absent. Combat is only visible *indirectly* via mission objective progress.
+The mission/contract layer, however, is logged richly.
+
+**What shipped (additive — nothing removed):**
+- `app/parser.js` — three **verified** rules: `mission:contract`
+  (`GenerateLocationProperty … contract:`), `mission:objective`
+  (`CMissionLogEntry::UpdateActiveObjective` → id + on-screen Text), and
+  `mission:notification` (`SHUDEvent_OnNotification` → text + MissionId/ObjectiveId).
+- `app/server.js` — new `missionlog` collection + `/missionlog` endpoint, routes
+  + `mission:event`/`mission:objective` emits, optional `announceMissions` Discord
+  embed (off by default), and the monitor now surfaces mission activity.
+- `app/ui.html` — panel relabeled “Mission & combat activity”, missions counter.
+- Tests: 10 → **14** (3 parser + 1 service routing, all on real log lines).
+
+**Retro:** Real data redirected the headline feature from a PVE kill feed (not
+possible from the client log) to **live mission tracking** — which advances the
+missions/contracts goal (M5) on verified ground. The unverified combat rules stay
+in place for PvP/actor-death logs, which may still use the documented format.
+
+---
+
 ## M3 — Real log parser + event detection + Discord wiring ✅ (combat pending)
 **Date:** 2026-06-08
 

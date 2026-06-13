@@ -25,3 +25,12 @@ test('handleLogChange routes a login into the players collection', () => {
   assert.strictEqual(s.players.length, 1);
   assert.strictEqual(s.players[0].name, 'Kersa');
 });
+
+test('handleLogChange routes a mission objective into missionlog and emits', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  let emitted = null;
+  s.on('mission:objective', (m) => { emitted = m; });
+  s.handleLogChange("<2026-06-12T20:20:11.249Z> [Notice] <CMissionLogEntry::UpdateActiveObjective> Objective updated id=3340e494-888d-96be-0192-0c08d4841aa3, flags=ShowInLog|, hidden=0, uiDisplay[Priority=1][Text=Defeat Hostile Ship] [Team_MissionFeatures][Missions]");
+  assert.strictEqual(s.missionlog.length, 1);
+  assert.strictEqual(emitted.text, 'Defeat Hostile Ship');
+});
