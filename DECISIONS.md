@@ -5,6 +5,44 @@ understands the direction. Newest at the top.
 
 ---
 
+## D-005 — Build a centralized, officer-validated mission register next; defer federation
+**Date:** 2026-06-13 · **Status:** Adopted (direction set; M5 design in `DESIGN-missions-mvp.md`)
+
+**Decision:** Make the **Mission Register (Flow B)** the next build, as a
+**centralized** service (the VPS from D-003) with **officer validation** as the
+authority for completing missions. Treat the live log relay (Flow A) as *optional
+supporting evidence*, never as proof. Adopt the **signed-validation / multisig
+sliver** (the existing `types/Mission.js` crypto) when we reach the audit trail
+(M6), but **do not** reintroduce a heavyweight p2p framework or build full
+federation now — keep D-004 as a parallel, opt-in research track.
+
+**Why:**
+- **Testing proved the log can't be the source of truth.** SC 4.8.0 logs no kills
+  / ship destruction; even available data is self-reported per-machine and not
+  verifiable. (Repeatedly confirmed 2026-06-12/13.) A *human officer* must be the
+  authority — which is also exactly the org's real structure (trusted leadership).
+- **The valuable product (Flow B) is decoupled from log categorization.** It's a
+  CRUD + workflow + auth system; ongoing parser work does not block it.
+- **Out-of-game missions / fleet actions have no log signal at all**, so the same
+  officer-validation model serves both in-game and out-of-game work uniformly.
+- **Federation is a lot of work and unneeded for the requirement.** Per D-004's
+  own "hard parts": signing proves *who said it*, not *that it's true*; NAT
+  traversal and eventual-consistency are real costs. A trusted central authority
+  (the org) doesn't have the trustless problem decentralization solves.
+
+**Consequences:**
+- Next milestones: **M4** (deploy central VPS + lightweight DB) → **M5**
+  (mission register MVP: post → apply → validate, via Discord + REST) → **M6**
+  (officer roles + tamper-evident, signed audit trail).
+- A **Discord bot** (not just a webhook) becomes a required dependency for
+  two-way commands. Identity = Discord users; officer permission = a Discord role.
+- We keep the `MissionManager` seam and `Mission.js` crypto; the signed-validation
+  piece is folded in at M6 **without** Fabric.
+- Decentralization (D-004 MD-series) is revisited only if the org later wants to
+  remove the VPS as a single point of failure or federate multiple orgs.
+
+---
+
 ## D-004 — Revisit decentralization: federate first (amends D-002/D-003)
 **Date:** 2026-06-12 · **Status:** Adopted (direction set; design only, no build yet)
 

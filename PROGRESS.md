@@ -3,6 +3,11 @@
 A running, plain-English trail of what's been done, what we learned, and what's
 next. Each milestone closes with a short retro. Newest at the top.
 
+> **Planning (2026-06-13):** direction set for the next phase — see `SOLUTION-BRIEF.md`
+> (product overview), `DECISIONS.md` → **D-005**, and `DESIGN-missions-mvp.md` (M5
+> technical plan). Next build: **M4** (deploy) → **M5** (officer-validated mission
+> register) → **M6** (roles + signed audit).
+
 ---
 
 ## M3.12 — Combat progress proxy (inferred from mission objectives) ✅
