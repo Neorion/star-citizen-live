@@ -26,6 +26,24 @@ test('handleLogChange routes a login into the players collection', () => {
   assert.strictEqual(s.players[0].name, 'Kersa');
 });
 
+test('players dedupe by handle; logins count every event', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  let joins = 0;
+  s.on('player:join', () => { joins++; });
+  const login = (t) => s.handleLogChange(`<${t}> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[Kersa] - Time[1] [Login]`);
+  login('2026-06-13T06:43:45.000Z');
+  login('2026-06-13T07:05:00.000Z');   // same handle, second login
+  assert.strictEqual(s.players.length, 1, 'one distinct player');
+  assert.strictEqual(s.players[0].logins, 2, 'two logins recorded');
+  assert.strictEqual(s.logins.length, 2, 'two login events');
+  assert.strictEqual(joins, 1, 'player:join fires once per distinct handle');
+
+  // a different handle is a new distinct player
+  s.handleLogChange('<2026-06-13T07:10:00.000Z> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[Raven] - Time[1] [Login]');
+  assert.strictEqual(s.players.length, 2);
+  assert.strictEqual(joins, 2);
+});
+
 test('handleLogChange routes a mission objective into missionlog and emits', () => {
   const s = new StarCitizenService({ discord: { enable: false } });
   let emitted = null;

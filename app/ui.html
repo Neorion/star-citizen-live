@@ -65,7 +65,7 @@
       <span class="k">kills <b id="c-kills">0</b></span>
       <span>sessions <b id="c-sessions">0</b></span>
       <span>missions <b id="c-missions">0</b></span>
-      <span>players <b id="c-players">0</b></span>
+      <span id="chip-players" title="distinct players">players <b id="c-players">0</b></span>
       <span>vehicles <b id="c-vehicles">0</b></span>
       <span>activity <b id="c-flagged">0</b></span>
       <span>lines <b id="c-logs">0</b></span>
@@ -170,6 +170,7 @@ async function poll(){
     $('c-sessions').textContent = (d.sessions || []).length;
     $('c-missions').textContent = d.counts.missionlog;
     $('c-players').textContent = d.counts.players;
+    $('chip-players').title = `distinct players · ${d.counts.logins} login event${d.counts.logins === 1 ? '' : 's'}`;
     $('c-vehicles').textContent = d.counts.vehicles;
     $('c-flagged').textContent = d.counts.flagged;
     $('c-logs').textContent = d.counts.logs.toLocaleString();

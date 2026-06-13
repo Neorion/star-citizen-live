@@ -5,6 +5,27 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M3.9 — Distinct-player roster vs. login events ✅
+**Date:** 2026-06-12
+
+**Why:** the `players` count was counting login *events* (a relog showed as 2
+players). Looking ahead to a multi-relay (Fabric) build we want "who is playing"
+(distinct handles) separate from "how many logins/sessions".
+
+**What shipped:**
+- `app/server.js` — `recordPlayer()` keys players by handle (distinct roster with
+  `firstSeen`/`lastSeen`/`logins`); a separate `logins` collection keeps every
+  login event. `player:join` now fires once per distinct handle; `player:login`
+  on every login. New `/logins` endpoint; `logins` count in `/monitor` + status.
+  POST `/players` deduped by handle too (for future remote relays).
+- `app/ui.html` — "players" is now the distinct count; login total on hover.
+- Tests: 26 → **27**.
+
+**Validated:** real data now reads `players=1` (Kersa) with logins tracked
+separately (was showing 2 for one player).
+
+---
+
 ## M3.8 — Auto-detect install + channel (LIVE/PTU/EPTU/HOTFIX/TECH-PREVIEW) ✅
 **Date:** 2026-06-12
 

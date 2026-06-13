@@ -45,7 +45,7 @@ class StarCitizenService extends EventEmitter {
     }, settings);
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false }, settings.discord || {});
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, vehicles: {}, kills: {}, missionlog: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, missionlog: {}, logs: {}, startedAt: null };
     this.recent = [];   // rolling buffer of the latest lines (for the live monitor)
     this.flagged = [];  // lines matching INTEREST_HINTS - combat/mission candidates
     this.channel = this.settings.channel || channelFromPath(this.settings.logfile); // LIVE/HOTFIX/...
@@ -70,7 +70,8 @@ class StarCitizenService extends EventEmitter {
   }
 
   get activities () { return Object.values(this.state.activities); }
-  get players () { return Object.values(this.state.players); }
+  get players () { return Object.values(this.state.players); }   // distinct handles
+  get logins () { return Object.values(this.state.logins); }     // every login event
   get vehicles () { return Object.values(this.state.vehicles); }
   get kills () { return Object.values(this.state.kills); }
   get missionlog () { return Object.values(this.state.missionlog); }
@@ -103,7 +104,7 @@ class StarCitizenService extends EventEmitter {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
           channel: this.channel, session: this.session, sessions: this.sessions,
           counts: {
-            activities: this.activities.length, players: this.players.length,
+            activities: this.activities.length, players: this.players.length, logins: this.logins.length,
             vehicles: this.vehicles.length, kills: this.kills.length,
             missionlog: this.missionlog.length,
             logs: this.logs.length, flagged: this.flagged.length
@@ -115,21 +116,25 @@ class StarCitizenService extends EventEmitter {
       if (req.method === 'GET' && path === base) {
         return send(200, { type: 'StarCitizen', data: {
           status: this.status, startedAt: this.state.startedAt, channel: this.channel, session: this.session, sessions: this.sessions.length,
-          activities: this.activities.length, players: this.players.length,
+          activities: this.activities.length, players: this.players.length, logins: this.logins.length,
           vehicles: this.vehicles.length, kills: this.kills.length,
           missionlog: this.missionlog.length,
           logs: this.logs.length, missions: this.missions.length
         }});
       }
-      const collections = { activities: () => this.activities, players: () => this.players, vehicles: () => this.vehicles, kills: () => this.kills, missionlog: () => this.missionlog, messages: () => this.logs };
+      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, missionlog: () => this.missionlog, messages: () => this.logs };
       for (const [name, getter] of Object.entries(collections)) {
         if (path === `${base}/${name}`) {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
-          if (req.method === 'POST' && name !== 'messages') {
+          if (req.method === 'POST' && name !== 'messages' && name !== 'logins') {
             const data = await body();
+            // Players dedupe by handle (distinct roster) rather than per-event.
+            if (name === 'players' && data.name) {
+              const { player } = this.recordPlayer(data.name, data.timestamp || new Date().toISOString());
+              return send(200, { type: 'players', data: player });
+            }
             const id = idFor(JSON.stringify(data) + Date.now());
             this.state[name][id] = Object.assign({ id }, data);
-            if (name === 'players') this.emit('player:join', this.state[name][id]);
             if (name === 'kills') this.emit('kill', this.state[name][id]);
             return send(200, { type: name, data: this.state[name][id] });
           }
@@ -191,9 +196,7 @@ class StarCitizenService extends EventEmitter {
         break;
       }
       case 'player:login': {
-        const player = { id, name: ev.handle, timestamp: ev.timestamp };
-        this.state.players[id] = player;
-        this.emit('player:join', player);
+        this.recordPlayer(ev.handle, ev.timestamp);
         break;
       }
       case 'vehicle:destroy': {
@@ -227,6 +230,26 @@ class StarCitizenService extends EventEmitter {
     this.emit('event', ev);       // every parsed line (used by replay tally)
     this.emit('activity', activity);
     return ev;
+  }
+
+  // Distinct-player roster keyed by handle, plus a login-event history. Forward-
+  // looking to a multi-relay (Fabric) build: "who is playing" (distinct) vs
+  // "how many logins/sessions". Emits player:join only the first time a handle
+  // appears; player:login on every login.
+  recordPlayer (name, timestamp) {
+    if (!name) return null;
+    const key = String(name).toLowerCase();
+    let player = this.state.players[key];
+    const isNew = !player;
+    if (isNew) player = this.state.players[key] = { id: key, name, firstSeen: timestamp, lastSeen: timestamp, logins: 0 };
+    player.name = name;            // keep latest display casing
+    player.lastSeen = timestamp;
+    player.logins += 1;
+    const login = { id: idFor(name + '|' + timestamp), name, timestamp };
+    this.state.logins[login.id] = login;
+    if (isNew) this.emit('player:join', player);
+    this.emit('player:login', login);
+    return { player, isNew };
   }
 
   // Read-only poller. Survives the game rotating Game.log between sessions:
