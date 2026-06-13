@@ -28,6 +28,10 @@ const { resolveLogFile, channelFromPath } = require('./locate');
 // discovering real SC 4.x formats and promote them to verified rules.
 const INTEREST_HINTS = /\b(kill|killed|death|died|destroy|destruct|destruction|incap|corpse|fatal|eject|defeat|defeated|hostile|objective|mission|contract|bounty)\b/i;
 
+// Mission objective text that implies combat progress - our best proxy for kills,
+// since SC 4.8.0 does not log NPC ship kills directly. Inferred, not exact.
+const COMBAT_OBJECTIVE = /\b(defeat|defeated|destroy|destroyed|eliminate|eliminated|hostile|wave|waves|bounty|kill)\b/i;
+
 function idFor (content) {
   return crypto.createHash('sha256').update(String(content)).digest('hex').slice(0, 32);
 }
@@ -40,14 +44,15 @@ class StarCitizenService extends EventEmitter {
       logfile: null,
       channel: null, // SC channel (LIVE/PTU/EPTU/HOTFIX/TECH-PREVIEW) for display
       seed: null,   // optional: replay a past log once on start to pre-fill the monitor
-      discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false },
+      discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false },
       missions: { enable: true }
     }, settings);
-    this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false }, settings.discord || {});
+    this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false }, settings.discord || {});
 
     this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, missionlog: {}, notifications: {}, logs: {}, startedAt: null };
     this.state.missionGroups = {};  // missions grouped by MissionId (built from the log)
     this.state.objectives = {};     // objective details keyed by ObjectiveId
+    this.state.combatlog = {};      // combat progress inferred from mission objectives
     this.recent = [];   // rolling buffer of the latest lines (for the live monitor)
     this.flagged = [];  // lines matching INTEREST_HINTS - combat/mission candidates
     this.channel = this.settings.channel || channelFromPath(this.settings.logfile); // LIVE/HOTFIX/...
@@ -78,6 +83,7 @@ class StarCitizenService extends EventEmitter {
   get kills () { return Object.values(this.state.kills); }
   get missionlog () { return Object.values(this.state.missionlog); }
   get notifications () { return Object.values(this.state.notifications); }  // general HUD/zone notices
+  get combatlog () { return Object.values(this.state.combatlog); }          // combat progress via mission objectives
 
   // Missions grouped by MissionId, with their objectives joined in by ObjectiveId.
   get missionGroups () {
@@ -112,6 +118,10 @@ class StarCitizenService extends EventEmitter {
       if (req.method === 'GET' && path === `${base}/missiongroups`) {
         return send(200, { type: 'Collection', data: this.missionGroups });
       }
+      // Combat progress inferred from mission objectives (proxy for kills).
+      if (req.method === 'GET' && path === `${base}/combat`) {
+        return send(200, { type: 'Collection', data: this.combatlog });
+      }
       // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
       if (req.method === 'GET' && path === `${base}/monitor`) {
         const limit = Math.min(parseInt(url.searchParams.get('limit'), 10) || 250, 1000);
@@ -124,6 +134,7 @@ class StarCitizenService extends EventEmitter {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
             vehicles: this.vehicles.length, kills: this.kills.length,
             missionlog: this.missionlog.length, missions: this.missionGroups.length, notifications: this.notifications.length,
+            combat: this.combatlog.length,
             logs: this.logs.length, flagged: this.flagged.length
           },
           recent: newest(this.recent),
@@ -278,6 +289,15 @@ class StarCitizenService extends EventEmitter {
       }
       if (ev.objectiveId) m.objectiveIds[ev.objectiveId] = true;
     }
+
+    // Combat progress proxy: a mission objective whose text implies combat. This
+    // is the closest we get to "kills" on 4.8.0 (NPC ship kills are not logged).
+    if (ev.text && COMBAT_OBJECTIVE.test(ev.text)) {
+      if (ev.objectiveId && this.state.objectives[ev.objectiveId]) this.state.objectives[ev.objectiveId].combat = true;
+      const c = { id: idFor(ev.text + '|' + ev.timestamp), text: ev.text, missionId: ev.missionId || null, objectiveId: ev.objectiveId || null, timestamp: ev.timestamp };
+      this.state.combatlog[c.id] = c;
+      this.emit('combat:progress', c);
+    }
   }
 
   // Distinct-player roster keyed by handle, plus a login-event history. Forward-
@@ -361,11 +381,16 @@ class StarCitizenService extends EventEmitter {
     this.on('player:join', (p) => { if (this.settings.discord.announcePlayerJoins) this._discordJoin(p); });
     this.on('activity', (a) => { if (this.settings.discord.announceActivities) this._discordActivity(a); });
     this.on('mission:objective', (m) => { if (this.settings.discord.announceMissions) this._discordMission(m); });
+    this.on('combat:progress', (c) => { if (this.settings.discord.announceCombat) this._discordCombat(c); });
   }
 
   _discordMission (m) {
     return this.postToDiscord({ embeds: [{ title: '🎯 Objective', description: m.text || 'Objective updated',
       color: 0xF1C40F, timestamp: new Date().toISOString() }] });
+  }
+  _discordCombat (c) {
+    return this.postToDiscord({ embeds: [{ title: '⚔️ Combat', description: c.text || 'Combat objective progressed',
+      color: 0xE74C3C, timestamp: new Date().toISOString() }] });
   }
 
   _discordKill (k) {

@@ -5,6 +5,29 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M3.12 — Combat progress proxy (inferred from mission objectives) ✅
+**Date:** 2026-06-13
+
+**Why:** SC 4.8.0 does not log NPC ship kills (confirmed repeatedly). The closest
+signal is mission objective progress that implies combat ("Defeat Hostile Ships",
+"Waves Defeated"). Make that a first-class, clearly-labelled proxy — not claimed
+as exact kills.
+
+**What shipped:**
+- `app/server.js` — `COMBAT_OBJECTIVE` detector; combat objectives are marked
+  (`objective.combat=true`), collected into a `combatlog` stream, and emit
+  `combat:progress`. New `/combat` endpoint + `combat` count; optional
+  `announceCombat` Discord embed (⚔️, off by default).
+- `app/ui.html` — a "combat" counter (tooltip: inferred from missions) and a ⚔️
+  marker on combat objectives in the Missions panel.
+- Tests: 30 → **31**.
+
+**Validated:** replaying a real combat-mission log produced 65 combat-progress
+entries ("Defeat Hostile Ships", "Waves Defeated"). Honest limitation: only fires
+when a mission frames combat in its objective text; nothing for free-flight kills.
+
+---
+
 ## M3.11 — Group missions by MissionId (objectives nested) ✅
 **Date:** 2026-06-12
 

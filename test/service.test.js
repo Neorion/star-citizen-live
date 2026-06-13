@@ -67,6 +67,20 @@ test('mission events group by MissionId with objectives joined via ObjectiveId',
   assert.strictEqual(m.objectives[0].text, 'Defeat Hostile Ship', 'latest objective text wins');
 });
 
+test('combat objectives are tracked as combat progress (proxy for kills)', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  let progressed = 0;
+  s.on('combat:progress', () => { progressed++; });
+  // a combat objective update
+  s.handleLogChange('<2026-06-13T07:20:05.000Z> [Notice] <CMissionLogEntry::UpdateActiveObjective> Objective updated id=3340e494-888d-96be-0192-0c08d4841aa3, flags=ShowInLog|, uiDisplay[Priority=1][Text=Defeat Hostile Ship] [Team_MissionFeatures][Missions]');
+  // a non-combat objective should NOT count
+  s.handleLogChange('<2026-06-13T07:21:00.000Z> [Notice] <CMissionLogEntry::UpdateActiveObjective> Objective updated id=aaaa1111-0000-0000-0000-000000000000, flags=ShowInLog|, uiDisplay[Priority=1][Text=Deliver cargo to Teasa Spaceport] [Team_MissionFeatures][Missions]');
+  assert.strictEqual(s.combatlog.length, 1, 'only the combat objective counts');
+  assert.strictEqual(progressed, 1);
+  assert.strictEqual(s.combatlog[0].text, 'Defeat Hostile Ship');
+  assert.strictEqual(s.state.objectives['3340e494-888d-96be-0192-0c08d4841aa3'].combat, true);
+});
+
 test('HUD notification routes to notifications, not missionlog', () => {
   const s = new StarCitizenService({ discord: { enable: false } });
   s.handleLogChange('<2026-06-13T07:12:41.081Z> [Notice] <SHUDEvent_OnNotification> Added notification "Entering Armistice Zone - Combat Prohibited: " [8] to queue. New queue size: 3, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]');

@@ -69,6 +69,7 @@
     <span id="status" class="pill off">…</span>
     <div class="counts">
       <span class="k">kills <b id="c-kills">0</b></span>
+      <span class="k" title="combat objectives progressed — inferred from missions (kills are not logged directly)">combat <b id="c-combat">0</b></span>
       <span>sessions <b id="c-sessions">0</b></span>
       <span>missions <b id="c-missions">0</b></span>
       <span id="chip-players" title="distinct players">players <b id="c-players">0</b></span>
@@ -164,7 +165,7 @@ function render(el, items, kws){
 function renderMissions(el, missions){
   if(!missions.length){ el.innerHTML = '<div class="empty">no missions yet — take a contract in-game</div>'; return; }
   el.innerHTML = missions.slice().reverse().map(m=>{
-    const objs = (m.objectives||[]).map(o=>`<div class="obj">• ${esc(o.text || o.id)}</div>`).join('');
+    const objs = (m.objectives||[]).map(o=>`<div class="obj">${o.combat ? '⚔️' : '•'} ${esc(o.text || o.id)}</div>`).join('');
     return `<div class="mission">
       <div class="mhead"><span class="badge b-good">mission</span>
         <span class="mtitle">${esc(m.title || '(mission)')}</span>
@@ -193,6 +194,7 @@ async function poll(){
     $('status').textContent = d.status;
     $('status').className = 'pill ' + (d.status==='STARTED'?'on':'off');
     $('c-kills').textContent = d.counts.kills;
+    $('c-combat').textContent = d.counts.combat;
     $('c-sessions').textContent = (d.sessions || []).length;
     $('c-missions').textContent = d.counts.missions;
     $('c-players').textContent = d.counts.players;
