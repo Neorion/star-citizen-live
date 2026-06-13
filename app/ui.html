@@ -51,6 +51,12 @@
   .raw{font-family:'Cascadia Code',Consolas,monospace;font-size:12px;word-break:break-word;flex:1;line-height:1.45}
   .copy{opacity:0;font-size:11px;background:none;border:none;color:var(--accent);cursor:pointer;flex:none}
   .line:hover .copy{opacity:1}
+  .mission{padding:8px 14px;border-bottom:1px solid #20262f}
+  .mhead{display:flex;gap:10px;align-items:center}
+  .mtitle{font-weight:600;flex:1}
+  .mid{color:var(--muted);font-size:10.5px;font-family:'Cascadia Code',Consolas,monospace}
+  .obj{margin:3px 0 0 26px;font-size:12.5px;color:var(--text)}
+  .obj.muted{color:var(--muted);font-style:italic}
   .empty{color:var(--muted);padding:22px 14px;text-align:center;font-style:italic}
   mark{background:rgba(210,153,34,.35);color:inherit;border-radius:2px}
   @media(max-width:820px){main{grid-template-columns:1fr}}
@@ -91,6 +97,11 @@
     <div class="feed" id="flagged"></div>
   </section>
 
+  <section class="panel full">
+    <h2>🎯 Missions <span class="sub">— grouped by mission, objectives nested</span></h2>
+    <div class="feed" id="missions"></div>
+  </section>
+
   <section class="panel">
     <h2>✅ Recognized events <span class="sub">— what the parser understands</span></h2>
     <div class="feed" id="recognized"></div>
@@ -104,7 +115,7 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-let last = { flagged: [], recent: [] };
+let last = { flagged: [], recent: [], missions: [] };
 
 function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
@@ -150,12 +161,27 @@ function render(el, items, kws){
   el.innerHTML = items.map(ev=>lineHTML(ev,kws)).join('');
 }
 
+function renderMissions(el, missions){
+  if(!missions.length){ el.innerHTML = '<div class="empty">no missions yet — take a contract in-game</div>'; return; }
+  el.innerHTML = missions.slice().reverse().map(m=>{
+    const objs = (m.objectives||[]).map(o=>`<div class="obj">• ${esc(o.text || o.id)}</div>`).join('');
+    return `<div class="mission">
+      <div class="mhead"><span class="badge b-good">mission</span>
+        <span class="mtitle">${esc(m.title || '(mission)')}</span>
+        <span class="time">${shortTime(m.lastSeen)}</span></div>
+      <div class="mid">${esc(m.id)}</div>
+      ${objs || '<div class="obj muted">(no objectives yet)</div>'}
+    </div>`;
+  }).join('');
+}
+
 function paint(){
   const kws = keywords();
   const hideKnown = $('hideKnown').checked;
   let flagged = last.flagged.filter(ev=>matches(ev.raw,kws));
   if(hideKnown) flagged = flagged.filter(ev=>!ev.recognized);
   render($('flagged'), flagged, kws);
+  renderMissions($('missions'), last.missions);
   render($('recognized'), last.recent.filter(ev=>ev.recognized).filter(ev=>matches(ev.raw,kws)), kws);
   render($('recent'), last.recent.filter(ev=>matches(ev.raw,kws)), kws);
 }
@@ -168,7 +194,7 @@ async function poll(){
     $('status').className = 'pill ' + (d.status==='STARTED'?'on':'off');
     $('c-kills').textContent = d.counts.kills;
     $('c-sessions').textContent = (d.sessions || []).length;
-    $('c-missions').textContent = d.counts.missionlog;
+    $('c-missions').textContent = d.counts.missions;
     $('c-players').textContent = d.counts.players;
     $('chip-players').title = `distinct players · ${d.counts.logins} login event${d.counts.logins === 1 ? '' : 's'}`;
     $('c-vehicles').textContent = d.counts.vehicles;
@@ -178,7 +204,7 @@ async function poll(){
     const parts = [d.channel, s.branch, s.changelist].filter(Boolean);
     $('build').textContent = parts.join(' · ');
     $('updated').textContent = 'updated ' + shortTime(d.now);
-    last = { flagged: d.flagged, recent: d.recent };
+    last = { flagged: d.flagged, recent: d.recent, missions: d.missions || [] };
     paint();
   }catch(e){
     $('status').textContent = 'OFFLINE';

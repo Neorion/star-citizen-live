@@ -5,6 +5,28 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M3.11 — Group missions by MissionId (objectives nested) ✅
+**Date:** 2026-06-12
+
+**Why:** `missionlog` was a flat list of disconnected mission lines. The runtime
+MissionId GUID ties one mission instance together (see MissionId note in M3.10),
+so we can present real missions instead of loose events.
+
+**What shipped:**
+- `app/server.js` — `_indexMission()` builds `missionGroups` keyed by MissionId;
+  `objectiveId` is the join key (notifications carry MissionId+ObjectiveId,
+  objective updates carry ObjectiveId+latest text). New `missionGroups` getter,
+  `/missiongroups` endpoint, `missions` count, and `missions` array in `/monitor`.
+- `app/ui.html` — a "🎯 Missions" panel renders each mission with its objectives
+  nested; the header "missions" counter now reflects grouped missions.
+- Tests: 29 → **30**.
+
+**Validated:** replaying a real mission log produced 4 grouped missions, incl. a
+delivery contract with its objectives nested ("Deliver 0/6 SCU of Quartz" → "…to
+Teasa Spaceport").
+
+---
+
 ## M3.10 — Split general HUD notifications out of missions ✅
 **Date:** 2026-06-12
 

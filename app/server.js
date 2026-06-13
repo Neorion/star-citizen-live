@@ -46,6 +46,8 @@ class StarCitizenService extends EventEmitter {
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false }, settings.discord || {});
 
     this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, missionlog: {}, notifications: {}, logs: {}, startedAt: null };
+    this.state.missionGroups = {};  // missions grouped by MissionId (built from the log)
+    this.state.objectives = {};     // objective details keyed by ObjectiveId
     this.recent = [];   // rolling buffer of the latest lines (for the live monitor)
     this.flagged = [];  // lines matching INTEREST_HINTS - combat/mission candidates
     this.channel = this.settings.channel || channelFromPath(this.settings.logfile); // LIVE/HOTFIX/...
@@ -76,6 +78,15 @@ class StarCitizenService extends EventEmitter {
   get kills () { return Object.values(this.state.kills); }
   get missionlog () { return Object.values(this.state.missionlog); }
   get notifications () { return Object.values(this.state.notifications); }  // general HUD/zone notices
+
+  // Missions grouped by MissionId, with their objectives joined in by ObjectiveId.
+  get missionGroups () {
+    return Object.values(this.state.missionGroups).map((m) => {
+      const objectives = Object.keys(m.objectiveIds).map((oid) => this.state.objectives[oid]).filter(Boolean);
+      const last = m.notifications[m.notifications.length - 1];
+      return { id: m.id, title: last ? last.text : null, firstSeen: m.firstSeen, lastSeen: m.lastSeen, objectives, notifications: m.notifications };
+    });
+  }
   get logs () { return Object.values(this.state.logs); }
   get missions () { return this.missionManager ? this.missionManager.missions : []; }
   get status () { return this.state.status; }
@@ -97,6 +108,10 @@ class StarCitizenService extends EventEmitter {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(html);
       }
+      // Grouped missions (by MissionId), objectives joined in.
+      if (req.method === 'GET' && path === `${base}/missiongroups`) {
+        return send(200, { type: 'Collection', data: this.missionGroups });
+      }
       // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
       if (req.method === 'GET' && path === `${base}/monitor`) {
         const limit = Math.min(parseInt(url.searchParams.get('limit'), 10) || 250, 1000);
@@ -104,10 +119,11 @@ class StarCitizenService extends EventEmitter {
         return send(200, {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
           channel: this.channel, session: this.session, sessions: this.sessions,
+          missions: this.missionGroups,
           counts: {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
             vehicles: this.vehicles.length, kills: this.kills.length,
-            missionlog: this.missionlog.length, notifications: this.notifications.length,
+            missionlog: this.missionlog.length, missions: this.missionGroups.length, notifications: this.notifications.length,
             logs: this.logs.length, flagged: this.flagged.length
           },
           recent: newest(this.recent),
@@ -212,6 +228,7 @@ class StarCitizenService extends EventEmitter {
         const me = { id, kind: ev.kind, timestamp: ev.timestamp,
           contract: ev.contract, text: ev.text, objectiveId: ev.objectiveId, missionId: ev.missionId };
         this.state.missionlog[id] = me;
+        this._indexMission(ev);
         this.emit(ev.kind, me);
         this.emit('mission:event', me);
         break;
@@ -237,6 +254,30 @@ class StarCitizenService extends EventEmitter {
     this.emit('event', ev);       // every parsed line (used by replay tally)
     this.emit('activity', activity);
     return ev;
+  }
+
+  // Build the grouped mission view as mission events arrive. ObjectiveId is the
+  // join key: notifications carry both MissionId + ObjectiveId; objective updates
+  // carry ObjectiveId + the latest text. Contracts carry neither and stay in the
+  // flat missionlog only.
+  _indexMission (ev) {
+    if (ev.objectiveId) {
+      const o = this.state.objectives[ev.objectiveId] ||
+        (this.state.objectives[ev.objectiveId] = { id: ev.objectiveId, firstSeen: ev.timestamp, updates: 0 });
+      if (ev.text) o.text = ev.text;     // keep the latest objective text
+      o.lastSeen = ev.timestamp;
+      o.updates += 1;
+    }
+    if (ev.missionId && ev.missionId !== '00000000-0000-0000-0000-000000000000') {
+      const m = this.state.missionGroups[ev.missionId] ||
+        (this.state.missionGroups[ev.missionId] = { id: ev.missionId, firstSeen: ev.timestamp, objectiveIds: {}, notifications: [] });
+      m.lastSeen = ev.timestamp;
+      if (ev.kind === 'mission:notification') {
+        m.notifications.push({ text: ev.text, objectiveId: ev.objectiveId || null, timestamp: ev.timestamp });
+        if (m.notifications.length > 100) m.notifications.shift();
+      }
+      if (ev.objectiveId) m.objectiveIds[ev.objectiveId] = true;
+    }
   }
 
   // Distinct-player roster keyed by handle, plus a login-event history. Forward-

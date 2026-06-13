@@ -53,6 +53,20 @@ test('handleLogChange routes a mission objective into missionlog and emits', () 
   assert.strictEqual(emitted.text, 'Defeat Hostile Ship');
 });
 
+test('mission events group by MissionId with objectives joined via ObjectiveId', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  // a mission notification introduces objective O under mission M
+  s.handleLogChange('<2026-06-13T07:20:00.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "New Objective: Defeat Hostile Ships: " [25] to queue. New queue size: 1, MissionId: [4491dc34-bcf3-4f56-a0b8-228e3e3f40e9], ObjectiveId: [3340e494-888d-96be-0192-0c08d4841aa3] [Team_CoreGameplayFeatures][Missions][Comms]');
+  // an objective update for the same ObjectiveId carries the latest text
+  s.handleLogChange('<2026-06-13T07:20:05.000Z> [Notice] <CMissionLogEntry::UpdateActiveObjective> Objective updated id=3340e494-888d-96be-0192-0c08d4841aa3, flags=ShowInLog|, uiDisplay[Priority=1][Text=Defeat Hostile Ship] [Team_MissionFeatures][Missions]');
+
+  assert.strictEqual(s.missionGroups.length, 1, 'one grouped mission');
+  const m = s.missionGroups[0];
+  assert.strictEqual(m.id, '4491dc34-bcf3-4f56-a0b8-228e3e3f40e9');
+  assert.strictEqual(m.objectives.length, 1, 'objective joined into the mission');
+  assert.strictEqual(m.objectives[0].text, 'Defeat Hostile Ship', 'latest objective text wins');
+});
+
 test('HUD notification routes to notifications, not missionlog', () => {
   const s = new StarCitizenService({ discord: { enable: false } });
   s.handleLogChange('<2026-06-13T07:12:41.081Z> [Notice] <SHUDEvent_OnNotification> Added notification "Entering Armistice Zone - Combat Prohibited: " [8] to queue. New queue size: 3, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]');
