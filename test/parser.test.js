@@ -90,6 +90,13 @@ test('detects mission notification with mission/objective ids', () => {
   assert.strictEqual(r.objectiveId, '3340e494-888d-96be-0192-0c08d4841aa3');
 });
 
+test('zero-MissionId notification is a general HUD notice, not a mission', () => {
+  const r = parseLine('<2026-06-13T07:12:41.081Z> [Notice] <SHUDEvent_OnNotification> Added notification "Entering Armistice Zone - Combat Prohibited: " [8] to queue. New queue size: 3, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]');
+  assert.strictEqual(r.kind, 'hud:notification');
+  assert.strictEqual(r.text, 'Entering Armistice Zone - Combat Prohibited: ');
+  assert.strictEqual(r.missionId, undefined);   // not tied to a mission
+});
+
 // --- VERIFIED helpers folded in from the community reference (validated on real log) ---
 
 test('shipName extracts and prettifies real ship IDs', () => {

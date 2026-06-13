@@ -45,7 +45,7 @@ class StarCitizenService extends EventEmitter {
     }, settings);
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false }, settings.discord || {});
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, missionlog: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, missionlog: {}, notifications: {}, logs: {}, startedAt: null };
     this.recent = [];   // rolling buffer of the latest lines (for the live monitor)
     this.flagged = [];  // lines matching INTEREST_HINTS - combat/mission candidates
     this.channel = this.settings.channel || channelFromPath(this.settings.logfile); // LIVE/HOTFIX/...
@@ -75,6 +75,7 @@ class StarCitizenService extends EventEmitter {
   get vehicles () { return Object.values(this.state.vehicles); }
   get kills () { return Object.values(this.state.kills); }
   get missionlog () { return Object.values(this.state.missionlog); }
+  get notifications () { return Object.values(this.state.notifications); }  // general HUD/zone notices
   get logs () { return Object.values(this.state.logs); }
   get missions () { return this.missionManager ? this.missionManager.missions : []; }
   get status () { return this.state.status; }
@@ -106,7 +107,7 @@ class StarCitizenService extends EventEmitter {
           counts: {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
             vehicles: this.vehicles.length, kills: this.kills.length,
-            missionlog: this.missionlog.length,
+            missionlog: this.missionlog.length, notifications: this.notifications.length,
             logs: this.logs.length, flagged: this.flagged.length
           },
           recent: newest(this.recent),
@@ -122,11 +123,11 @@ class StarCitizenService extends EventEmitter {
           logs: this.logs.length, missions: this.missions.length
         }});
       }
-      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, missionlog: () => this.missionlog, messages: () => this.logs };
+      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, missionlog: () => this.missionlog, notifications: () => this.notifications, messages: () => this.logs };
       for (const [name, getter] of Object.entries(collections)) {
         if (path === `${base}/${name}`) {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
-          if (req.method === 'POST' && name !== 'messages' && name !== 'logins') {
+          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications') {
             const data = await body();
             // Players dedupe by handle (distinct roster) rather than per-event.
             if (name === 'players' && data.name) {
@@ -213,6 +214,12 @@ class StarCitizenService extends EventEmitter {
         this.state.missionlog[id] = me;
         this.emit(ev.kind, me);
         this.emit('mission:event', me);
+        break;
+      }
+      case 'hud:notification': {
+        const n = { id, kind: ev.kind, text: ev.text, timestamp: ev.timestamp };
+        this.state.notifications[id] = n;
+        this.emit('notification', n);
         break;
       }
       case 'session:start': {

@@ -53,6 +53,14 @@ test('handleLogChange routes a mission objective into missionlog and emits', () 
   assert.strictEqual(emitted.text, 'Defeat Hostile Ship');
 });
 
+test('HUD notification routes to notifications, not missionlog', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  s.handleLogChange('<2026-06-13T07:12:41.081Z> [Notice] <SHUDEvent_OnNotification> Added notification "Entering Armistice Zone - Combat Prohibited: " [8] to queue. New queue size: 3, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]');
+  assert.strictEqual(s.notifications.length, 1);
+  assert.strictEqual(s.missionlog.length, 0);
+  assert.strictEqual(s.notifications[0].text, 'Entering Armistice Zone - Combat Prohibited: ');
+});
+
 test('handleLogChange stamps session build/hardware from header lines', () => {
   const s = new StarCitizenService({ discord: { enable: false } });
   s.handleLogChange('<2026-06-12T20:04:54.975Z> Log started on Fri Jun 12 20:04:54 2026');

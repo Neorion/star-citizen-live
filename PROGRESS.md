@@ -5,6 +5,32 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M3.10 — Split general HUD notifications out of missions ✅
+**Date:** 2026-06-12
+
+**Why:** every `SHUDEvent_OnNotification` was classified `mission:notification`,
+but most are general HUD notices (zone/jurisdiction/tutorial) with an all-zero
+MissionId — not mission items (spotted on the dashboard).
+
+**What shipped:**
+- `app/parser.js` — `mission:notification` now requires a NON-zero MissionId; a
+  new `hud:notification` rule catches the rest (zero/absent MissionId).
+- `app/server.js` — `hud:notification` routes to a new `notifications` collection
+  (+ `/notifications` endpoint, count, `notification` event); missions stay clean.
+- Tests: 27 → **29**.
+
+**Validated:** active session now reads missions=2, notifications=15 (the zone
+notices moved out of missions).
+
+**MissionId note (researched):** the log's MissionId is a per-instance runtime
+GUID — confirmed it spans multiple lines of one mission instance (e.g. 10/7/7
+lines per GUID across logs), so it's useful for INTERNAL correlation (grouping a
+mission's objectives/notifications/lifecycle), but it is NOT published anywhere
+and can't be looked up externally. External enrichment (SCMDB/SC-Wiki/UEX) keys
+off the contract TEMPLATE name, not the GUID.
+
+---
+
 ## M3.9 — Distinct-player roster vs. login events ✅
 **Date:** 2026-06-12
 

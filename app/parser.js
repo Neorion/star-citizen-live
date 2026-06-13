@@ -67,9 +67,18 @@ const RULES = [
     fields: (m) => ({ objectiveId: m[1], text: m[2] })
   },
   {
+    // Real mission notification: a NON-zero MissionId (rule order matters - this
+    // must precede the general hud:notification rule below).
     kind: 'mission:notification', tag: 'SHUDEvent_OnNotification',
-    test: /Added notification "([^"]*)".*?MissionId:\s*\[([^\]]*)\].*?ObjectiveId:\s*\[([^\]]*)\]/,
+    test: /Added notification "([^"]*)".*?MissionId:\s*\[(?!00000000-0000-0000-0000-000000000000\])([0-9a-fA-F-]+)\].*?ObjectiveId:\s*\[([^\]]*)\]/,
     fields: (m) => ({ text: m[1], missionId: m[2], objectiveId: m[3] })
+  },
+  {
+    // General HUD notification - zone/jurisdiction/tutorial "what's going on"
+    // messages with an all-zero (absent) MissionId. NOT a mission item.
+    kind: 'hud:notification', tag: 'SHUDEvent_OnNotification',
+    test: /Added notification "([^"]*)"/,
+    fields: (m) => ({ text: m[1] })
   },
 
   // --- UNVERIFIED / DORMANT: documented SC 4.x combat formats. These tags do NOT
