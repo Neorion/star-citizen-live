@@ -10,6 +10,31 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M5.1 — Mission register: store + model + audit chain ✅
+**Date:** 2026-06-13
+
+**What shipped (implements D-005 / DESIGN-missions-mvp.md §3–4, §9):**
+- `app/store.js` — tiny keyed-collection store; in-memory by default, optional
+  file persistence (`dir`). Zero deps; swappable for node:sqlite at deploy.
+- `services/MissionManager.js` — stub → real register. Full lifecycle (open →
+  apply → accept → assigned → claim → officer validate → completed | reject/cancel),
+  officer allowlist (permissive bootstrap when empty), CompletionClaims with
+  EvidenceRefs, and a **hash-chained audit log** (`verifyAudit()`); keeps the old
+  method names/events so the rest of the service is unchanged.
+- `app/server.js` — `/missions` route returns plain records (no toJSON); 403 on
+  officer-forbidden create; optional `SC_REGISTER_DIR` / `SC_OFFICERS` env.
+- Tests: 31 → **36** (lifecycle, bad-transition guards, officer enforcement,
+  audit tamper-detection).
+
+**Validated:** end-to-end demo ran an **out-of-game fleet action** through
+create→apply→accept→claim→validate→completed with an intact audit trail; live
+service boots cleanly on the real manager.
+
+**Next:** M5.2 (REST routes for the full flow + officer checks), then M5.3
+(Discord bot) — needs the product-owner decisions in SOLUTION-BRIEF §7.
+
+---
+
 ## M3.12 — Combat progress proxy (inferred from mission objectives) ✅
 **Date:** 2026-06-13
 

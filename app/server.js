@@ -172,15 +172,15 @@ class StarCitizenService extends EventEmitter {
         if (req.method === 'GET') return send(200, { type: 'Collection', data: this.missions });
         if (req.method === 'POST') {
           if (!this.missionManager) return send(503, { error: 'Mission system not available' });
-          const m = await this.missionManager.createMission(await body());
-          return send(200, { type: 'Mission', data: m.toJSON() });
+          try { return send(200, { type: 'Mission', data: await this.missionManager.createMission(await body()) }); }
+          catch (e) { return send(e.code === 'FORBIDDEN' ? 403 : 400, { error: e.message }); }
         }
       }
       const mMatch = path.match(new RegExp(`^${base}/missions/([^/]+)$`));
       if (mMatch && req.method === 'GET') {
         if (!this.missionManager) return send(503, { error: 'Mission system not available' });
         const m = this.missionManager.getMission(mMatch[1]);
-        return m ? send(200, { type: 'Mission', data: m.toJSON() }) : send(404, { error: 'Mission not found' });
+        return m ? send(200, { type: 'Mission', data: m }) : send(404, { error: 'Mission not found' });
       }
       return send(404, { error: 'Not found', path });
     } catch (e) {
@@ -456,6 +456,7 @@ if (require.main === module) {
     logfile: resolved.file,
     channel: resolved.channel,
     seed: process.env.SC_SEED || resolved.file,   // pre-fill from history by default
+    missions: { enable: true, dir: process.env.SC_REGISTER_DIR || null, officers: (process.env.SC_OFFICERS || '').split(',').map((s) => s.trim()).filter(Boolean) },
     discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null }
   });
   svc.start();
