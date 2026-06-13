@@ -21,6 +21,7 @@ const fs = require('fs');
 const readline = require('readline');
 
 const { parseLine, shipName, parseSessionInfo } = require('./parser');
+const { resolveLogFile, channelFromPath } = require('./locate');
 
 // Lines worth surfacing in the monitor - combat/death hints AND mission/objective
 // activity. Includes wording the parser may not recognize yet, so we can keep
@@ -37,6 +38,7 @@ class StarCitizenService extends EventEmitter {
     this.settings = Object.assign({
       port: 3041,
       logfile: null,
+      channel: null, // SC channel (LIVE/PTU/EPTU/HOTFIX/TECH-PREVIEW) for display
       seed: null,   // optional: replay a past log once on start to pre-fill the monitor
       discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false },
       missions: { enable: true }
@@ -46,6 +48,7 @@ class StarCitizenService extends EventEmitter {
     this.state = { status: 'STOPPED', activities: {}, players: {}, vehicles: {}, kills: {}, missionlog: {}, logs: {}, startedAt: null };
     this.recent = [];   // rolling buffer of the latest lines (for the live monitor)
     this.flagged = [];  // lines matching INTEREST_HINTS - combat/mission candidates
+    this.channel = this.settings.channel || channelFromPath(this.settings.logfile); // LIVE/HOTFIX/...
     this.session = {};  // build + hardware of the current game session
     this.sessions = []; // history of game sessions (one per launch detected)
     this._seq = 0;
@@ -98,7 +101,7 @@ class StarCitizenService extends EventEmitter {
         const newest = (arr) => arr.slice(-limit).reverse();
         return send(200, {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
-          session: this.session, sessions: this.sessions,
+          channel: this.channel, session: this.session, sessions: this.sessions,
           counts: {
             activities: this.activities.length, players: this.players.length,
             vehicles: this.vehicles.length, kills: this.kills.length,
@@ -111,7 +114,7 @@ class StarCitizenService extends EventEmitter {
       }
       if (req.method === 'GET' && path === base) {
         return send(200, { type: 'StarCitizen', data: {
-          status: this.status, startedAt: this.state.startedAt, session: this.session, sessions: this.sessions.length,
+          status: this.status, startedAt: this.state.startedAt, channel: this.channel, session: this.session, sessions: this.sessions.length,
           activities: this.activities.length, players: this.players.length,
           vehicles: this.vehicles.length, kills: this.kills.length,
           missionlog: this.missionlog.length,
@@ -212,7 +215,7 @@ class StarCitizenService extends EventEmitter {
       case 'session:start': {
         // A fresh game launch. Start a new session record; build/hardware lines
         // that follow fill into this same object (this.session points at it).
-        this.session = { startedOn: ev.startedOn, detectedAt: ev.timestamp };
+        this.session = { startedOn: ev.startedOn, detectedAt: ev.timestamp, channel: this.channel };
         this.sessions.push(this.session);
         if (this.sessions.length > 50) this.sessions.shift();
         this.emit('session:start', this.session);
@@ -348,8 +351,16 @@ class StarCitizenService extends EventEmitter {
 module.exports = StarCitizenService;
 
 if (require.main === module) {
-  const svc = new StarCitizenService({ port: process.env.PORT || 3041, logfile: process.env.SC_LOGFILE || null,
-    seed: process.env.SC_SEED || null,
-    discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null } });
+  // Auto-locate the active log across drives/channels (SC_LOGFILE or SC_CHANNEL override).
+  const resolved = resolveLogFile({ explicit: process.env.SC_LOGFILE || null, channel: process.env.SC_CHANNEL || null });
+  if (resolved.file) console.log(`[STAR-CITIZEN] log: ${resolved.channel || '?'} channel (${resolved.source}) -> ${resolved.file}`);
+  else console.log('[STAR-CITIZEN] no Game.log found across drives/channels - set SC_LOGFILE or SC_CHANNEL');
+  const svc = new StarCitizenService({
+    port: process.env.PORT || 3041,
+    logfile: resolved.file,
+    channel: resolved.channel,
+    seed: process.env.SC_SEED || resolved.file,   // pre-fill from history by default
+    discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null }
+  });
   svc.start();
 }

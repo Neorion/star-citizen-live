@@ -5,6 +5,31 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M3.8 — Auto-detect install + channel (LIVE/PTU/EPTU/HOTFIX/TECH-PREVIEW) ✅
+**Date:** 2026-06-12
+
+**Why:** players install on different drives/paths and run different channels; a
+single hard-coded `SC_LOGFILE` doesn't travel. (User has HOTFIX, LIVE, and
+TECH-PREVIEW side by side, across 10 drives.)
+
+**What shipped:**
+- `app/locate.js` — `resolveLogFile()` scans drive roots × known install
+  sub-paths × channels, and picks the channel whose `Game.log` is **most recently
+  modified** (the one being played); ties favour test channels. Honours
+  `SC_LOGFILE` (exact) and `SC_CHANNEL` (force) overrides. Pure-ish + injectable
+  fs for tests.
+- `app/server.js` — startup auto-resolves the log (logs the choice), pre-seeds
+  from it by default; `channel` tracked on the service + each session and exposed
+  via `/monitor` + status.
+- `app/ui.html` — header shows the active channel alongside the build.
+- Tests: 20 → **26** (6 locator tests).
+
+**Validated:** `node app/server.js` with **zero config** auto-picked
+`HOTFIX -> …\StarCitizen\HOTFIX\Game.log`, seeded it, and tailed it; `SC_CHANNEL`
+override resolves correctly.
+
+---
+
 ## M3.7 — Game-session tracking + restart-aware live monitoring ✅
 **Date:** 2026-06-12
 

@@ -174,7 +174,8 @@ async function poll(){
     $('c-flagged').textContent = d.counts.flagged;
     $('c-logs').textContent = d.counts.logs.toLocaleString();
     const s = d.session || {};
-    $('build').textContent = s.branch ? `${s.branch}${s.changelist ? ' · ' + s.changelist : ''}` : '';
+    const parts = [d.channel, s.branch, s.changelist].filter(Boolean);
+    $('build').textContent = parts.join(' · ');
     $('updated').textContent = 'updated ' + shortTime(d.now);
     last = { flagged: d.flagged, recent: d.recent };
     paint();

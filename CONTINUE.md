@@ -69,8 +69,18 @@ npm run replay /path/to/Game.log   # replay a saved log and tally detected event
 ```
 
 Live monitoring (zero dependencies — a built-in poller, no `tail` package):
-set `SC_LOGFILE=/path/to/Game.log` to follow the live log. It survives the game
-rotating/recreating `Game.log` between launches and tracks each game session.
-Optionally set `SC_SEED=/path/to/Game.log` to pre-fill the monitor from history
-on start. Open `http://localhost:3041/` for the live dashboard. Discord (optional):
-set `DISCORD_WEBHOOK_URL`.
+`npm start` **auto-detects** the install across drives (C:, E:, "Program Files",
+etc.) and picks the channel whose `Game.log` is freshest — LIVE, PTU, EPTU,
+HOTFIX, or TECH-PREVIEW (the one you're actually playing). The dashboard shows
+the chosen channel + build.
+
+Overrides (highest priority first):
+- `SC_LOGFILE=/full/path/to/Game.log` — force an exact file.
+- `SC_CHANNEL=HOTFIX` — force a channel (e.g. after a hotfix drops and auto-detect
+  ties LIVE vs HOTFIX).
+
+It survives the game rotating/recreating `Game.log` between launches (and ALT-F4 +
+relaunch) and tracks each game session. By default it pre-fills from the current
+log's history on start; set `SC_SEED=/path` to seed from a different file. Open
+`http://localhost:3041/` for the live dashboard. Discord (optional): set
+`DISCORD_WEBHOOK_URL`.
