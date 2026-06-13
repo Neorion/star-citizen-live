@@ -47,6 +47,11 @@ const RULES = [
     test: /Loading level (\w+)/,
     fields: (m) => ({ level: m[1] })
   },
+  {
+    kind: 'session:start', // "Log started on Fri Jun 12 20:04:54 2026" - first lines of a fresh log
+    test: /Log started on (.+?)\s*$/,
+    fields: (m) => ({ startedOn: m[1] })
+  },
 
   // --- VERIFIED against a real combat-mission session (2026-06-12) ---
   // The client log does NOT record explicit PVE/NPC kills, but it logs the

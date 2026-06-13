@@ -21,7 +21,6 @@ const fs = require('fs');
 const readline = require('readline');
 
 const { parseLine, shipName, parseSessionInfo } = require('./parser');
-let Tail; try { Tail = require('tail').Tail; } catch (_) { Tail = null; } // optional live-tail
 
 // Lines worth surfacing in the monitor - combat/death hints AND mission/objective
 // activity. Includes wording the parser may not recognize yet, so we can keep
@@ -47,11 +46,13 @@ class StarCitizenService extends EventEmitter {
     this.state = { status: 'STOPPED', activities: {}, players: {}, vehicles: {}, kills: {}, missionlog: {}, logs: {}, startedAt: null };
     this.recent = [];   // rolling buffer of the latest lines (for the live monitor)
     this.flagged = [];  // lines matching INTEREST_HINTS - combat/mission candidates
-    this.session = {};  // build + hardware stamped from the log header
+    this.session = {};  // build + hardware of the current game session
+    this.sessions = []; // history of game sessions (one per launch detected)
     this._seq = 0;
-    this.logwatcher = null;
+    this._pos = 0;      // byte offset consumed by the live poller
+    this._partial = ''; // trailing incomplete line between polls
+    this._pollTimer = null;
     this.server = null;
-    this._reopening = false;
 
     // Safety net: a stray 'error' (e.g. the game rotating Game.log) must never
     // crash the process. Without a listener, EventEmitter throws on 'error'.
@@ -96,7 +97,7 @@ class StarCitizenService extends EventEmitter {
         const newest = (arr) => arr.slice(-limit).reverse();
         return send(200, {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
-          session: this.session,
+          session: this.session, sessions: this.sessions,
           counts: {
             activities: this.activities.length, players: this.players.length,
             vehicles: this.vehicles.length, kills: this.kills.length,
@@ -109,7 +110,7 @@ class StarCitizenService extends EventEmitter {
       }
       if (req.method === 'GET' && path === base) {
         return send(200, { type: 'StarCitizen', data: {
-          status: this.status, startedAt: this.state.startedAt, session: this.session,
+          status: this.status, startedAt: this.state.startedAt, session: this.session, sessions: this.sessions.length,
           activities: this.activities.length, players: this.players.length,
           vehicles: this.vehicles.length, kills: this.kills.length,
           missionlog: this.missionlog.length,
@@ -207,6 +208,15 @@ class StarCitizenService extends EventEmitter {
         this.emit('mission:event', me);
         break;
       }
+      case 'session:start': {
+        // A fresh game launch. Start a new session record; build/hardware lines
+        // that follow fill into this same object (this.session points at it).
+        this.session = { startedOn: ev.startedOn, detectedAt: ev.timestamp };
+        this.sessions.push(this.session);
+        if (this.sessions.length > 50) this.sessions.shift();
+        this.emit('session:start', this.session);
+        break;
+      }
       default: break;
     }
 
@@ -215,26 +225,43 @@ class StarCitizenService extends EventEmitter {
     return ev;
   }
 
+  // Read-only poller. Survives the game rotating Game.log between sessions:
+  // when the file shrinks/recreates (a restart), we reset to byte 0 and re-read
+  // from the top so the new session header ("Log started on…") is captured. Start
+  // at the current end-of-file so we only stream genuinely new lines while live.
   openLog () {
-    if (!this.settings.logfile || !Tail) return;
-    // useWatchFile polls the file (robust on Windows + survives the game
-    // truncating/rewriting Game.log between sessions). On any watch error we
-    // tear down and reconnect rather than die.
-    const opts = { useWatchFile: true, follow: true, flushAtEOF: true, fsWatchOptions: { interval: 500 } };
-    try {
-      this.logwatcher = new Tail(this.settings.logfile, opts);   // read-only watch
-      this.logwatcher.on('line', (line) => this.handleLogChange(line));
-      this.logwatcher.on('error', () => this._reopenLog());
-    } catch (_) { this._reopenLog(); }
+    if (!this.settings.logfile) return;
+    try { this._pos = fs.statSync(this.settings.logfile).size; } catch (_) { this._pos = 0; }
+    this._partial = '';
+    this._scheduleNextPoll();
   }
 
-  // Reconnect the log watcher after an error or file rotation.
-  _reopenLog () {
-    if (this._reopening || this.state.status === 'STOPPED') return;
-    this._reopening = true;
-    try { if (this.logwatcher) this.logwatcher.unwatch(); } catch (_) {}
-    this.logwatcher = null;
-    setTimeout(() => { this._reopening = false; if (this.state.status !== 'STOPPED') this.openLog(); }, 1000);
+  _scheduleNextPoll () {
+    if (this.state.status === 'STOPPED' || this.state.status === 'STOPPING') return;
+    this._pollTimer = setTimeout(() => this._poll(), 700);
+  }
+
+  _poll () {
+    if (this.state.status === 'STOPPED' || this.state.status === 'STOPPING' || !this.settings.logfile) return;
+    fs.stat(this.settings.logfile, (err, st) => {
+      if (err) return this._scheduleNextPoll();        // file gone mid-rotation; retry
+      if (st.size < this._pos) {                        // shrank/recreated -> game restarted
+        this._pos = 0; this._partial = '';
+        this.emit('session:restart', { at: new Date().toISOString() });
+      }
+      if (st.size <= this._pos) return this._scheduleNextPoll();
+      const stream = fs.createReadStream(this.settings.logfile, { start: this._pos, end: st.size - 1, encoding: 'utf8' });
+      let buf = '';
+      stream.on('data', (c) => { buf += c; });
+      stream.on('error', () => this._scheduleNextPoll());
+      stream.on('end', () => {
+        this._pos = st.size;
+        const lines = (this._partial + buf).split(/\r?\n/);
+        this._partial = lines.pop();                    // hold back any incomplete final line
+        for (const line of lines) { if (line.trim()) { try { this.handleLogChange(line); } catch (e) { this.emit('error', e); } } }
+        this._scheduleNextPoll();
+      });
+    });
   }
 
   async replayLog (path) {
@@ -284,11 +311,13 @@ class StarCitizenService extends EventEmitter {
   async start () {
     this.state.status = 'STARTING';
     if (this.missionManager) await this.missionManager.start();
-    this.openLog();
+    // Seed FIRST (replays history), then start the live poller at the current
+    // end-of-file so we only stream genuinely new lines and don't double-read.
     if (this.settings.seed) {
       try { const n = await this.replayLog(this.settings.seed); console.log(`[STAR-CITIZEN] seeded ${n} lines from ${this.settings.seed}`); }
       catch (e) { this.emit('error', e); }
     }
+    this.openLog();
     this.server = http.createServer((req, res) => this._handle(req, res));
     await new Promise((resolve) => this.server.listen(this.settings.port, resolve));
     this.state.status = 'STARTED';
@@ -300,7 +329,7 @@ class StarCitizenService extends EventEmitter {
 
   async stop () {
     this.state.status = 'STOPPING';
-    if (this.logwatcher) { this.logwatcher.unwatch(); this.logwatcher = null; }
+    if (this._pollTimer) { clearTimeout(this._pollTimer); this._pollTimer = null; }
     if (this.missionManager) await this.missionManager.stop();
     if (this.server) await new Promise((r) => this.server.close(r));
     this.state.status = 'STOPPED';

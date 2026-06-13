@@ -5,6 +5,29 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M3.7 — Game-session tracking + restart-aware live monitoring ✅
+**Date:** 2026-06-12
+
+**Why:** the game moves the old `Game.log` to `logbackups/` and creates a fresh,
+smaller file on every launch — a naive tail sits at the old byte offset and misses
+the new session. Verified the rotation behavior and the `Log started on …` header.
+
+**What shipped:**
+- `app/parser.js` — `session:start` rule (from `Log started on <date>`).
+- `app/server.js` — replaced the `tail` dependency with a self-contained read-only
+  **poller**: when the file shrinks/recreates it resets to byte 0, re-reads the new
+  header, and emits `session:restart`; `session:start` builds a per-launch session
+  record (`this.sessions`) and resets `this.session` so build/hardware re-stamps.
+  Seed now runs before the poller (starts at EOF) to avoid double-reading.
+- `app/ui.html` — a "sessions" counter; `/monitor` + status expose `sessions`.
+- `package.json` — dropped the now-unused optional `tail` dependency (**zero deps**).
+- Tests: 18 → **20**.
+
+**Validated:** monitor restarted, detected the current session (a fresh 06:43 log,
+proving a real restart was picked up); live line count climbed (700 → 710).
+
+---
+
 ## M3.6 — Validated community reference; folded in the verifiable bits ✅
 **Date:** 2026-06-12
 

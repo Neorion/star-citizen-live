@@ -63,6 +63,7 @@
     <span id="status" class="pill off">…</span>
     <div class="counts">
       <span class="k">kills <b id="c-kills">0</b></span>
+      <span>sessions <b id="c-sessions">0</b></span>
       <span>missions <b id="c-missions">0</b></span>
       <span>players <b id="c-players">0</b></span>
       <span>vehicles <b id="c-vehicles">0</b></span>
@@ -166,6 +167,7 @@ async function poll(){
     $('status').textContent = d.status;
     $('status').className = 'pill ' + (d.status==='STARTED'?'on':'off');
     $('c-kills').textContent = d.counts.kills;
+    $('c-sessions').textContent = (d.sessions || []).length;
     $('c-missions').textContent = d.counts.missionlog;
     $('c-players').textContent = d.counts.players;
     $('c-vehicles').textContent = d.counts.vehicles;

@@ -37,8 +37,25 @@ test('handleLogChange routes a mission objective into missionlog and emits', () 
 
 test('handleLogChange stamps session build/hardware from header lines', () => {
   const s = new StarCitizenService({ discord: { enable: false } });
+  s.handleLogChange('<2026-06-12T20:04:54.975Z> Log started on Fri Jun 12 20:04:54 2026');
   s.handleLogChange('<2026-06-12T20:04:55.614Z> Branch: sc-alpha-4.8.0-hotfix');
   s.handleLogChange('<2026-06-12T20:04:55.614Z> Changelist: 11952564');
   assert.strictEqual(s.session.branch, 'sc-alpha-4.8.0-hotfix');
   assert.strictEqual(s.session.changelist, '11952564');
+});
+
+test('handleLogChange tracks each game session and resets on a new launch', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  let started = 0;
+  s.on('session:start', () => { started++; });
+  s.handleLogChange('<2026-06-12T20:04:54.975Z> Log started on Fri Jun 12 20:04:54 2026');
+  s.handleLogChange('<2026-06-12T20:04:55.614Z> Branch: sc-alpha-4.8.0-hotfix');
+  assert.strictEqual(s.sessions.length, 1);
+  assert.strictEqual(s.session.branch, 'sc-alpha-4.8.0-hotfix');
+  // a second launch (game restart) starts a fresh session and resets build info
+  s.handleLogChange('<2026-06-13T06:18:00.000Z> Log started on Sat Jun 13 06:18:00 2026');
+  assert.strictEqual(s.sessions.length, 2);
+  assert.strictEqual(started, 2);
+  assert.strictEqual(s.session.startedOn, 'Sat Jun 13 06:18:00 2026');
+  assert.strictEqual(s.session.branch, undefined);  // reset for the new session
 });

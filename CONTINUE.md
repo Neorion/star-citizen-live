@@ -68,5 +68,9 @@ npm test           # run the test suite (Node built-in runner, no deps)
 npm run replay /path/to/Game.log   # replay a saved log and tally detected events
 ```
 
-Live tailing: set `SC_LOGFILE=/path/to/Game.log` (and `npm install` so the
-optional `tail` package is present). Discord: set `DISCORD_WEBHOOK_URL`.
+Live monitoring (zero dependencies — a built-in poller, no `tail` package):
+set `SC_LOGFILE=/path/to/Game.log` to follow the live log. It survives the game
+rotating/recreating `Game.log` between launches and tracks each game session.
+Optionally set `SC_SEED=/path/to/Game.log` to pre-fill the monitor from history
+on start. Open `http://localhost:3041/` for the live dashboard. Discord (optional):
+set `DISCORD_WEBHOOK_URL`.

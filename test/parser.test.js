@@ -25,6 +25,12 @@ test('detects level load', () => {
   assert.strictEqual(r.level, 'megamap');
 });
 
+test('detects session start (fresh log header)', () => {
+  const r = parseLine("<2026-06-12T20:04:54.975Z> Log started on Fri Jun 12 20:04:54 2026");
+  assert.strictEqual(r.kind, 'session:start');
+  assert.strictEqual(r.startedOn, 'Fri Jun 12 20:04:54 2026');
+});
+
 test('detects game mode', () => {
   const r = parseLine("<2026-06-09T06:23:10.401Z> [Notice] <SeedingProcessor::SeedGameRulesAndMode Success> shardId[local_shard], GameMode[SC_Frontend], MegaMap[MegaMap.Frontend]");
   assert.strictEqual(r.kind, 'session:gamemode');
@@ -32,7 +38,7 @@ test('detects game mode', () => {
 });
 
 test('plain header line classified as log:raw', () => {
-  const r = parseLine("<2026-06-09T06:22:54.104Z> Log started on Tue Jun  9 06:22:54 2026");
+  const r = parseLine('<2026-06-12T20:04:54.975Z> BackupNameAttachment=" Build(11952564) 12 Jun 26 (12 04 50)"  -- used by backup system');
   assert.strictEqual(r.kind, 'log:raw');
 });
 
