@@ -51,6 +51,7 @@ class StarCitizenService extends EventEmitter {
     this._seq = 0;
     this._pos = 0;      // byte offset consumed by the live poller
     this._partial = ''; // trailing incomplete line between polls
+    this._ino = null;   // file identity, to detect log recreation (restart)
     this._pollTimer = null;
     this.server = null;
 
@@ -231,7 +232,8 @@ class StarCitizenService extends EventEmitter {
   // at the current end-of-file so we only stream genuinely new lines while live.
   openLog () {
     if (!this.settings.logfile) return;
-    try { this._pos = fs.statSync(this.settings.logfile).size; } catch (_) { this._pos = 0; }
+    try { const st = fs.statSync(this.settings.logfile); this._pos = st.size; this._ino = st.ino; }
+    catch (_) { this._pos = 0; this._ino = null; }
     this._partial = '';
     this._scheduleNextPoll();
   }
@@ -245,10 +247,15 @@ class StarCitizenService extends EventEmitter {
     if (this.state.status === 'STOPPED' || this.state.status === 'STOPPING' || !this.settings.logfile) return;
     fs.stat(this.settings.logfile, (err, st) => {
       if (err) return this._scheduleNextPoll();        // file gone mid-rotation; retry
-      if (st.size < this._pos) {                        // shrank/recreated -> game restarted
+      // Restart = a different file at the same path (new inode) OR the file shrank.
+      // The inode check catches a relaunch even if the new log already grew past
+      // our old offset (e.g. after an ALT-F4 + quick restart).
+      const newFile = this._ino && st.ino && st.ino !== this._ino;
+      if (newFile || st.size < this._pos) {
         this._pos = 0; this._partial = '';
         this.emit('session:restart', { at: new Date().toISOString() });
       }
+      this._ino = st.ino;
       if (st.size <= this._pos) return this._scheduleNextPoll();
       const stream = fs.createReadStream(this.settings.logfile, { start: this._pos, end: st.size - 1, encoding: 'utf8' });
       let buf = '';
