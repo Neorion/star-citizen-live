@@ -50,6 +50,11 @@ class StarCitizenService extends EventEmitter {
     this._seq = 0;
     this.logwatcher = null;
     this.server = null;
+    this._reopening = false;
+
+    // Safety net: a stray 'error' (e.g. the game rotating Game.log) must never
+    // crash the process. Without a listener, EventEmitter throws on 'error'.
+    this.on('error', (e) => console.error('[STAR-CITIZEN] error:', (e && e.message) || e));
 
     const MissionManager = require('../services/MissionManager');
     this.missionManager = (this.settings.missions && this.settings.missions.enable)
@@ -192,11 +197,24 @@ class StarCitizenService extends EventEmitter {
 
   openLog () {
     if (!this.settings.logfile || !Tail) return;
+    // useWatchFile polls the file (robust on Windows + survives the game
+    // truncating/rewriting Game.log between sessions). On any watch error we
+    // tear down and reconnect rather than die.
+    const opts = { useWatchFile: true, follow: true, flushAtEOF: true, fsWatchOptions: { interval: 500 } };
     try {
-      this.logwatcher = new Tail(this.settings.logfile);   // read-only watch
+      this.logwatcher = new Tail(this.settings.logfile, opts);   // read-only watch
       this.logwatcher.on('line', (line) => this.handleLogChange(line));
-      this.logwatcher.on('error', (e) => this.emit('error', e));
-    } catch (e) { this.emit('error', e); }
+      this.logwatcher.on('error', () => this._reopenLog());
+    } catch (_) { this._reopenLog(); }
+  }
+
+  // Reconnect the log watcher after an error or file rotation.
+  _reopenLog () {
+    if (this._reopening || this.state.status === 'STOPPED') return;
+    this._reopening = true;
+    try { if (this.logwatcher) this.logwatcher.unwatch(); } catch (_) {}
+    this.logwatcher = null;
+    setTimeout(() => { this._reopening = false; if (this.state.status !== 'STOPPED') this.openLog(); }, 1000);
   }
 
   async replayLog (path) {
