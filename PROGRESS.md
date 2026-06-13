@@ -5,6 +5,27 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M3.6 — Validated community reference; folded in the verifiable bits ✅
+**Date:** 2026-06-12
+
+**Validated** the Ozy311/greluc `Game.log` reference against the real 4.8.0 log
+(`Branch: sc-alpha-4.8.0-hotfix`). Its four headline combat tags (`<Actor Death>`,
+`<Vehicle Destruction>`, `<Actor stall>`, `<[ActorState] Corpse>`) have **zero**
+matches here — they're from older ~4.0–4.2 builds (SC-Kill-Monitor archived Nov 2025).
+
+**Folded in (verified by tests on real strings):**
+- `shipName()` — ship-ID prettifier (1166 hits; `RSI_Aurora_Mk2_…` → "Aurora Mk2").
+- `parseSessionInfo()` — stamps each session with build/hardware (Branch, Changelist,
+  FileVersion, CPU, RAM, GPU VRAM); exposed via `/monitor` + status + UI header.
+- `isNPC()` — NPC indicator list, with bare `PU_` **excluded** (it matches cosmetic
+  items like `PU_Protos_Head`, not NPCs).
+
+**Kept for later:** the dormant `kill`/`vehicle:destroy` rules were upgraded to the
+reference's fuller regexes but remain `verified:false` — they'll capture full detail
+if a future build/mode ever writes those tags again. Tests: 14 → **18**.
+
+---
+
 ## M3.5 — Mission/objective tracking (verified on real combat-mission log) ✅
 **Date:** 2026-06-12
 

@@ -67,19 +67,28 @@ const RULES = [
     fields: (m) => ({ text: m[1], missionId: m[2], objectiveId: m[3] })
   },
 
-  // --- UNVERIFIED: documented SC 4.x combat formats, pending a real combat log ---
+  // --- UNVERIFIED / DORMANT: documented SC 4.x combat formats. These tags do NOT
+  // appear in current 4.8.0 client logs (validated 2026-06-12 against real combat
+  // sessions; greluc/SC-Kill-Monitor was archived Nov 2025, consistent with the format
+  // changing). Kept - upgraded to the fuller community-parser regexes - so we capture
+  // full detail IF a build/mode ever writes them again. ---
   {
     kind: 'kill', tag: 'Actor Death', verified: false,
-    test: /CActor::Kill: '([^']+)' \[(\d+)\] in zone '([^']*)' killed by '([^']+)' \[(\d+)\] using '([^']+)'(?:.*?with damage type '([^']+)')?/,
+    test: /CActor::Kill: '([^']+)' \[(\d+)\] in zone '([^']+)' killed by '([^']+)' \[(\d+)\] using '([^']+)' \[Class ([^\]]+)\] with damage type '([^']+)' from direction x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+)/,
     fields: (m) => ({
       victim: m[1], victimId: m[2], zone: m[3],
-      killer: m[4], killerId: m[5], weapon: m[6], damageType: m[7] || 'Unknown'
+      killer: m[4], killerId: m[5], weapon: m[6], weaponClass: m[7], damageType: m[8],
+      dirX: m[9], dirY: m[10], dirZ: m[11]
     })
   },
   {
     kind: 'vehicle:destroy', tag: 'Vehicle Destruction', verified: false,
-    test: /Vehicle '([^']+)' \[(\d+)\].*?destroy level (\d+) to (\d+).*?caused by '([^']+)'/,
-    fields: (m) => ({ vehicle: m[1], vehicleId: m[2], fromLevel: m[3], toLevel: m[4], cause: m[5] })
+    test: /Vehicle '([^']+)' \[(\d+)\] in zone '([^']+)' \[pos x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+) vel x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+)\] driven by '([^']+)' \[(\d+)\] advanced from destroy level (\d+) to (\d+) caused by '([^']+)' \[(\d+)\] with '([^']+)'/,
+    fields: (m) => ({
+      vehicle: m[1], vehicleId: m[2], zone: m[3],
+      driver: m[10], driverId: m[11], fromLevel: m[12], toLevel: m[13],
+      attacker: m[14], cause: m[14], attackerId: m[15], damageType: m[16]
+    })
   }
   // TODO (UNVERIFIED): quantum:travel removed - 'Quantum' appears in ~15k lines
   // (component names), so a naive pattern produced false positives. Re-add only
@@ -103,4 +112,59 @@ function parseLine (raw) {
   return Object.assign(base, { kind: base.tag ? 'log:notice' : 'log:raw', verified: true });
 }
 
-module.exports = { parseLine, RULES };
+// --- Ship-name extraction [VERIFIED: 1166 hits in real 4.8.0 log] ---
+// IDs look like MANUFACTURER_ShipName_<bigid>, e.g. RSI_Aurora_Mk2_480167582679,
+// AEGS_Avenger_Titan_487288078845, ARGO_MPUV_1T_490286587822.
+const SHIP_PREFIXES = ['ORIG', 'AEGS', 'ANVL', 'CRUS', 'MISC', 'RSI', 'DRAK', 'ARGO', 'ESPR', 'KLWE', 'GRIN', 'XNAA', 'XIAN', 'BANU', 'GAMA', 'TMBL', 'VNCL', 'CNOU'];
+const SHIP_ID = new RegExp(`(?:${SHIP_PREFIXES.join('|')})_([A-Za-z0-9_]+?)_\\d{6,}`);
+
+function shipName (id) {
+  if (!id) return null;
+  const m = String(id).match(SHIP_ID);
+  if (!m) return null;
+  return m[1]
+    .replace(/_/g, ' ')                  // Aurora_Mk2 -> Aurora Mk2; MPUV_1T -> MPUV 1T
+    .replace(/([a-z])([A-Z])/g, '$1 $2') // camelCase splits (e.g. AvengerTitan)
+    .trim();
+}
+
+// --- NPC vs player detection [indicators VERIFIED present; drives future PvE/PvP] ---
+// NOTE: bare "PU_" is intentionally EXCLUDED - in real logs it matches cosmetic item
+// names (PU_Protos_Head, Default_LensDisplay_PU), not NPC pilots. Use PU_Pilots only.
+const NPC_INDICATORS = ['PU_Pilots', 'PU_Human', 'AI_CRIM', 'AI_', '_NPC_', 'NPC_Archetypes', 'Kopion_', 'Criminal-Pilot', 'Security-', 'Pirate-', '-Pilot_Light_', '-Pilot_Medium_', '-Pilot_Heavy_'];
+
+function isNPC (name) {
+  if (!name) return false;
+  const n = String(name);
+  if (NPC_INDICATORS.some((ind) => n.includes(ind))) return true;
+  if (n.length > 40) return true;                       // archetype IDs are long
+  if ((n.match(/-/g) || []).length >= 3) return true;   // dashed archetype names
+  return false;
+}
+
+// --- Session / build / hardware info [VERIFIED against real 4.8.0 header] ---
+// One-shot fields from the log header; we stamp each session with build + hardware.
+const SESSION_FIELDS = [
+  ['fileVersion', /FileVersion:\s*(.+?)\s*$/],
+  ['branch', /Branch:\s*(.+?)\s*$/],
+  ['changelist', /Changelist:\s*(\d+)/],
+  ['builtOn', /Built on\s*(.+?)\s*$/],
+  ['cpu', /Host CPU:\s*(.+?)\s*$/],
+  ['cpuCores', /Logical CPU Count:\s*(\d+)/],
+  ['ramInstalledMB', /(\d+)MB physical memory installed/],
+  ['gpu', /D3D Adapter: Description:\s*(.+?)\s*$/],
+  ['gpuVramMB', /DedicatedVidMem\w*\s*=\s*(\d+)/],
+  ['hostname', /network hostname:\s*(.+?)\s*$/]
+];
+
+// Returns { key, value } for a recognized session-info line, else null.
+function parseSessionInfo (line) {
+  const s = String(line);
+  for (const [key, re] of SESSION_FIELDS) {
+    const m = s.match(re);
+    if (m) return { key, value: m[1] };
+  }
+  return null;
+}
+
+module.exports = { parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS };

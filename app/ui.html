@@ -70,6 +70,7 @@
       <span>lines <b id="c-logs">0</b></span>
     </div>
     <div class="ctrl">
+      <span id="build" title="game build / version"></span>
       <span id="updated">—</span>
       <label><input type="checkbox" id="auto" checked> auto-refresh</label>
     </div>
@@ -170,6 +171,8 @@ async function poll(){
     $('c-vehicles').textContent = d.counts.vehicles;
     $('c-flagged').textContent = d.counts.flagged;
     $('c-logs').textContent = d.counts.logs.toLocaleString();
+    const s = d.session || {};
+    $('build').textContent = s.branch ? `${s.branch}${s.changelist ? ' · ' + s.changelist : ''}` : '';
     $('updated').textContent = 'updated ' + shortTime(d.now);
     last = { flagged: d.flagged, recent: d.recent };
     paint();

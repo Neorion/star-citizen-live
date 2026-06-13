@@ -20,7 +20,7 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const readline = require('readline');
 
-const { parseLine } = require('./parser');
+const { parseLine, shipName, parseSessionInfo } = require('./parser');
 let Tail; try { Tail = require('tail').Tail; } catch (_) { Tail = null; } // optional live-tail
 
 // Lines worth surfacing in the monitor - combat/death hints AND mission/objective
@@ -46,7 +46,8 @@ class StarCitizenService extends EventEmitter {
 
     this.state = { status: 'STOPPED', activities: {}, players: {}, vehicles: {}, kills: {}, missionlog: {}, logs: {}, startedAt: null };
     this.recent = [];   // rolling buffer of the latest lines (for the live monitor)
-    this.flagged = [];  // lines matching COMBAT_HINTS - combat discovery candidates
+    this.flagged = [];  // lines matching INTEREST_HINTS - combat/mission candidates
+    this.session = {};  // build + hardware stamped from the log header
     this._seq = 0;
     this.logwatcher = null;
     this.server = null;
@@ -95,6 +96,7 @@ class StarCitizenService extends EventEmitter {
         const newest = (arr) => arr.slice(-limit).reverse();
         return send(200, {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
+          session: this.session,
           counts: {
             activities: this.activities.length, players: this.players.length,
             vehicles: this.vehicles.length, kills: this.kills.length,
@@ -107,7 +109,7 @@ class StarCitizenService extends EventEmitter {
       }
       if (req.method === 'GET' && path === base) {
         return send(200, { type: 'StarCitizen', data: {
-          status: this.status, startedAt: this.state.startedAt,
+          status: this.status, startedAt: this.state.startedAt, session: this.session,
           activities: this.activities.length, players: this.players.length,
           vehicles: this.vehicles.length, kills: this.kills.length,
           missionlog: this.missionlog.length,
@@ -155,6 +157,10 @@ class StarCitizenService extends EventEmitter {
     const ev = parseLine(entry);
     const id = idFor(entry);
 
+    // Stamp session build/hardware from header lines (one-shot, additive).
+    const sinfo = parseSessionInfo(entry);
+    if (sinfo) this.session[sinfo.key] = sinfo.value;
+
     // Always keep a generic record.
     this.state.logs[id] = ev;
     const activity = { type: 'StarCitizenLogEntry', id, kind: ev.kind, timestamp: ev.timestamp, object: { id, content: entry }, target: '/logs' };
@@ -186,7 +192,7 @@ class StarCitizenService extends EventEmitter {
         break;
       }
       case 'vehicle:destroy': {
-        const v = { id, vehicle: ev.vehicle, cause: ev.cause, fromLevel: ev.fromLevel, toLevel: ev.toLevel, timestamp: ev.timestamp };
+        const v = { id, vehicle: ev.vehicle, vehicleName: shipName(ev.vehicle), cause: ev.cause, attacker: ev.attacker, fromLevel: ev.fromLevel, toLevel: ev.toLevel, timestamp: ev.timestamp };
         this.state.vehicles[id] = v;
         this.emit('vehicle:destroy', v);
         break;

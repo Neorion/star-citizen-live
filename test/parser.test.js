@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseLine } = require('../app/parser');
+const { parseLine, shipName, isNPC, parseSessionInfo } = require('../app/parser');
 
 // --- VERIFIED patterns (from a real Game.log hangar session) ---
 
@@ -38,23 +38,26 @@ test('plain header line classified as log:raw', () => {
 
 // --- UNVERIFIED patterns (documented SC 4.x format; pending real combat log) ---
 
-test('parses documented kill line (UNVERIFIED format)', () => {
-  const line = "<2026-06-09T07:00:00.000Z> [Notice] <Actor Death> CActor::Kill: 'VictimGuy' [200111] in zone 'OOC_Stanton' killed by 'KillerGuy' [200222] using 'KLWE_LaserRepeater' [Class unknown] with damage type 'Energy' from direction x: 0";
+test('parses documented kill line (UNVERIFIED/dormant format)', () => {
+  const line = "<2026-06-09T07:00:00.000Z> [Notice] <Actor Death> CActor::Kill: 'VictimGuy' [200111] in zone 'OOC_Stanton' killed by 'KillerGuy' [200222] using 'KLWE_LaserRepeater' [Class KLWE_LaserRepeater_S3] with damage type 'Energy' from direction x: 0.5, y: -0.2, z: 0.1";
   const r = parseLine(line);
   assert.strictEqual(r.kind, 'kill');
   assert.strictEqual(r.victim, 'VictimGuy');
   assert.strictEqual(r.killer, 'KillerGuy');
   assert.strictEqual(r.weapon, 'KLWE_LaserRepeater');
   assert.strictEqual(r.damageType, 'Energy');
-  assert.strictEqual(r.verified, false);  // flagged as needing real-log confirmation
+  assert.strictEqual(r.dirZ, '0.1');
+  assert.strictEqual(r.verified, false);  // flagged: tag absent from current 4.8.0 logs
 });
 
-test('parses documented vehicle destruction (UNVERIFIED format)', () => {
-  const line = "<2026-06-09T07:01:00.000Z> [Notice] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle 'ANVL_Hornet_F7C' [300333] advanced from destroy level 0 to 2 caused by 'KillerGuy' [200222]";
+test('parses documented vehicle destruction (UNVERIFIED/dormant format)', () => {
+  const line = "<2026-06-09T07:01:00.000Z> [Notice] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle 'ANVL_Hornet_F7C' [300333] in zone 'OOC_Stanton_1a' [pos x: 1.0, y: 2.0, z: 3.0 vel x: 0.0, y: 0.0, z: 0.0] driven by 'PilotGuy' [400444] advanced from destroy level 0 to 2 caused by 'KillerGuy' [200222] with 'Ballistic'";
   const r = parseLine(line);
   assert.strictEqual(r.kind, 'vehicle:destroy');
   assert.strictEqual(r.vehicle, 'ANVL_Hornet_F7C');
   assert.strictEqual(r.toLevel, '2');
+  assert.strictEqual(r.attacker, 'KillerGuy');
+  assert.strictEqual(r.damageType, 'Ballistic');
   assert.strictEqual(r.verified, false);
 });
 
@@ -79,4 +82,27 @@ test('detects mission notification with mission/objective ids', () => {
   assert.strictEqual(r.text, 'New Objective: Defeat Hostile Ships: ');
   assert.strictEqual(r.missionId, '4491dc34-bcf3-4f56-a0b8-228e3e3f40e9');
   assert.strictEqual(r.objectiveId, '3340e494-888d-96be-0192-0c08d4841aa3');
+});
+
+// --- VERIFIED helpers folded in from the community reference (validated on real log) ---
+
+test('shipName extracts and prettifies real ship IDs', () => {
+  assert.strictEqual(shipName('RSI_Aurora_Mk2_480167582679'), 'Aurora Mk2');
+  assert.strictEqual(shipName('AEGS_Avenger_Titan_487288078845'), 'Avenger Titan');
+  assert.strictEqual(shipName('ARGO_MPUV_1T_490286587822'), 'MPUV 1T');
+  assert.strictEqual(shipName('not-a-ship'), null);
+});
+
+test('isNPC uses reliable indicators (and excludes cosmetic PU_ items)', () => {
+  assert.strictEqual(isNPC('PU_Pilots_Outlaw_Gunner_01'), true);
+  assert.strictEqual(isNPC('AI_CRIM_Pilot'), true);
+  assert.strictEqual(isNPC('Kersa'), false);                       // a real handle
+  assert.strictEqual(isNPC('PU_Protos_Head_200000000225'), false); // cosmetic item, not an NPC
+});
+
+test('parseSessionInfo reads build + hardware from header lines', () => {
+  assert.deepStrictEqual(parseSessionInfo('Branch: sc-alpha-4.8.0-hotfix'), { key: 'branch', value: 'sc-alpha-4.8.0-hotfix' });
+  assert.deepStrictEqual(parseSessionInfo('Changelist: 11952564'), { key: 'changelist', value: '11952564' });
+  assert.deepStrictEqual(parseSessionInfo('31793MB physical memory installed, 9382MB available'), { key: 'ramInstalledMB', value: '31793' });
+  assert.strictEqual(parseSessionInfo('just a normal log line'), null);
 });
