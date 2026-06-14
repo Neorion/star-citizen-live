@@ -5,7 +5,7 @@ const assert = require('node:assert');
 const http = require('http');
 const StarCitizenService = require('../app/server');
 
-const PORT = 3199;
+let PORT;   // assigned after the server binds an ephemeral port (avoids clashes)
 const BASE = '/services/star-citizen';
 
 function call (method, path, bodyObj) {
@@ -19,8 +19,9 @@ function call (method, path, bodyObj) {
 }
 
 test('mission register REST flow (create→apply→accept→claim→validate) with 403 guards', async () => {
-  const s = new StarCitizenService({ port: PORT, logfile: null, discord: { enable: false }, missions: { enable: true, officers: ['boss'] } });
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, missions: { enable: true, officers: ['boss'] } });
   await s.start();
+  PORT = s.server.address().port;
   try {
     // create requires an officer
     let r = await call('POST', `${BASE}/missions`, { title: 'Op', createdBy: 'rando' });

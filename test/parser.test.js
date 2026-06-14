@@ -97,6 +97,13 @@ test('zero-MissionId notification is a general HUD notice, not a mission', () =>
   assert.strictEqual(r.missionId, undefined);   // not tied to a mission
 });
 
+test('detects player incapacitation (down) — VERIFIED in 4.7.0 logs', () => {
+  const line = `<2026-03-26T04:18:32.475Z> [Notice] <SHUDEvent_OnNotification> Added notification "Incapacitated: While incapacitated, ask others in your party to revive you before the 'Time to Death' timer expires." [156] to queue. New queue size: 1, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]`;
+  const r = parseLine(line);
+  assert.strictEqual(r.kind, 'player:incap');
+  assert.ok(r.text.startsWith('Incapacitated:'));
+});
+
 // --- VERIFIED helpers folded in from the community reference (validated on real log) ---
 
 test('shipName extracts and prettifies real ship IDs', () => {

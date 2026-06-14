@@ -70,6 +70,7 @@
     <div class="counts">
       <span class="k">kills <b id="c-kills">0</b></span>
       <span class="k" title="combat objectives progressed — inferred from missions (kills are not logged directly)">combat <b id="c-combat">0</b></span>
+      <span class="k" title="player incapacitations (downs) — the nearest combat-outcome signal the log gives">downs <b id="c-downs">0</b></span>
       <span>sessions <b id="c-sessions">0</b></span>
       <span>missions <b id="c-missions">0</b></span>
       <span id="chip-players" title="distinct players">players <b id="c-players">0</b></span>
@@ -195,6 +196,7 @@ async function poll(){
     $('status').className = 'pill ' + (d.status==='STARTED'?'on':'off');
     $('c-kills').textContent = d.counts.kills;
     $('c-combat').textContent = d.counts.combat;
+    $('c-downs').textContent = d.counts.incaps;
     $('c-sessions').textContent = (d.sessions || []).length;
     $('c-missions').textContent = d.counts.missions;
     $('c-players').textContent = d.counts.players;

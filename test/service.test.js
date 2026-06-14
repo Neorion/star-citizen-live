@@ -81,6 +81,17 @@ test('combat objectives are tracked as combat progress (proxy for kills)', () =>
   assert.strictEqual(s.state.objectives['3340e494-888d-96be-0192-0c08d4841aa3'].combat, true);
 });
 
+test('player incapacitation routes to incaps, attributed to the session player', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  let downed = null;
+  s.on('player:incap', (i) => { downed = i; });
+  s.handleLogChange('<2026-03-26T04:00:00.000Z> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[DeadMan1227] - Time[1] [Login]');
+  s.handleLogChange(`<2026-03-26T04:18:32.475Z> [Notice] <SHUDEvent_OnNotification> Added notification "Incapacitated: revive you before the 'Time to Death' timer expires." [156] to queue. New queue size: 1, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]`);
+  assert.strictEqual(s.incaps.length, 1);
+  assert.strictEqual(s.incaps[0].player, 'DeadMan1227');
+  assert.strictEqual(downed.player, 'DeadMan1227');
+});
+
 test('HUD notification routes to notifications, not missionlog', () => {
   const s = new StarCitizenService({ discord: { enable: false } });
   s.handleLogChange('<2026-06-13T07:12:41.081Z> [Notice] <SHUDEvent_OnNotification> Added notification "Entering Armistice Zone - Combat Prohibited: " [8] to queue. New queue size: 3, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]');

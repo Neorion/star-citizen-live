@@ -10,6 +10,32 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M3.13 — Player-down (incapacitation) detection ✅
+**Date:** 2026-06-14
+
+**Why:** an export of 193 logs (657 MB) from a second player (DeadMan1227, SC 4.7.0)
+reconfirmed kills are never logged — but surfaced a NEW signal Kersa's logs lacked:
+the **"Incapacitated:" notification** (617 occurrences, one per down event). It is
+the nearest combat-outcome the client log provides.
+
+**What shipped:**
+- `app/parser.js` — `player:incap` rule (SHUDEvent notification beginning
+  "Incapacitated:"), placed before the generic hud:notification rule.
+- `app/server.js` — `incaps` collection + `/incaps` endpoint + count; routed and
+  attributed to the session's player handle; optional `announceIncaps` Discord
+  embed (off). UI: a "downs" counter.
+- `test/api.test.js` — now binds an **ephemeral port** (port 0) to avoid clashes.
+- Tests: 37 → **39**.
+
+**Note / bug fixed:** the new field was first named `this._handle`, which shadowed
+the `_handle` HTTP method (instance property hid the prototype method → only the
+server-starting test failed). Renamed to `_sessionHandle`.
+
+**Validated:** replaying a real 79,516-line 4.7.0 session detected 2 downs,
+attributed to DeadMan1227.
+
+---
+
 ## M5.2 — Mission register REST API ✅
 **Date:** 2026-06-13
 

@@ -74,6 +74,15 @@ const RULES = [
     fields: (m) => ({ text: m[1], missionId: m[2], objectiveId: m[3] })
   },
   {
+    // Local player incapacitated (downed). A HUD notification beginning
+    // "Incapacitated:". VERIFIED in real 4.7.0 logs (DeadMan1227; 617 occurrences,
+    // one per down event). The closest combat-outcome signal the client log gives;
+    // SC does not log kills. Attributed to the session's player by the service.
+    kind: 'player:incap', tag: 'SHUDEvent_OnNotification',
+    test: /Added notification "(Incapacitated:[^"]*)"/,
+    fields: (m) => ({ text: m[1] })
+  },
+  {
     // General HUD notification - zone/jurisdiction/tutorial "what's going on"
     // messages with an all-zero (absent) MissionId. NOT a mission item.
     kind: 'hud:notification', tag: 'SHUDEvent_OnNotification',
