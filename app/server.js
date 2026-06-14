@@ -182,6 +182,40 @@ class StarCitizenService extends EventEmitter {
         const m = this.missionManager.getMission(mMatch[1]);
         return m ? send(200, { type: 'Mission', data: m }) : send(404, { error: 'Mission not found' });
       }
+
+      // ---- Mission register flow (M5.2) ----
+      const reg = this.missionManager;
+      // Run a register action and map errors: 403 forbidden, 404 not found, else 400.
+      const run = async (fn, type) => {
+        if (!reg) return send(503, { error: 'Mission system not available' });
+        try { return send(200, { type, data: await fn() }); }
+        catch (e) { return send(e.code === 'FORBIDDEN' ? 403 : /not found/i.test(e.message) ? 404 : 400, { error: e.message }); }
+      };
+      // Read-only lists.
+      if (req.method === 'GET' && path === `${base}/applications`) return send(200, { type: 'Collection', data: reg ? reg.applications : [] });
+      if (req.method === 'GET' && path === `${base}/claims`) return send(200, { type: 'Collection', data: reg ? reg.claims : [] });
+      if (req.method === 'GET' && path === `${base}/validations`) return send(200, { type: 'Collection', data: reg ? reg.validations : [] });
+      if (req.method === 'GET' && path === `${base}/audit`) return send(200, { type: 'Collection', data: reg ? reg.audit : [] });
+      // Mission sub-resources and actions.
+      let mr;
+      if ((mr = path.match(new RegExp(`^${base}/missions/([^/]+)/applications$`))) && req.method === 'GET')
+        return send(200, { type: 'Collection', data: reg ? reg.getMissionApplications(mr[1]) : [] });
+      if ((mr = path.match(new RegExp(`^${base}/missions/([^/]+)/cancel$`))) && req.method === 'POST') {
+        const d = await body(); return run(() => reg.cancelMission(Object.assign({ missionId: mr[1] }, d)), 'Mission');
+      }
+      if ((mr = path.match(new RegExp(`^${base}/missions/([^/]+)/apply$`))) && req.method === 'POST') {
+        const d = await body(); return run(() => reg.applyToMission(Object.assign({ missionId: mr[1] }, d)), 'Application');
+      }
+      if ((mr = path.match(new RegExp(`^${base}/missions/([^/]+)/claim$`))) && req.method === 'POST') {
+        const d = await body(); return run(() => reg.submitClaim(Object.assign({ missionId: mr[1] }, d)), 'Claim');
+      }
+      if ((mr = path.match(new RegExp(`^${base}/applications/([^/]+)/decision$`))) && req.method === 'POST') {
+        const d = await body(); return run(() => reg.decideApplication(Object.assign({ applicationId: mr[1] }, d)), 'Application');
+      }
+      if ((mr = path.match(new RegExp(`^${base}/claims/([^/]+)/validate$`))) && req.method === 'POST') {
+        const d = await body(); return run(() => reg.validateClaim(Object.assign({ claimId: mr[1] }, d)), 'Validation');
+      }
+
       return send(404, { error: 'Not found', path });
     } catch (e) {
       return send(500, { error: e.message });

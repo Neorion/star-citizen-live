@@ -10,6 +10,28 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M5.2 — Mission register REST API ✅
+**Date:** 2026-06-13
+
+**What shipped (DESIGN-missions-mvp.md §5):** wired the register flow into
+`app/server.js` — `POST /missions/:id/apply`, `GET /missions/:id/applications`,
+`POST /applications/:id/decision`, `POST /missions/:id/claim`,
+`POST /claims/:id/validate`, `POST /missions/:id/cancel`, plus read endpoints
+`/applications`, `/claims`, `/validations`, `/audit`. A shared error mapper returns
+**403** (officer-forbidden), **404** (not found), else **400**; existing
+`/missions` create/list/detail unchanged.
+
+**Tests:** 36 → **37** (HTTP integration test: full create→apply→accept→claim→
+validate flow + the 403/404 guards, on port 3199).
+
+**Validated:** live demo over the running server (port 3041) ran an out-of-game
+"Tactical Strike Group Alpha" through to completed with a 5-entry audit chain.
+
+**Next:** M5.3 — Discord bot (slash commands + the Scheduled-Events hook); needs
+the product-owner Discord decisions. M4 (hosting) can run in parallel.
+
+---
+
 ## M5.1 — Mission register: store + model + audit chain ✅
 **Date:** 2026-06-13
 
