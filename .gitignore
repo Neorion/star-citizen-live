@@ -10,6 +10,9 @@ settings/auth.txt
 # Logs
 *.log
 logs/
+# ...but keep committed test fixtures (a tiny sample combat log)
+!test/fixtures/
+!test/fixtures/*.log
 
 # Stores
 stores/

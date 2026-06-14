@@ -100,6 +100,11 @@
   </section>
 
   <section class="panel full">
+    <h2>💀 Kills <span class="sub">— kills involving the running player (yours + your deaths). Third-party kills are not logged.</span></h2>
+    <div class="feed" id="kills"></div>
+  </section>
+
+  <section class="panel full">
     <h2>🎯 Missions <span class="sub">— grouped by mission, objectives nested</span></h2>
     <div class="feed" id="missions"></div>
   </section>
@@ -117,7 +122,7 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-let last = { flagged: [], recent: [], missions: [] };
+let last = { flagged: [], recent: [], missions: [], kills: [] };
 
 function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
@@ -163,6 +168,20 @@ function render(el, items, kws){
   el.innerHTML = items.map(ev=>lineHTML(ev,kws)).join('');
 }
 
+function renderKills(el, kills){
+  if(!kills || !kills.length){ el.innerHTML = '<div class="empty">no kills yet — appear the moment a member gets or takes a kill</div>'; return; }
+  const who = (n, npc) => esc(n || '?') + (npc ? ' <span class="mid">(NPC)</span>' : '');
+  el.innerHTML = kills.map(k=>{
+    const cls = k.involves === 'kill' ? 'b-good' : k.involves === 'death' ? 'b-kill' : 'b-warn';
+    const label = k.involves === 'death' ? 'death' : 'kill';
+    return `<div class="line">
+      <span class="time">${shortTime(k.timestamp)}</span>
+      <span class="badge ${cls}">${label}</span>
+      <span class="raw">${who(k.killer,k.killerNpc)} → ${who(k.victim,k.victimNpc)} <span class="mid">${esc(k.weapon||'')}${k.damageType ? ' · ' + esc(k.damageType) : ''}</span></span>
+    </div>`;
+  }).join('');
+}
+
 function renderMissions(el, missions){
   if(!missions.length){ el.innerHTML = '<div class="empty">no missions yet — take a contract in-game</div>'; return; }
   el.innerHTML = missions.slice().reverse().map(m=>{
@@ -183,6 +202,7 @@ function paint(){
   let flagged = last.flagged.filter(ev=>matches(ev.raw,kws));
   if(hideKnown) flagged = flagged.filter(ev=>!ev.recognized);
   render($('flagged'), flagged, kws);
+  renderKills($('kills'), last.kills);
   renderMissions($('missions'), last.missions);
   render($('recognized'), last.recent.filter(ev=>ev.recognized).filter(ev=>matches(ev.raw,kws)), kws);
   render($('recent'), last.recent.filter(ev=>matches(ev.raw,kws)), kws);
@@ -208,7 +228,7 @@ async function poll(){
     const parts = [d.channel, s.branch, s.changelist].filter(Boolean);
     $('build').textContent = parts.join(' · ');
     $('updated').textContent = 'updated ' + shortTime(d.now);
-    last = { flagged: d.flagged, recent: d.recent, missions: d.missions || [] };
+    last = { flagged: d.flagged, recent: d.recent, missions: d.missions || [], kills: d.kills || [] };
     paint();
   }catch(e){
     $('status').textContent = 'OFFLINE';

@@ -10,6 +10,25 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## Kills wired end-to-end — ready to test ✅
+**Date:** 2026-06-14
+
+Wired the kill path so it lights up the instant a real client-involved kill line arrives:
+- `app/server.js` — enriched the kill record: `killerNpc`/`victimNpc` (via `isNPC`),
+  `weaponClass`, ids, and **`involves`** (kill / death / other, relative to the session
+  player). Kills included in the `/monitor` feed.
+- Discord — upgraded `_discordKill` embed (⚔️ Kill / 💀 Death, NPC tags, weapon/zone/type).
+- `app/ui.html` — a dedicated **💀 Kills** panel (killer → victim, NPC tags, weapon · type).
+- `test/fixtures/sample-combat.log` — committed sample (un-ignored in `.gitignore`) +
+  a service test. Tests 44 → **45**.
+
+**Validated live:** seeding the sample shows 3 kills — 2 NPC kills (`Bullet` +
+`VehicleDestruction`) and 1 PvP death — correctly classified. **To test for real:** a
+member runs the relay and gets/takes a kill; on a confirmed real line, flip the
+kill/vehicle rules `verified:false` → `true`.
+
+---
+
 ## Finding — kills ARE loggable (for the running player); earlier conclusion corrected ✅
 **Date:** 2026-06-14
 

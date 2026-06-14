@@ -20,7 +20,7 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const readline = require('readline');
 
-const { parseLine, shipName, parseSessionInfo, missionType } = require('./parser');
+const { parseLine, shipName, parseSessionInfo, missionType, isNPC } = require('./parser');
 const { resolveLogFile, channelFromPath } = require('./locate');
 
 // Lines worth surfacing in the monitor - combat/death hints AND mission/objective
@@ -132,6 +132,7 @@ class StarCitizenService extends EventEmitter {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
           channel: this.channel, session: this.session, sessions: this.sessions,
           missions: this.missionGroups,
+          kills: newest(this.kills),
           counts: {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
             vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length,
@@ -254,7 +255,14 @@ class StarCitizenService extends EventEmitter {
     // Route classified events into the right collections + emit specific events.
     switch (ev.kind) {
       case 'kill': {
-        const kill = { id, killer: ev.killer, victim: ev.victim, weapon: ev.weapon, zone: ev.zone, damageType: ev.damageType, timestamp: ev.timestamp };
+        const kill = {
+          id, killer: ev.killer, victim: ev.victim, weapon: ev.weapon, weaponClass: ev.weaponClass,
+          zone: ev.zone, damageType: ev.damageType, killerId: ev.killerId, victimId: ev.victimId,
+          killerNpc: isNPC(ev.killer), victimNpc: isNPC(ev.victim),
+          // who, relative to the relay's player: 'kill' (we got it), 'death' (we died), or 'other'
+          involves: ev.killer === this._sessionHandle ? 'kill' : (ev.victim === this._sessionHandle ? 'death' : 'other'),
+          timestamp: ev.timestamp
+        };
         this.state.kills[id] = kill;
         this.emit('kill', kill);
         break;
@@ -445,9 +453,16 @@ class StarCitizenService extends EventEmitter {
   }
 
   _discordKill (k) {
-    return this.postToDiscord({ embeds: [{ title: '💀 Kill', description: `${k.killer} eliminated ${k.victim}`,
-      fields: [ { name: 'Weapon', value: k.weapon || 'Unknown', inline: true }, { name: 'Zone', value: k.zone || 'Unknown', inline: true } ],
-      color: 0xFF0000, timestamp: new Date().toISOString() }] });
+    const who = (n, npc) => (npc ? `${n} (NPC)` : n);
+    const title = k.involves === 'death' ? '💀 Death' : k.involves === 'kill' ? '⚔️ Kill' : '💀 Kill';
+    return this.postToDiscord({ embeds: [{ title,
+      description: `${who(k.killer, k.killerNpc)} killed ${who(k.victim, k.victimNpc)}`,
+      fields: [
+        { name: 'Weapon', value: k.weapon || 'Unknown', inline: true },
+        { name: 'Zone', value: k.zone || 'Unknown', inline: true },
+        { name: 'Type', value: k.damageType || 'Unknown', inline: true }
+      ],
+      color: k.involves === 'death' ? 0x992D22 : 0xFF0000, timestamp: new Date().toISOString() }] });
   }
   _discordJoin (p) {
     return this.postToDiscord({ embeds: [{ title: '👤 Player', description: `${p.name} logged in`, color: 0x0000FF, timestamp: new Date().toISOString() }] });

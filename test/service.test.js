@@ -19,6 +19,19 @@ test('handleLogChange routes a kill into the kills collection and emits', () => 
   assert.strictEqual(emitted.killer, 'K');
 });
 
+test('replays a sample combat log: detects kills, classifies kill vs death + NPC', async () => {
+  const path = require('node:path');
+  const s = new StarCitizenService({ discord: { enable: false } });
+  await s.replayLog(path.join(__dirname, 'fixtures', 'sample-combat.log'));
+  assert.strictEqual(s.kills.length, 3, 'three kill lines parsed');
+  assert.deepStrictEqual(s.kills.map((k) => k.involves).sort(), ['death', 'kill', 'kill']);
+  const death = s.kills.find((k) => k.involves === 'death');
+  assert.strictEqual(death.victim, 'TestPilot');           // the running player died
+  const pve = s.kills.find((k) => k.involves === 'kill' && k.damageType === 'Bullet');
+  assert.strictEqual(pve.killer, 'TestPilot');
+  assert.strictEqual(pve.victimNpc, true);                 // PU_Human… is an NPC
+});
+
 test('handleLogChange routes a login into the players collection', () => {
   const s = new StarCitizenService({ discord: { enable: false } });
   s.handleLogChange("<2026-06-09T06:23:07.643Z> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[Kersa] - Time[1]");
