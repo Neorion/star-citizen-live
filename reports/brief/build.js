@@ -120,7 +120,7 @@ body.push(new Paragraph({ children: [new PageBreak()] }));
 // Executive summary
 body.push(H1('Executive summary'));
 body.push(P([T('The system has two parts: a '), bold('live activity relay'), T(' that each member runs locally to read the Star Citizen game log, and a '), bold('central mission register'), T(' where officers post missions and fleet actions, members apply, and '), bold('officers validate'), T(' on completion. All state changes are written to a tamper-evident audit log. '), bold('Discord is the primary interface.')]));
-body.push(P([T('Testing across '), bold('193 logs from two players (builds 4.7.0–4.8.0)'), T(' established that the game does not record kills or ship destruction; the nearest combat outcome the log provides is a player going down ('), bold('incapacitation'), T('), which is now detected. A player’s own log is also self-reported. The register therefore uses '), bold('officer validation'), T(' as the authority for completion, with log activity attached as supporting evidence where it exists. The same model applies to '), bold('out-of-game missions and fleet actions'), T(', which have no log signal.')]));
+body.push(P([T('Testing across '), bold('193 logs from two players (builds 4.7.0–4.8.0)'), T(' established that the game records only the kills that '), bold('involve the running player'), T(' (your kills and your deaths) — not third-party kills. The format is corroborated (it matches a maintained community parser) and our parser handles it; our sample logs simply contained no such kills, so an end-to-end capture is still pending. '), bold('Player-downs (incapacitation)'), T(' are also detected. A player’s own log is self-reported, so the register uses '), bold('officer validation'), T(' as the authority for completion, with log activity attached as supporting evidence. The same model applies to '), bold('out-of-game missions and fleet actions'), T(', which have no log signal.')]));
 body.push(P([T('Current status: the live relay and dashboard are built and tested; the mission register engine is built and verified end-to-end. Remaining work: a web API and a Discord bot to operate the register, and hosting on an always-on server. A planned integration uses '), bold('Discord Scheduled Events'), T(' to capture interest, attendance and in-window activity.')]));
 body.push(P([T('A '), bold('federated deployment'), T(' — members’ machines exchanging signed updates with no single point of failure — is retained as an optional future path (D-004), separate from the original Fabric framework. It is not required for the current scope.')]));
 
@@ -146,7 +146,8 @@ body.push(table(
     ['Mission register over a web API', 'Next (M5.2)'],
     ['Mission register inside Discord (slash commands + Events hook)', 'Planned (M5.3)'],
     ['Always-on cloud hosting', 'Planned (M4)'],
-    ['Detecting individual kills', 'Not possible — confirmed across 193 logs, two players, 4.7.0–4.8.0'],
+    ['Detect kills involving the running player (your kills + deaths)', 'Loggable (SC 4.0.2+); parser matches the format; pending a real combat capture'],
+    ['Detecting third-party kills (others’ fights)', 'Not possible — the game stopped logging them in 4.0.2'],
     ['Decentralized / no-central-server', 'Optional, later']
   ].filter((r) => r.length),
   [6600, 2760]
@@ -262,7 +263,7 @@ body.push(H1('12. Decisions for the product owner'));
 
 // 13. limitations
 body.push(H1('13. Honest limitations'));
-['Individual kills (PvE or PvP) cannot be detected — the game does not log them (confirmed across 193 logs, two players, builds 4.7.0–4.8.0). Player-down (incapacitation) is detected as the nearest available combat outcome.', 'In-game “activity” is only visible for members who run the relay.', 'Activity attribution needs a one-time link between a member’s relay and their Discord ID.', 'Cross-player correlation of a shared mission is by type + operation + time window, unless the game exposes a shared id (to be confirmed against a real capture).', 'A player’s own log is self-reported — which is exactly why officer validation is the authority.'].forEach((t) => body.push(bullet(t)));
+['Only kills that involve the running player are logged (since SC 4.0.2) — your kills and your deaths; third-party kills are not. The format is corroborated (it matches the maintained all-slain parser) and our parser handles it, but we have not yet captured a real member combat session to confirm end-to-end. Player-down (incapacitation) is also detected.', 'In-game “activity” is only visible for members who run the relay.', 'Activity attribution needs a one-time link between a member’s relay and their Discord ID.', 'Cross-player correlation of a shared mission is by type + operation + time window, unless the game exposes a shared id (to be confirmed against a real capture).', 'A player’s own log is self-reported — which is exactly why officer validation is the authority.'].forEach((t) => body.push(bullet(t)));
 body.push(space(120));
 body.push(P([new TextRun({ text: 'Prepared by the build team with Claude Code. Source and living technical docs (DESIGN-missions-mvp, DECISIONS, PROGRESS) are in the project repository.', italics: true, size: 18, color: C.grey })]));
 

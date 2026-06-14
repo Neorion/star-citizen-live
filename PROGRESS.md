@@ -10,6 +10,29 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## Finding — kills ARE loggable (for the running player); earlier conclusion corrected ✅
+**Date:** 2026-06-14
+
+Researched the SC GitHub ecosystem (see `REFERENCES.md`) and reconciled our "kills
+are never logged" conclusion against the **maintained** all-slain parser
+(DimmaDont/all-slain, 2025). Its code comment: *"4.0.2 no longer reports kills that
+don't involve the client player."* So since SC 4.0.2 the client log records
+`<Actor Death> CActor::Kill` **only for kills involving the running player** (your
+kills, your deaths) — not third-party kills. The format **matches our dormant
+kill/vehicle rules**, and our parser passes all-slain's test lines (FPS = damage type
+`Bullet`; ship = `VehicleDestruction`). Our corpora (Kersa hangar + DeadMan 193 logs)
+contained **no client-involved kills** (mining/defense/incap-without-death) — hence 0.
+
+**Corrected:** parser comment, the `sc-log-combat-vs-missions` memory, both briefs
+(`.md` + `.docx`), and `REFERENCES.md`. Tests 43 → **44** (added the ship-kill
+`VehicleDestruction` variant).
+
+**Next:** capture a real member combat session (a kill or a death by the running
+player) to flip the kill/vehicle rules `verified:false` → `true`. A kill feed for a
+member's own kills + deaths is achievable.
+
+---
+
 ## M3.14 — Mission-type classification (generator → category) ✅
 **Date:** 2026-06-14
 

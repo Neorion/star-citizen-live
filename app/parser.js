@@ -98,11 +98,14 @@ const RULES = [
     fields: (m) => ({ text: m[1] })
   },
 
-  // --- UNVERIFIED / DORMANT: documented SC 4.x combat formats. These tags do NOT
-  // appear in current 4.8.0 client logs (validated 2026-06-12 against real combat
-  // sessions; greluc/SC-Kill-Monitor was archived Nov 2025, consistent with the format
-  // changing). Kept - upgraded to the fuller community-parser regexes - so we capture
-  // full detail IF a build/mode ever writes them again. ---
+  // --- CLIENT-INVOLVED COMBAT (format corroborated; real in-the-wild capture pending).
+  // Since SC 4.0.2 the client Game.log records <Actor Death> CActor::Kill ONLY for kills
+  // that involve the running player (your kills, your death) - not third-party kills.
+  // The format below matches the MAINTAINED all-slain parser (DimmaDont/all-slain, 2025)
+  // and our parser passes its test lines (FPS kill = damage type 'Bullet'; ship kill =
+  // damage type 'VehicleDestruction'). Flagged verified:false only because our own corpus
+  // (Kersa hangar + DeadMan 193 logs) contained no client-involved kills - flip to
+  // verified once captured from a real member combat session. See REFERENCES.md. ---
   {
     kind: 'kill', tag: 'Actor Death', verified: false,
     test: /CActor::Kill: '([^']+)' \[(\d+)\] in zone '([^']+)' killed by '([^']+)' \[(\d+)\] using '([^']+)' \[Class ([^\]]+)\] with damage type '([^']+)' from direction x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+)/,

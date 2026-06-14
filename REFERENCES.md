@@ -15,7 +15,7 @@ signals, metrics, cross-platform packaging, friendly-name enrichment).
 ### A. Game.log parsing / kill & event tracking  *(core — and the kill lead)*
 | Project | Lang | Take | Notes |
 |---|---|---|---|
-| [DimmaDont/all-slain](https://github.com/DimmaDont/all-slain) | Python | **regexes + ideas** | Console viewer: claims player kills, vehicle kills, loading, **respawns**. **Top lead** — read its kill patterns vs. our 0-kills corpus. |
+| [DimmaDont/all-slain](https://github.com/DimmaDont/all-slain) | Python | **regexes + ideas** | Maintained (2025). **RECONCILED (2026-06-14):** its `<Actor Death> CActor::Kill` format = our dormant rule, and code comment confirms "4.0.2 no longer reports kills that don't involve the client player." Our parser passes its test lines (Bullet + VehicleDestruction). So kills DO log — for the running player only. |
 | [PINKgeekPDX/VerseWatcher](https://github.com/PINKgeekPDX/VerseWatcher) | Python | regexes + ideas | Real-time monitor w/ player names, weapons, ships. Same kill-reconciliation value. |
 | [Ozy311/StarLogs](https://github.com/Ozy311/StarLogs) | Python | regexes + dashboard idea | Already our reference for the documented `<Actor Death>`/`<Vehicle Destruction>` formats. |
 | [BubbaGumpShrump/AutoTrackR2](https://github.com/BubbaGumpShrump/AutoTrackR2) | PowerShell | pattern | Kill tracking with **API integration** — mirrors our external-input `/kills` channel. |
@@ -64,7 +64,7 @@ signals, metrics, cross-platform packaging, friendly-name enrichment).
 | [dydrmr/VerseTime](https://github.com/dydrmr/VerseTime) | JS | minor | In-verse time. |
 
 ## Priority picks for *our* roadmap
-1. **all-slain / VerseWatcher** — read their kill parsing; reconcile against our corpus. May reopen kill detection (or confirm it's dead) — see [[sc-log-combat-vs-missions]].
+1. **all-slain — DONE & reopened kill detection.** Kills DO log for the running player (Actor Death/CActor::Kill, 4.0.2+); our parser already matches. Next: capture a real member combat session (a member who actually gets/takes a kill) to flip the kill/vehicle rules to verified.
 2. **lug-helper** — Proton/Wine log paths for the Linux relay (M-packaging, `app/locate.js`).
 3. **unp4k + StarCitizen-GameData** — extract DataForge/global.ini locally to turn mission/ship codenames into friendly names (the enrichment we deferred).
 4. **StarCitizenWiki/discord-bot + IRCON-Bot** — reference shapes for the M5.3 Discord bot.

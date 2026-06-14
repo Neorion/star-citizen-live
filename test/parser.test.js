@@ -56,6 +56,15 @@ test('parses documented kill line (UNVERIFIED/dormant format)', () => {
   assert.strictEqual(r.verified, false);  // flagged: tag absent from current 4.8.0 logs
 });
 
+test('parses a ship kill (Actor Death, damage type VehicleDestruction) — format corroborated by all-slain', () => {
+  const line = "<2026-04-16T00:00:00.000Z> [Notice] <Actor Death> CActor::Kill: 'PU_Human-NineTails-Gunner-Male-Light_01_1234567890123' [1234567890123] in zone 'ANVL_Valkyrie_PU_AI_NT_QIG_1234567890123' killed by 'Player-123_Name' [123456789012] using 'BEHR_LaserCannon_S5_1234567890123' [Class unknown] with damage type 'VehicleDestruction' from direction x: 0.000000, y: 0.000000, z: 0.000000 [Team_ActorTech][Actor]";
+  const r = parseLine(line);
+  assert.strictEqual(r.kind, 'kill');
+  assert.strictEqual(r.killer, 'Player-123_Name');
+  assert.strictEqual(r.damageType, 'VehicleDestruction');
+  assert.strictEqual(r.verified, false);  // format corroborated; flip on a real member capture
+});
+
 test('parses documented vehicle destruction (UNVERIFIED/dormant format)', () => {
   const line = "<2026-06-09T07:01:00.000Z> [Notice] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle 'ANVL_Hornet_F7C' [300333] in zone 'OOC_Stanton_1a' [pos x: 1.0, y: 2.0, z: 3.0 vel x: 0.0, y: 0.0, z: 0.0] driven by 'PilotGuy' [400444] advanced from destroy level 0 to 2 caused by 'KillerGuy' [200222] with 'Ballistic'";
   const r = parseLine(line);
