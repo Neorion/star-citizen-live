@@ -20,7 +20,7 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const readline = require('readline');
 
-const { parseLine, shipName, parseSessionInfo } = require('./parser');
+const { parseLine, shipName, parseSessionInfo, missionType } = require('./parser');
 const { resolveLogFile, channelFromPath } = require('./locate');
 
 // Lines worth surfacing in the monitor - combat/death hints AND mission/objective
@@ -92,7 +92,7 @@ class StarCitizenService extends EventEmitter {
     return Object.values(this.state.missionGroups).map((m) => {
       const objectives = Object.keys(m.objectiveIds).map((oid) => this.state.objectives[oid]).filter(Boolean);
       const last = m.notifications[m.notifications.length - 1];
-      return { id: m.id, title: last ? last.text : null, firstSeen: m.firstSeen, lastSeen: m.lastSeen, objectives, notifications: m.notifications };
+      return { id: m.id, title: last ? last.text : null, generator: m.generator || null, type: missionType(m.generator), firstSeen: m.firstSeen, lastSeen: m.lastSeen, objectives, notifications: m.notifications };
     });
   }
   get logs () { return Object.values(this.state.logs); }
@@ -278,9 +278,10 @@ class StarCitizenService extends EventEmitter {
       }
       case 'mission:contract':
       case 'mission:objective':
-      case 'mission:notification': {
+      case 'mission:notification':
+      case 'mission:marker': {
         const me = { id, kind: ev.kind, timestamp: ev.timestamp,
-          contract: ev.contract, text: ev.text, objectiveId: ev.objectiveId, missionId: ev.missionId };
+          contract: ev.contract, generator: ev.generator, text: ev.text, objectiveId: ev.objectiveId, missionId: ev.missionId };
         this.state.missionlog[id] = me;
         this._indexMission(ev);
         this.emit(ev.kind, me);
@@ -326,6 +327,7 @@ class StarCitizenService extends EventEmitter {
       const m = this.state.missionGroups[ev.missionId] ||
         (this.state.missionGroups[ev.missionId] = { id: ev.missionId, firstSeen: ev.timestamp, objectiveIds: {}, notifications: [] });
       m.lastSeen = ev.timestamp;
+      if (ev.generator) m.generator = ev.generator;   // template name -> mission type
       if (ev.kind === 'mission:notification') {
         m.notifications.push({ text: ev.text, objectiveId: ev.objectiveId || null, timestamp: ev.timestamp });
         if (m.notifications.length > 100) m.notifications.shift();

@@ -10,6 +10,28 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## M3.14 — Mission-type classification (generator → category) ✅
+**Date:** 2026-06-14
+
+**Why:** to filter the feed by mission type (the earlier "operations" idea). The
+`CLocalMissionPhaseMarker` line links a runtime MissionId to its generator/template
+name — the bridge to typing a grouped mission.
+
+**What shipped:**
+- `app/parser.js` — `mission:marker` rule (MissionId → generator name) and a
+  `missionType()` classifier mapping real codenames to categories (Bounty,
+  Mercenary/Defense, Hauling, Recovery, Mining, FPS/Facility, Sabotage, Event,
+  Other). Built from the Kersa 4.8.0 + DeadMan 4.7.0 corpus; editable.
+- `app/server.js` — markers attach `generator` + `type` to the grouped mission;
+  `missionGroups` exposes both. `app/ui.html` — the Missions panel badge shows the type.
+- Tests: 40 → **43**.
+
+**Validated:** a 120,330-line 4.7.0 session classified 30 missions as
+20 Mining / 6 Mercenary-Defense / 4 Other (e.g. Shubin_ResourceGathering_ShipMining
+→ Mining, EckhartSecurity_DefendShip → Mercenary/Defense).
+
+---
+
 ## M3.13 — Player-down (incapacitation) detection ✅
 **Date:** 2026-06-14
 

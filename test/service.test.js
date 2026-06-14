@@ -67,6 +67,16 @@ test('mission events group by MissionId with objectives joined via ObjectiveId',
   assert.strictEqual(m.objectives[0].text, 'Defeat Hostile Ship', 'latest objective text wins');
 });
 
+test('mission marker attaches generator + type to the grouped mission', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  // notification creates the group; marker (same MissionId) attaches the generator
+  s.handleLogChange('<2026-06-13T07:20:00.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "New Objective: Defeat Hostile Ships: " [25] to queue. New queue size: 1, MissionId: [4491dc34-bcf3-4f56-a0b8-228e3e3f40e9], ObjectiveId: [3340e494-888d-96be-0192-0c08d4841aa3] [Team_CoreGameplayFeatures][Missions][Comms]');
+  s.handleLogChange('<2026-06-13T07:20:01.000Z> [Notice] <CLocalMissionPhaseMarker::CreateMarker> Creating objective marker: missionId [4491dc34-bcf3-4f56-a0b8-228e3e3f40e9], generator name [BountyHuntersGuild_KIllShip] [Team_MissionFeatures][Missions]');
+  const m = s.missionGroups.find((x) => x.id === '4491dc34-bcf3-4f56-a0b8-228e3e3f40e9');
+  assert.strictEqual(m.generator, 'BountyHuntersGuild_KIllShip');
+  assert.strictEqual(m.type, 'Bounty');
+});
+
 test('combat objectives are tracked as combat progress (proxy for kills)', () => {
   const s = new StarCitizenService({ discord: { enable: false } });
   let progressed = 0;

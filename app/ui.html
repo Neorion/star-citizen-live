@@ -168,7 +168,7 @@ function renderMissions(el, missions){
   el.innerHTML = missions.slice().reverse().map(m=>{
     const objs = (m.objectives||[]).map(o=>`<div class="obj">${o.combat ? '⚔️' : '•'} ${esc(o.text || o.id)}</div>`).join('');
     return `<div class="mission">
-      <div class="mhead"><span class="badge b-good">mission</span>
+      <div class="mhead"><span class="badge b-good">${esc(m.type || 'mission')}</span>
         <span class="mtitle">${esc(m.title || '(mission)')}</span>
         <span class="time">${shortTime(m.lastSeen)}</span></div>
       <div class="mid">${esc(m.id)}</div>

@@ -62,6 +62,14 @@ const RULES = [
     fields: (m) => ({ contract: m[1] })
   },
   {
+    // Links a runtime MissionId to its generator/template name - the bridge that
+    // lets us classify a grouped mission by type. VERIFIED (Kersa 4.8.0 + DeadMan
+    // 4.7.0 corpus). e.g. generator "FoxwellEnforcement_Generator".
+    kind: 'mission:marker', tag: 'CLocalMissionPhaseMarker::CreateMarker',
+    test: /missionId \[([0-9a-fA-F-]+)\].*?generator name \[([^\]]+)\]/,
+    fields: (m) => ({ missionId: m[1], generator: m[2] })
+  },
+  {
     kind: 'mission:objective', tag: 'CMissionLogEntry::UpdateActiveObjective',
     test: /id=([0-9a-fA-F-]+).*?\[Text=([^\]]*)\]/,
     fields: (m) => ({ objectiveId: m[1], text: m[2] })
@@ -190,4 +198,25 @@ function parseSessionInfo (line) {
   return null;
 }
 
-module.exports = { parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS };
+// --- Mission-type classifier [from the real contract/generator codenames in the
+// Kersa 4.8.0 + DeadMan 4.7.0 corpus]. Maps a generator/contract name to a
+// friendly category. Order matters (first match wins). Editable - CIG adds
+// content every patch, same as the NPC list. ---
+const MISSION_TYPES = [
+  [/killship|killnpc|fpskill|bountyhunter|assassinat|\bhunt/i, 'Bounty'],
+  [/mercenary|enforcement|security|patrol|ambush|defend|escort|protect/i, 'Mercenary/Defense'],
+  [/haul|cargo|deliver|recovercargo/i, 'Hauling'],
+  [/recoveritem|recoverdata|recover|investigat|salvage/i, 'Recovery'],
+  [/mining|resourcegather|gather|extract/i, 'Mining'],
+  [/facilitydelve|delve|\bfps/i, 'FPS/Facility'],
+  [/destroyitems|sabotage|destroy/i, 'Sabotage'],
+  [/collector/i, 'Event']
+];
+
+function missionType (name) {
+  if (!name) return 'Other';
+  for (const [re, cat] of MISSION_TYPES) if (re.test(name)) return cat;
+  return 'Other';
+}
+
+module.exports = { parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS, missionType, MISSION_TYPES };

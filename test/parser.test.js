@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseLine, shipName, isNPC, parseSessionInfo } = require('../app/parser');
+const { parseLine, shipName, isNPC, parseSessionInfo, missionType } = require('../app/parser');
 
 // --- VERIFIED patterns (from a real Game.log hangar session) ---
 
@@ -95,6 +95,22 @@ test('zero-MissionId notification is a general HUD notice, not a mission', () =>
   assert.strictEqual(r.kind, 'hud:notification');
   assert.strictEqual(r.text, 'Entering Armistice Zone - Combat Prohibited: ');
   assert.strictEqual(r.missionId, undefined);   // not tied to a mission
+});
+
+test('detects mission marker (missionId -> generator name)', () => {
+  const r = parseLine('<2026-06-13T07:00:00.000Z> [Notice] <CLocalMissionPhaseMarker::CreateMarker> Creating objective marker: missionId [0204222e-95c7-4211-a2ad-a18e1056de65], generator name [FoxwellEnforcement_Generator], more [Team_MissionFeatures][Missions]');
+  assert.strictEqual(r.kind, 'mission:marker');
+  assert.strictEqual(r.missionId, '0204222e-95c7-4211-a2ad-a18e1056de65');
+  assert.strictEqual(r.generator, 'FoxwellEnforcement_Generator');
+});
+
+test('classifies mission types from real generator codenames', () => {
+  assert.strictEqual(missionType('BountyHuntersGuild_KIllShip'), 'Bounty');
+  assert.strictEqual(missionType('FoxwellEnforcement_Patrol'), 'Mercenary/Defense');
+  assert.strictEqual(missionType('Covalex_Hauling'), 'Hauling');
+  assert.strictEqual(missionType('Rayari_RecoverItem'), 'Recovery');
+  assert.strictEqual(missionType('Shubin_ResourceGathering_ShipMining'), 'Mining');
+  assert.strictEqual(missionType('SomeUnknown_Generator'), 'Other');
 });
 
 test('detects player incapacitation (down) — VERIFIED in 4.7.0 logs', () => {
