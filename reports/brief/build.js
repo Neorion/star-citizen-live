@@ -78,18 +78,51 @@ body.push(rule());
 
 // Contents
 body.push(H2('Contents'));
-['Executive summary', '1. What this is', '2. Where we are now', '3. What users can do', '4. The mission register & lifecycle',
+['Origin & original requirements (from the master)', 'How this fork has deviated (and why)',
+ 'Executive summary', '1. What this is', '2. Where we are now', '3. What users can do', '4. The mission register & lifecycle',
  '5. The Discord Events hook', '6. Making a busy feed useful — filters, grouping, metrics', '7. Future web UI (Discord-role-gated)',
  '8. Packaging & distribution (.exe) and virus-scan trust', '9. Future option — decentralized deployment',
  '10. External dependencies & indicative costs', '11. Roadmap', '12. Decisions for the product owner', '13. Honest limitations'].forEach((s) => body.push(bullet(s)));
 body.push(new Paragraph({ children: [new PageBreak()] }));
 
+// Origin & original requirements
+body.push(H1('Origin & original requirements (from the master)'));
+body.push(P([T('This project originates from the master repository established under the org’s direction (upstream: GoonCitizen/star-citizen-live; fork basis: martindale/star-citizen-live, branch feature/fabric-0.1.0; package @rsi/star-citizen; MIT licence). The work in this fork (Neorion/star-citizen-live, branch feature/fabric-free-m1) continues that project. This section records the requirements as defined in the master so that the subsequent changes can be read against them.')]));
+body.push(P([bold('Requirements as defined in the master:')]));
+[
+  'Watch the Star Citizen Game.log live, read-only.',
+  'Relay events to a Discord channel as rich embeds (activities, kills, player joins, missions, applications).',
+  'Expose a REST API (port 3041) with collections: activities, players, vehicles, kills, messages/logs, missions, applications, status.',
+  'Detect specific in-game events from the log (e.g. kills, player joins, vehicle destruction).',
+  'Provide a missions/contracts system: members post missions (bounty / cargo / exploration) with UEC rewards; others apply; contracts cryptographically signed — single-signer or multisig (secp256k1 / musig2).',
+  'Run on the Fabric framework as a decentralized peer-to-peer service (signed, content-addressed objects), extending a Fabric Hub.',
+  'Provide a web user interface (React / server-rendered Semantic UI).'
+].forEach((t) => body.push(num(t)));
+
+// Deviations
+body.push(H1('How this fork has deviated (and why)'));
+body.push(P([T('The fork pursues the same goals. The changes below were made for the technical reasons stated; each is recorded in '), bold('DECISIONS.md (D-001…D-005)'), T(' and '), bold('PROGRESS.md'), T('.')]));
+body.push(table(
+  ['Area', 'Master (original)', 'This fork', 'Reason'],
+  [
+    ['Framework', 'Fabric (p2p), extends Hub', 'Standard Node.js built-ins (http, events, crypto)', 'Fabric ~400 MB incl. a headless browser; deps installed over SSH GitHub URLs that failed on clean machines; a core package absent from the dependency list; install never completed in a clean environment (D-002).'],
+    ['Hosting / trust', 'Trustless p2p network', 'One central service on a VPS; Discord for identity', 'The required functions (watch log, post to Discord, share contracts) do not require p2p; the org has a defined authority (D-003).'],
+    ['Mission contracts', 'Crypto single/multisig contracts', 'Central register with officer validation; crypto/multisig deferred (seam + types/Mission.js retained)', 'A player’s log is self-reported and cannot prove completion; an officer validates (D-005).'],
+    ['Kill detection', '“Kills announced to Discord”', 'Mission/objective tracking + combat-objective proxy', 'SC 4.8.0 client log records no kills or ship destruction (verified against real logs) (M3, M3.5).'],
+    ['Install footprint', '~400 MB Fabric dependency tree', 'Zero runtime dependencies', 'Removing Fabric eliminated the dependency tree (M2, M3.7).'],
+    ['Web UI', 'React / Semantic UI shell', 'Built-in HTML dashboard; Discord-role-gated web UI planned', 'Rebuilt without the Fabric/React stack.'],
+    ['Decentralization', 'Core requirement (Fabric)', 'Optional future federation via signed gossip (not the Fabric framework)', 'Retained as an opt-in path, decoupled from the fragile transport (D-004).']
+  ],
+  [1500, 2500, 2680, 2680]
+));
+body.push(new Paragraph({ children: [new PageBreak()] }));
+
 // Executive summary
 body.push(H1('Executive summary'));
-body.push(P([T('This project began as a way to turn a single player’s Star Citizen game log into a Discord feed. Through hands-on testing it has grown into something more useful for an organisation: a '), bold('live activity relay'), T(' that each member runs locally, feeding a '), bold('central mission register'), T(' that officers use to post missions and fleet actions, members use to take part, and '), bold('officers validate'), T(' on completion — all backed by a tamper-evident record.')]));
-body.push(P([T('The single most important thing we learned: '), bold('the game log cannot prove what happened.'), T(' The current build does not record kills or ship destruction at all, and a player’s own log is self-reported. So the platform is deliberately built around '), bold('human (officer) validation'), T(' as the authority, with the game log providing supporting “evidence” where it exists. This is exactly why it handles '), bold('out-of-game missions and fleet actions'), T(' as naturally as in-game ones.')]));
-body.push(P([T('Today the live relay and dashboard work and are tested; the mission register’s engine is built and proven end-to-end; the remaining work is to give it buttons (a web API and a Discord bot) and to host it on a small always-on server. A standout opportunity is to hook into '), bold('Discord Scheduled Events'), T(' — officers already create them and members already click “Interested” — so we can capture interest, attendance and activity with almost no new workflow.')]));
-body.push(P([T('Looking further ahead, the architecture keeps the door open to a '), bold('decentralized (federated) deployment'), T(' — where members’ own machines share signed updates so there is no single point of failure — without committing to it now. It is an optional resilience upgrade, not a requirement, and most of the value arrives well before it is needed.')]));
+body.push(P([T('The system has two parts: a '), bold('live activity relay'), T(' that each member runs locally to read the Star Citizen game log, and a '), bold('central mission register'), T(' where officers post missions and fleet actions, members apply, and '), bold('officers validate'), T(' on completion. All state changes are written to a tamper-evident audit log. '), bold('Discord is the primary interface.')]));
+body.push(P([T('Testing established that the current game build (SC 4.8.0) does not record kills or ship destruction, and a player’s own log is self-reported. The register therefore uses '), bold('officer validation'), T(' as the authority for completion, with log activity attached as supporting evidence where it exists. The same model applies to '), bold('out-of-game missions and fleet actions'), T(', which have no log signal.')]));
+body.push(P([T('Current status: the live relay and dashboard are built and tested; the mission register engine is built and verified end-to-end. Remaining work: a web API and a Discord bot to operate the register, and hosting on an always-on server. A planned integration uses '), bold('Discord Scheduled Events'), T(' to capture interest, attendance and in-window activity.')]));
+body.push(P([T('A '), bold('federated deployment'), T(' — members’ machines exchanging signed updates with no single point of failure — is retained as an optional future path (D-004), separate from the original Fabric framework. It is not required for the current scope.')]));
 
 // 1. What this is
 body.push(H1('1. What this is'));
@@ -125,24 +158,24 @@ body.push(H3('Officer / administrator'));
 
 // 4. lifecycle
 body.push(H1('4. The mission register & lifecycle'));
-body.push(P([T('Every mission moves through a simple, auditable lifecycle. The '), bold('officer validation'), T(' step is the heart of it: because the log cannot prove completion, a human confirms it.')]));
+body.push(P([T('Every mission moves through an auditable lifecycle. The '), bold('officer validation'), T(' step is the authority for completion: because the log cannot prove completion, an officer confirms it.')]));
 body.push(...fig('lifecycle', 'Figure 2 — Mission lifecycle, from posting to officer-validated completion.'));
 
 // 5. Discord events
 body.push(H1('5. The Discord Events hook'));
 body.push(P([T('Officers already create '), bold('Discord Scheduled Events'), T(' and members already click “Interested.” We can build on that instead of inventing a new workflow. Discord’s API lets us read the interested list; the relay supplies who actually turned up and what they did during the event window.')]));
 body.push(...fig('events', 'Figure 3 — Using Discord Events to capture interest, attendance and activity.'));
-body.push(P([bold('Why it’s powerful: '), T('it turns a workflow officers already use into a participation record — interested vs. turned-up vs. did-stuff — with almost no extra effort. The one prerequisite is a one-time link between each member’s relay and their Discord identity so activity can be attributed to the right person.')]));
+body.push(P([T('This produces a participation record per event — interested, turned-up and in-window activity — from a workflow already in use. The prerequisite is a one-time link between each member’s relay and their Discord identity so activity can be attributed to the correct person.')]));
 
 // 6. filters / grouping / metrics
 body.push(H1('6. Making a busy feed useful — filters, grouping, metrics'));
-body.push(P('At fleet scale a raw feed becomes noise. Three levers keep it valuable:'));
+body.push(P('At fleet scale the feed is high-volume. Three controls reduce it:'));
 body.push(H3('Filter by mission type or operation'));
 body.push(P('In-game mission types (Bounty, Mercenary/Defense, Hauling, Salvage, Investigation, dynamic events such as XenoThreat) can be inferred from the log and mapped to friendly categories. Org “operations” (e.g. “Tactical Strike Group” — a real announced Star Citizen feature) are officer-named labels that in-game activity rolls up under.'));
 body.push(H3('Group, don’t spam'));
-['Group by mission (one card per mission, not per line).', 'Roll up to operation level (one card per op).', 'Edit a single message as it progresses, or use one thread per operation — the biggest noise-killer.', 'Optional periodic digest instead of live events.'].forEach((t) => body.push(bullet(t)));
+['Group by mission (one card per mission, not per line).', 'Roll up to operation level (one card per op).', 'Edit a single message as it progresses, or use one thread per operation.', 'Optional periodic digest instead of live events.'].forEach((t) => body.push(bullet(t)));
 body.push(H3('Metrics — what the log allows'));
-body.push(P([bold('The register is the scoreboard (trustworthy); the log is the colour commentary (engagement, clearly labelled “inferred”).'), T(' Suggested measures:')]));
+body.push(P([T('Register data is validated by officers; log-derived data is inferred and labelled as such. Measures:')]));
 body.push(table(
   ['Metric', 'Source', 'Confidence'],
   [
@@ -159,7 +192,7 @@ body.push(table(
 
 // 7. future web UI
 body.push(H1('7. Future web UI (Discord-role-gated)'));
-body.push(P([T('Discord remains the primary interface, but a '), bold('lightweight web front end on the VPS'), T(' is a natural future addition for officers who want a richer view (a validation queue, metrics dashboards). The key idea: members '), bold('log in with Discord'), T(' (no new passwords) and their '), bold('Discord roles decide what they see'), T(' — officers get the admin views, members get their own. This is a placeholder for planning; not yet built.')]));
+body.push(P([T('Discord remains the primary interface. A '), bold('web front end on the VPS'), T(' is a planned future addition (e.g. a validation queue and metrics dashboards). Members '), bold('log in with Discord'), T(' (no separate accounts) and their '), bold('Discord roles determine what they see'), T(' — officers get the admin views, members get their own. This is a placeholder for planning; not yet built.')]));
 body.push(...fig('webui', 'Figure 4 — Placeholder concept: a VPS web front end gated by Discord roles.'));
 
 // 8. packaging
@@ -177,7 +210,7 @@ body.push(table(
   [1900, 4560, 2900]
 ));
 ['First-run setup writes a tiny config (member’s Discord ID, the server address) on either OS.', 'The relay auto-detects the game log: Windows drive paths today; the Linux build adds Proton/Wine prefix detection (e.g. under the Steam/Lutris compat folder).'].forEach((t) => body.push(bullet(t)));
-body.push(H3('Virus-scan & trust (important for adoption)'));
+body.push(H3('Virus-scan & trust'));
 body.push(P('Windows: bundled-Node executables from an unknown publisher commonly trigger SmartScreen warnings and occasional antivirus false positives. Linux: no SmartScreen, but we still want verifiable, signed downloads. The trust stack covers both:'));
 [
   [bold('Signing'), T(' — Windows: an Authenticode (ideally EV) certificate earns instant SmartScreen reputation — the real fix for “unknown publisher” (~$200–600/yr). Linux: GPG-sign the binaries (and, for a .deb, a GPG-signed apt repo) — free.')],
@@ -189,9 +222,9 @@ body.push(P([bold('Honest note: '), T('false positives are normal for this kind 
 
 // 9. decentralized
 body.push(H1('9. Future option — decentralized deployment'));
-body.push(P([T('The current plan uses one small cloud server the org runs — simple, cheap and a good fit for a trusted organisation. The architecture also keeps the door open to a '), bold('federated'), T(' version: members’ own machines exchange '), bold('signed'), T(' updates so there is no single point of failure, with the cloud server becoming just one node among several and Discord still the front door.')]));
+body.push(P([T('The current plan uses one central server the org runs. The architecture also supports a '), bold('federated'), T(' version: members’ own machines exchange '), bold('signed'), T(' updates so there is no single point of failure, with the cloud server becoming one node among several and Discord still the front door.')]));
 body.push(...fig('decentralized', 'Figure 6 — Optional future: a federated network with no single point of failure.'));
-body.push(P([bold('Recommendation: '), T('treat this as an optional resilience upgrade for later. It is genuinely workable (the cryptographic building blocks already exist in the codebase), but it is a sizeable effort and the org — with trusted leadership — does not need it to get the full value. Revisit only if removing reliance on the single server becomes important, or to federate across multiple orgs.')]));
+body.push(P([bold('Status: '), T('optional and deferred. The cryptographic building blocks already exist in the codebase (types/Mission.js). It is a sizeable effort and is not required for the current scope. It is revisited only if removing reliance on the single server becomes a requirement, or to federate across multiple orgs (D-004).')]));
 
 // 10. dependencies
 body.push(H1('10. External dependencies & indicative costs'));
