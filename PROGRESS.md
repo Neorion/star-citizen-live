@@ -291,6 +291,13 @@ plagued the spike. Everything stays runnable with zero setup.
 - **M5 — Contracts MVP:** create/list/apply/approve missions via API/Discord,
   backed by a small database.
 - **M6+:** Discord roles for approvals, signed audit trail, polish.
+- **Packaging (cross-platform) — required:** ship the relay as a one-click install on
+  **Windows (.exe, Node SEA)** AND **Linux** (self-contained binary + install script /
+  optional .deb/AppImage; the central service installs as a Linux **systemd** service).
+  The Linux relay must add **Proton/Wine `Game.log` detection** (Steam compatdata /
+  Lutris prefixes) — `app/locate.js` currently scans Windows drives only (see TODO there).
+  Trust: Windows Authenticode signing + Linux GPG signing, VirusTotal, SHA-256 checksums.
+  See `SOLUTION-BRIEF.md` / `Permafleet-Solution-Brief.docx` §8.
 
 > Cadence: one milestone per iteration, each ending with a demo, a retro note
 > here, and a quick re-prioritization.

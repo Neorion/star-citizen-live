@@ -41,3 +41,7 @@ build/
 tmp/
 temp/
 *.tmp
+
+# Solution-brief build: keep the source scripts, drop generated images
+# (node_modules is already ignored above)
+reports/brief/*.png

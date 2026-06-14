@@ -27,6 +27,12 @@ const INSTALL_SUBDIRS = [
   'Games\\StarCitizen\\Roberts Space Industries\\StarCitizen'
 ];
 
+// TODO (packaging / Linux): this only scans Windows drive letters. The Linux
+// build (members playing SC via Proton/Wine) must add prefix-based detection,
+// e.g. Steam compatdata (~/.steam/steam/steamapps/compatdata/<id>/pfx/drive_c/
+// .../StarCitizen/<CHANNEL>/Game.log) and Lutris prefixes. Branch on process.platform
+// and add a linuxRoots()/installBases() path. See PROGRESS.md packaging note.
+
 // Existing Windows drive roots (C:\ .. Z:\).
 function driveRoots (existsSync = fs.existsSync) {
   const roots = [];
