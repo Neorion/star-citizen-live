@@ -120,7 +120,7 @@ body.push(new Paragraph({ children: [new PageBreak()] }));
 // Executive summary
 body.push(H1('Executive summary'));
 body.push(P([T('The system has two parts: a '), bold('live activity relay'), T(' that each member runs locally to read the Star Citizen game log, and a '), bold('central mission register'), T(' where officers post missions and fleet actions, members apply, and '), bold('officers validate'), T(' on completion. All state changes are written to a tamper-evident audit log. '), bold('Discord is the primary interface.')]));
-body.push(P([T('Testing established that the current game build (SC 4.8.0) does not record kills or ship destruction, and a player’s own log is self-reported. The register therefore uses '), bold('officer validation'), T(' as the authority for completion, with log activity attached as supporting evidence where it exists. The same model applies to '), bold('out-of-game missions and fleet actions'), T(', which have no log signal.')]));
+body.push(P([T('Testing across '), bold('193 logs from two players (builds 4.7.0–4.8.0)'), T(' established that the game does not record kills or ship destruction; the nearest combat outcome the log provides is a player going down ('), bold('incapacitation'), T('), which is now detected. A player’s own log is also self-reported. The register therefore uses '), bold('officer validation'), T(' as the authority for completion, with log activity attached as supporting evidence where it exists. The same model applies to '), bold('out-of-game missions and fleet actions'), T(', which have no log signal.')]));
 body.push(P([T('Current status: the live relay and dashboard are built and tested; the mission register engine is built and verified end-to-end. Remaining work: a web API and a Discord bot to operate the register, and hosting on an always-on server. A planned integration uses '), bold('Discord Scheduled Events'), T(' to capture interest, attendance and in-window activity.')]));
 body.push(P([T('A '), bold('federated deployment'), T(' — members’ machines exchanging signed updates with no single point of failure — is retained as an optional future path (D-004), separate from the original Fabric framework. It is not required for the current scope.')]));
 
@@ -138,12 +138,15 @@ body.push(table(
     ['Live dashboard — sessions, players, missions (from the log), combat-objective progress, notifications', { bold: false, fill: 'E7F4EC' }].length ? ['Live dashboard — sessions, players, missions, combat-progress, notifications', 'Built & tested'] : [],
     ['Auto-detect game install & channel (LIVE / PTU / HOTFIX), survive restarts', 'Built & tested'],
     ['Group missions by mission, with objectives nested', 'Built & tested'],
+    ['Mission-type classification (Bounty / Mercenary / Mining / …)', 'Built & tested'],
+    ['Player-down (incapacitation) detection', 'Built & tested'],
+    ['Regression testing against real player-log corpus', 'Built & tested'],
     ['Live activity posted to Discord (one-way webhook)', 'Working once connected'],
     ['Mission register engine — create / apply / assign / claim / officer-validate + audit', 'Built (engine), proven end-to-end'],
     ['Mission register over a web API', 'Next (M5.2)'],
     ['Mission register inside Discord (slash commands + Events hook)', 'Planned (M5.3)'],
     ['Always-on cloud hosting', 'Planned (M4)'],
-    ['Detecting individual kills', 'Not possible (game does not log them)'],
+    ['Detecting individual kills', 'Not possible — confirmed across 193 logs, two players, 4.7.0–4.8.0'],
     ['Decentralized / no-central-server', 'Optional, later']
   ].filter((r) => r.length),
   [6600, 2760]
@@ -171,7 +174,7 @@ body.push(P([T('This produces a participation record per event — interested, t
 body.push(H1('6. Making a busy feed useful — filters, grouping, metrics'));
 body.push(P('At fleet scale the feed is high-volume. Three controls reduce it:'));
 body.push(H3('Filter by mission type or operation'));
-body.push(P('In-game mission types (Bounty, Mercenary/Defense, Hauling, Salvage, Investigation, dynamic events such as XenoThreat) can be inferred from the log and mapped to friendly categories. Org “operations” (e.g. “Tactical Strike Group” — a real announced Star Citizen feature) are officer-named labels that in-game activity rolls up under.'));
+body.push(P('In-game mission types (Bounty, Mercenary/Defense, Hauling, Recovery, Mining, FPS/Facility, and others) are classified from the log’s mission generator/template names — built and validated against a 193-log corpus. Org “operations” (e.g. “Tactical Strike Group” — a real announced Star Citizen feature) are officer-named labels that in-game activity rolls up under.'));
 body.push(H3('Group, don’t spam'));
 ['Group by mission (one card per mission, not per line).', 'Roll up to operation level (one card per op).', 'Edit a single message as it progresses, or use one thread per operation.', 'Optional periodic digest instead of live events.'].forEach((t) => body.push(bullet(t)));
 body.push(H3('Metrics — what the log allows'));
@@ -182,6 +185,7 @@ body.push(table(
     ['Operation participation (distinct members active)', 'relays', 'inferred'],
     ['Active-player-minutes per operation', 'relays', 'inferred'],
     ['Objectives advanced / combat-progress per op', 'relays', 'inferred (proxy)'],
+    ['Player-downs (incapacitations) per session / op', 'relays', 'inferred'],
     ['Missions completed per week; completion rate', 'register', 'validated'],
     ['Average time-to-complete / time-to-validate', 'register', 'validated'],
     ['Interest → turn-up conversion; no-show rate', 'Discord + relays', 'mixed'],
@@ -258,7 +262,7 @@ body.push(H1('12. Decisions for the product owner'));
 
 // 13. limitations
 body.push(H1('13. Honest limitations'));
-['Individual kills (PvE or PvP) cannot be detected — the game does not log them.', 'In-game “activity” is only visible for members who run the relay.', 'Activity attribution needs a one-time link between a member’s relay and their Discord ID.', 'Cross-player correlation of a shared mission is by type + operation + time window, unless the game exposes a shared id (to be confirmed against a real capture).', 'A player’s own log is self-reported — which is exactly why officer validation is the authority.'].forEach((t) => body.push(bullet(t)));
+['Individual kills (PvE or PvP) cannot be detected — the game does not log them (confirmed across 193 logs, two players, builds 4.7.0–4.8.0). Player-down (incapacitation) is detected as the nearest available combat outcome.', 'In-game “activity” is only visible for members who run the relay.', 'Activity attribution needs a one-time link between a member’s relay and their Discord ID.', 'Cross-player correlation of a shared mission is by type + operation + time window, unless the game exposes a shared id (to be confirmed against a real capture).', 'A player’s own log is self-reported — which is exactly why officer validation is the authority.'].forEach((t) => body.push(bullet(t)));
 body.push(space(120));
 body.push(P([new TextRun({ text: 'Prepared by the build team with Claude Code. Source and living technical docs (DESIGN-missions-mvp, DECISIONS, PROGRESS) are in the project repository.', italics: true, size: 18, color: C.grey })]));
 
