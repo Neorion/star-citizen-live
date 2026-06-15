@@ -45,7 +45,7 @@ English BEFORE you run it:
 1. Clone the feature/fabric-free-m1 branch into this folder.
 2. Read CONTINUE.md, PROGRESS.md and DECISIONS.md so you understand the project.
 3. Run: npm install
-4. Run: npm test   (should be 10 passing tests)
+4. Run: npm test   (the suite should pass — currently 45 tests)
 5. Run: npm start   to start the service.
 6. Tell me the exact web address to open in my browser, and explain what I'm
    looking at when I open it.
@@ -57,8 +57,9 @@ Keep it beginner-friendly and pause if anything needs my decision.
 
 - Claude Code will **ask permission** before running commands. Read what it says,
   then approve — that's normal and how it keeps you in control.
-- It will download the project, install (fast — under a second), run the tests
-  (expect **10 passing**), and start the service.
+- It will download the project, run the tests (expect the full suite to **pass** —
+  currently 45), and start the service. (No install step is needed — the service
+  has zero dependencies.)
 - It'll give you a link like **http://localhost:3041/services/star-citizen**.
   Open that in your browser.
 
