@@ -69,6 +69,22 @@ signals, metrics, cross-platform packaging, friendly-name enrichment).
 3. **unp4k + StarCitizen-GameData** — extract DataForge/global.ini locally to turn mission/ship codenames into friendly names (the enrichment we deferred).
 4. **StarCitizenWiki/discord-bot + IRCON-Bot** — reference shapes for the M5.3 Discord bot.
 
+## Stalled-but-promising (revive / repurpose for a future project)
+Idle ≥ ~12 months or archived (last-push checked 2026-06-14). Permissive licence =
+forkable; GPL = ideas/approach only (copyleft); none = ideas only. Archived/old means
+*verify against the current game/site/API before investing*.
+
+| Project | Idle | Lic | Could seed… |
+|---|---|---|---|
+| [dolkensp/Spectrum.Net](https://github.com/dolkensp/Spectrum.Net) | ~9 yr | MIT | **RSI Spectrum (forums/chat) integration** — identity/community. Rare capability; API drifted → reference + rewrite. |
+| [StarCitizenWiki/discord-bot](https://github.com/StarCitizenWiki/discord-bot) | archived ~15 mo | MIT | **Fork-base for an SC info/ops Discord bot** (slash commands + data lookup). |
+| [Dymerz/StarCitizen-GameData](https://github.com/Dymerz/StarCitizen-GameData) | ~4 yr | GPL-3.0 | **DataForge → JSON/SQL lookup** (mission/ship/item names). Pair with the active unp4k. Approach only. |
+| [Dymerz/RSI-Scraper](https://github.com/Dymerz/RSI-Scraper) | ~3 yr | GPL-3.0 | **Org roster / fleet import** (members, ships). Scrapers rot — ideas only. |
+| [Valalol/Star-Citizen-Navigation](https://github.com/Valalol/Star-Citizen-Navigation) | ~2 yr | MIT | **Navigation/logistics companion** (routes, locations). 69★ base; forkable. |
+| [SpenserCai/LGS-Helper](https://github.com/SpenserCai/LGS-Helper) | ~16 mo | GPL-3.0 | **Linux/Steam-Deck launcher** (Proton paths). 419★ + idle = may want a maintainer. |
+| [Mirdalan/discord_astro_bot](https://github.com/Mirdalan/discord_astro_bot) | ~5 yr | MIT | Clean **ship-ownership roster bot** seed. |
+| [bgadrian/sc-janus](https://github.com/bgadrian/sc-janus) | ~9 yr | none | Historical org bot — ideas only (no licence). |
+
 ## How to consider a project for reuse (the rubric)
 Score each on:
 - **Licence** — MIT/Apache/BSD → reuse code (keep notice); GPL/AGPL → ideas only; none → ideas only.
