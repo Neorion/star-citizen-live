@@ -64,7 +64,7 @@ signals, metrics, cross-platform packaging, friendly-name enrichment).
 | [dydrmr/VerseTime](https://github.com/dydrmr/VerseTime) | JS | minor | In-verse time. |
 
 ## Priority picks for *our* roadmap
-1. **all-slain — DONE & reopened kill detection.** Kills DO log for the running player (Actor Death/CActor::Kill, 4.0.2+); our parser already matches. Next: capture a real member combat session (a member who actually gets/takes a kill) to flip the kill/vehicle rules to verified.
+1. **all-slain — DONE; kills now VERIFIED.** Reconciled via all-slain (kills log for the running player, 4.0.2+), then **verified on Fadingdoughnut0's real logs**: 417 kills + 16 `<Vehicle Destruction>` lines parsed correctly. The kill/vehicle rules are now `verified:true` and wired to the dashboard + Discord.
 2. **lug-helper** — Proton/Wine log paths for the Linux relay (M-packaging, `app/locate.js`).
 3. **unp4k + StarCitizen-GameData** — extract DataForge/global.ini locally to turn mission/ship codenames into friendly names (the enrichment we deferred).
 4. **StarCitizenWiki/discord-bot + IRCON-Bot** — reference shapes for the M5.3 Discord bot.

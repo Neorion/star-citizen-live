@@ -98,16 +98,15 @@ const RULES = [
     fields: (m) => ({ text: m[1] })
   },
 
-  // --- CLIENT-INVOLVED COMBAT (format corroborated; real in-the-wild capture pending).
-  // Since SC 4.0.2 the client Game.log records <Actor Death> CActor::Kill ONLY for kills
-  // that involve the running player (your kills, your death) - not third-party kills.
-  // The format below matches the MAINTAINED all-slain parser (DimmaDont/all-slain, 2025)
-  // and our parser passes its test lines (FPS kill = damage type 'Bullet'; ship kill =
-  // damage type 'VehicleDestruction'). Flagged verified:false only because our own corpus
-  // (Kersa hangar + DeadMan 193 logs) contained no client-involved kills - flip to
-  // verified once captured from a real member combat session. See REFERENCES.md. ---
+  // --- CLIENT-INVOLVED COMBAT (VERIFIED 2026-06-14 against real member data). Since SC
+  // 4.0.2 the client Game.log records <Actor Death> CActor::Kill and <Vehicle Destruction>
+  // ONLY for events that involve the running player (your kills, deaths, destructions) -
+  // not third-party. VERIFIED end-to-end against Fadingdoughnut0's logs (builds 4.2.x,
+  // Aug-Sep 2025): 417 real kills (parser caught all; damage types Bullet/ElectricArc/
+  // Explosion/TakeDown/VehicleDestruction/...) + 16 vehicle destructions. Format matches
+  // the maintained all-slain parser (DimmaDont/all-slain). See REFERENCES.md. ---
   {
-    kind: 'kill', tag: 'Actor Death', verified: false,
+    kind: 'kill', tag: 'Actor Death',
     test: /CActor::Kill: '([^']+)' \[(\d+)\] in zone '([^']+)' killed by '([^']+)' \[(\d+)\] using '([^']+)' \[Class ([^\]]+)\] with damage type '([^']+)' from direction x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+)/,
     fields: (m) => ({
       victim: m[1], victimId: m[2], zone: m[3],
@@ -116,7 +115,7 @@ const RULES = [
     })
   },
   {
-    kind: 'vehicle:destroy', tag: 'Vehicle Destruction', verified: false,
+    kind: 'vehicle:destroy', tag: 'Vehicle Destruction',
     test: /Vehicle '([^']+)' \[(\d+)\] in zone '([^']+)' \[pos x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+) vel x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+)\] driven by '([^']+)' \[(\d+)\] advanced from destroy level (\d+) to (\d+) caused by '([^']+)' \[(\d+)\] with '([^']+)'/,
     fields: (m) => ({
       vehicle: m[1], vehicleId: m[2], zone: m[3],

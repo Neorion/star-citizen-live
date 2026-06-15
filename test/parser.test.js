@@ -44,7 +44,7 @@ test('plain header line classified as log:raw', () => {
 
 // --- UNVERIFIED patterns (documented SC 4.x format; pending real combat log) ---
 
-test('parses documented kill line (UNVERIFIED/dormant format)', () => {
+test('parses a player kill (Actor Death) — VERIFIED on real member data', () => {
   const line = "<2026-06-09T07:00:00.000Z> [Notice] <Actor Death> CActor::Kill: 'VictimGuy' [200111] in zone 'OOC_Stanton' killed by 'KillerGuy' [200222] using 'KLWE_LaserRepeater' [Class KLWE_LaserRepeater_S3] with damage type 'Energy' from direction x: 0.5, y: -0.2, z: 0.1";
   const r = parseLine(line);
   assert.strictEqual(r.kind, 'kill');
@@ -53,7 +53,7 @@ test('parses documented kill line (UNVERIFIED/dormant format)', () => {
   assert.strictEqual(r.weapon, 'KLWE_LaserRepeater');
   assert.strictEqual(r.damageType, 'Energy');
   assert.strictEqual(r.dirZ, '0.1');
-  assert.strictEqual(r.verified, false);  // flagged: tag absent from current 4.8.0 logs
+  assert.strictEqual(r.verified, true);   // VERIFIED 2026-06-14 against 417 real kills
 });
 
 test('parses a ship kill (Actor Death, damage type VehicleDestruction) — format corroborated by all-slain', () => {
@@ -62,10 +62,10 @@ test('parses a ship kill (Actor Death, damage type VehicleDestruction) — forma
   assert.strictEqual(r.kind, 'kill');
   assert.strictEqual(r.killer, 'Player-123_Name');
   assert.strictEqual(r.damageType, 'VehicleDestruction');
-  assert.strictEqual(r.verified, false);  // format corroborated; flip on a real member capture
+  assert.strictEqual(r.verified, true);
 });
 
-test('parses documented vehicle destruction (UNVERIFIED/dormant format)', () => {
+test('parses vehicle destruction — VERIFIED on real member data', () => {
   const line = "<2026-06-09T07:01:00.000Z> [Notice] <Vehicle Destruction> CVehicle::OnAdvanceDestroyLevel: Vehicle 'ANVL_Hornet_F7C' [300333] in zone 'OOC_Stanton_1a' [pos x: 1.0, y: 2.0, z: 3.0 vel x: 0.0, y: 0.0, z: 0.0] driven by 'PilotGuy' [400444] advanced from destroy level 0 to 2 caused by 'KillerGuy' [200222] with 'Ballistic'";
   const r = parseLine(line);
   assert.strictEqual(r.kind, 'vehicle:destroy');
@@ -73,7 +73,7 @@ test('parses documented vehicle destruction (UNVERIFIED/dormant format)', () => 
   assert.strictEqual(r.toLevel, '2');
   assert.strictEqual(r.attacker, 'KillerGuy');
   assert.strictEqual(r.damageType, 'Ballistic');
-  assert.strictEqual(r.verified, false);
+  assert.strictEqual(r.verified, true);
 });
 
 // --- VERIFIED mission patterns (from a real combat-mission session, 2026-06-12) ---

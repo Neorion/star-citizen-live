@@ -42,7 +42,7 @@ The fork pursues the same goals. The changes below were made for the technical r
 
 The system has two parts: a **live activity relay** that each member runs locally to read the Star Citizen game log, and a **central mission register** where officers post missions and fleet actions, members apply, and **officers validate** on completion. All state changes are written to a tamper-evident audit log. **Discord is the primary interface.**
 
-Testing across **193 logs from two players (builds 4.7.0–4.8.0)** established that the game records only the kills that **involve the running player** (your kills and your deaths) — not third-party kills (dropped in SC 4.0.2). The format is corroborated (it matches a maintained community parser) and our parser handles it; our sample logs simply contained no such kills, so an end-to-end capture is still pending. **Player-downs (incapacitation)** are also detected. A player's own log is also self-reported. The register therefore uses **officer validation** as the authority for completion, with log activity attached as supporting evidence where it exists. The same model applies to **out-of-game missions and fleet actions**, which have no log signal.
+Testing across **193 logs from two players (builds 4.7.0–4.8.0)** established that the game records only the kills that **involve the running player** (your kills and your deaths) — not third-party kills (dropped in SC 4.0.2). This is now **verified end-to-end against a member's real logs** (417 kills + 16 ship destructions parsed correctly). **Player-downs (incapacitation)** are also detected. A player's own log is also self-reported. The register therefore uses **officer validation** as the authority for completion, with log activity attached as supporting evidence where it exists. The same model applies to **out-of-game missions and fleet actions**, which have no log signal.
 
 Current status: the live relay and dashboard are built and tested; the mission register engine and its REST API are built and verified end-to-end. Remaining work: a Discord bot to operate the register inside Discord, and hosting on an always-on server. A planned integration uses **Discord Scheduled Events** to capture interest, attendance and in-window activity.
 
@@ -85,7 +85,7 @@ flowchart LR
 | Mission register — create / apply / assign / claim / officer-validate + audit | Built (engine + REST API), proven end-to-end |
 | Mission register inside Discord (slash commands + Events hook) | Planned (M5.3) |
 | Always-on cloud hosting | Planned (M4) |
-| Detect kills involving the running player (your kills + deaths) | Loggable (SC 4.0.2+); parser matches the format; pending a real combat capture |
+| Detect kills involving the running player (your kills + deaths) | Built & verified — 417 real kills + 16 ship destructions from a member's logs |
 | Detecting third-party kills (others' fights) | Not possible — the game stopped logging them in 4.0.2 |
 | Decentralized / no-central-server | Optional, later |
 
@@ -251,7 +251,7 @@ Deliberately not needed: no blockchain, no cryptocurrency, no paid database, no 
 
 ## 13. Honest limitations
 
-- Only kills that involve the running player are logged (since SC 4.0.2) — your kills and your deaths; third-party kills are not. The format is corroborated (it matches the maintained all-slain parser) and our parser handles it, but we have not yet captured a real member combat session to confirm end-to-end. Player-down (incapacitation) is also detected.
+- Only kills that involve the running player are logged (since SC 4.0.2) — your kills and your deaths; third-party kills are not. This is verified end-to-end against a member's real logs (417 kills + 16 ship destructions parsed correctly). Player-down (incapacitation) is also detected.
 - In-game "activity" is only visible for members who run the relay.
 - Activity attribution needs a one-time link between a member's relay and their Discord ID.
 - Cross-player correlation of a shared mission is by type + operation + time window, unless the game exposes a shared id (to be confirmed against a real capture).

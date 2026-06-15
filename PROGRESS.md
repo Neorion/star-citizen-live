@@ -10,6 +10,25 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 🎯 Kill feed VERIFIED on real member data — headline feature live ✅
+**Date:** 2026-06-14
+
+A 3rd member's corpus (**Fadingdoughnut0**: 332 files / 9.6 GB, builds 4.2.x–4.8.0,
+Aug 2025–Jun 2026) finally contained client-involved combat. Full scan: 5 files with
+kills; our parser caught **all 417** `<Actor Death> CActor::Kill` lines (414 kills +
+3 deaths, 394 NPC victims; damage types Bullet/ElectricArc/Explosion/TakeDown/
+VehicleDestruction/Crash/Melee/Suicide) **+ 16 `<Vehicle Destruction>`** lines
+(shipName: `DRAK_Corsair` → "Corsair").
+
+- Flipped `kill` + `vehicle:destroy` rules to **`verified:true`**. Tests updated (45 pass).
+- Corrected memory, both briefs, and `REFERENCES.md`.
+
+The original headline feature — **kills → dashboard 💀 panel / Discord** — is real for
+member-involved combat (your kills, deaths, ship destructions). Third-party kills
+remain unlogged (SC 4.0.2).
+
+---
+
 ## Kills wired end-to-end — ready to test ✅
 **Date:** 2026-06-14
 
