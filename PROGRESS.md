@@ -10,6 +10,26 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## ⚠️ Correction — kill logging was REMOVED after SC 4.3.0 (not in current game) ✅
+**Date:** 2026-06-14
+
+Double-checked the "verified kills" against build versions (good catch — they could
+have been an old-version artifact). They were: **all 417 kills are from 4.2.1 / 4.3.0**
+(Aug–Sep 2025). Mapped all 26 builds in the corpus — **4.3.2, 4.4, 4.5, 4.6, 4.7, 4.8 →
+ZERO kills across ~290 files.** Scanned the largest 4.7/4.8 sessions: 0 `CActor::Kill`,
+0 `killed by`, 0 reformatted variant — yet **1,660** combat-mission refs + **3,125**
+`CSCActorCorpseUtils` corpse-creation lines (combat + deaths happened, kills not logged).
+Corroborated by DeadMan-4.7.0 and Kersa-4.8.0 (both zero).
+
+**Conclusion:** CIG removed/moved `CActor::Kill` + `<Vehicle Destruction>` logging after
+4.3.0. **The live kill feed does NOT work on the current game (4.8.0).** The parser rules
+stay (they parse historical ≤4.3.0 logs correctly; `verified:true` = format-confirmed, not
+a current-availability claim). The 💀 Kills panel + Discord wiring remain — they'll only
+fire on ≤4.3.0 logs (e.g. historical analysis). This **supersedes** the "headline feature
+live" entry below. Lesson: "verified on real data" must be qualified by game version.
+
+---
+
 ## 🎯 Kill feed VERIFIED on real member data — headline feature live ✅
 **Date:** 2026-06-14
 

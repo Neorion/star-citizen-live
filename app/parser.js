@@ -98,13 +98,19 @@ const RULES = [
     fields: (m) => ({ text: m[1] })
   },
 
-  // --- CLIENT-INVOLVED COMBAT (VERIFIED 2026-06-14 against real member data). Since SC
-  // 4.0.2 the client Game.log records <Actor Death> CActor::Kill and <Vehicle Destruction>
-  // ONLY for events that involve the running player (your kills, deaths, destructions) -
-  // not third-party. VERIFIED end-to-end against Fadingdoughnut0's logs (builds 4.2.x,
-  // Aug-Sep 2025): 417 real kills (parser caught all; damage types Bullet/ElectricArc/
-  // Explosion/TakeDown/VehicleDestruction/...) + 16 vehicle destructions. Format matches
-  // the maintained all-slain parser (DimmaDont/all-slain). See REFERENCES.md. ---
+  // --- CLIENT-INVOLVED COMBAT (parser format VERIFIED on real logs; but see VERSION
+  // CAVEAT). The client Game.log records <Actor Death> CActor::Kill and <Vehicle
+  // Destruction> for events involving the running player (your kills/deaths/destructions),
+  // not third-party. Format verified against Fadingdoughnut0's 4.2.1/4.3.0 sessions
+  // (Aug-Sep 2025): 417 kills (parser caught ALL; 8 damage types) + 16 vehicle destructions
+  // (DRAK_Corsair -> "Corsair"). Matches the all-slain parser (DimmaDont/all-slain).
+  //
+  // ** VERSION CAVEAT (verified 2026-06-14): these lines appear ONLY in SC <= 4.3.0. **
+  // Across ~290 later files (4.3.2 -> 4.8.0) from 3 players - INCLUDING combat-mission
+  // sessions with corpse activity (CSCActorCorpseUtils) - there are ZERO CActor::Kill
+  // lines. CIG appears to have removed/moved kill logging after 4.3.0. So these rules
+  // parse HISTORICAL (<=4.3.0) logs correctly but DO NOT fire on the current game (4.8.0).
+  // See PROGRESS.md / REFERENCES.md. ---
   {
     kind: 'kill', tag: 'Actor Death',
     test: /CActor::Kill: '([^']+)' \[(\d+)\] in zone '([^']+)' killed by '([^']+)' \[(\d+)\] using '([^']+)' \[Class ([^\]]+)\] with damage type '([^']+)' from direction x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+)/,
