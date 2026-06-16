@@ -58,6 +58,33 @@ git push        # LAST — send it up before you walk away
 
 ---
 
+## Picking up a session (parity across devices & tools)
+
+Whichever machine or AI tool you use, get to the same state the same way:
+
+1. `git pull` — grab the latest.
+2. Read, in order, to get current: **`AGENTS.md`** (the rules + project context;
+   Codex reads this automatically), **`PROGRESS.md`** (top entries = where we are),
+   **`REVIEW.md`** (any open review / cross-agent exchange), **`BACKLOG.md`**
+   (parked ideas). `DECISIONS.md` (D-001…D-006) holds the *why*.
+
+Because all durable state lives in these committed files (plus Claude's memory),
+a fresh session — on any device — resumes with no loss. Nothing important lives
+only in a chat window.
+
+## Starting an OpenAI Codex review
+
+1. Open the repo in **Codex** (point it at this project / branch).
+2. Codex reads **`AGENTS.md`** automatically — §10 sets the rules: *the owner
+   decides all development; agents propose, never merge to `main`, never build
+   unprompted.*
+3. The review scope and the collaboration log live in **`REVIEW.md`**. Codex
+   writes findings under *Codex findings* (and/or as PR comments) on a branch.
+4. Pull that branch; Claude responds under *Claude responses*; **you** approve or
+   decline each item under *Owner decisions* — the only section that authorises work.
+
+---
+
 ## Honest notes for this project
 
 - **Live game-log watching only works on the Windows gaming PC**, because Star
@@ -85,6 +112,6 @@ git push        # LAST — send it up before you walk away
 
 ```bash
 npm start                        # run the service -> http://localhost:3041/services/star-citizen
-npm test                         # run the test suite (10 tests, no setup needed)
+npm test                         # run the full test suite (node --test, no setup needed)
 npm run replay /path/to/Game.log # replay a saved log and tally detected events
 ```
