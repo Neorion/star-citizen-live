@@ -5,6 +5,28 @@ understands the direction. Newest at the top.
 
 ---
 
+## D-006 — AI collaboration & human-control model; sub-agents for big batches
+**Date:** 2026-06-14 · **Status:** Adopted
+
+**Decision:** The product owner controls all development. AI agents (Claude Code,
+OpenAI Codex) act as **advisors/reviewers** — they **propose** via branches, pull
+requests, and committed docs, and **do not merge to `main` or build features
+without the owner's explicit go-ahead**. Cross-agent collaboration is **async via
+GitHub documentation** (`REVIEW.md`) and PR comments, not a live link. Adopt
+**sub-agents** (separate context windows) as the default for big read/analysis
+batches (large `Game.log` corpora, broad research) — they return summaries so heavy
+reads stay out of the main context.
+
+**Why:** multiple AI tools now work this repo; the owner must stay the decision-maker.
+Async doc-based collaboration keeps an auditable trail and avoids any agent acting
+unilaterally. Sub-agents address the practical context-window limit of long sessions.
+
+**Consequences:** `AGENTS.md` §10 carries the binding rules (Codex reads it by
+default; `CLAUDE.md` imports it). `REVIEW.md` is the shared review/collaboration log;
+its *Owner decisions* section is the only thing that authorises work.
+
+---
+
 ## D-005 — Build a centralized, officer-validated mission register next; defer federation
 **Date:** 2026-06-13 · **Status:** Adopted (direction set; M5 design in `DESIGN-missions-mvp.md`)
 

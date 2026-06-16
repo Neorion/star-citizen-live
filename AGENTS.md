@@ -229,3 +229,45 @@ This repo is set up so work can move freely between AI coding tools:
 **Rule for any tool:** put durable project context in **`AGENTS.md`** only. Do not
 fork context into `CLAUDE.md`/`PROJECT_CONTEXT.md` — they intentionally just point
 here, so the three can never disagree.
+
+---
+
+## 10. AI collaboration & the human-control model (READ FIRST if you are an AI agent)
+
+This repo is worked by **multiple AI tools** (Claude Code, OpenAI Codex) under one
+human product owner (**Neorion**). The rules below are binding for any AI agent.
+
+**Control stays with the product owner. Always.**
+- The owner decides **what gets developed**. AI agents are **advisors and
+  reviewers** — they **propose**, they do not decide.
+- **Do NOT merge to `main`.** Do not build features, refactor broadly, or change
+  behaviour **without the owner's explicit go-ahead** in that thread.
+- Surface work as **branches + pull requests + committed docs** for the owner to
+  review and approve. Small, reversible, well-described changes.
+- A review or suggestion is **advisory**, not authorisation to implement it.
+
+**How Claude Code and Codex collaborate (async, via GitHub):**
+- The shared channel is **`REVIEW.md`** (committed markdown) and **PR comments** —
+  not a live connection. One agent writes findings; the other reads on next pull
+  and responds in the same doc; the owner records decisions there.
+- Keep the exchange factual and cite files/lines. Don't re-litigate settled
+  decisions — check `DECISIONS.md` (D-001…D-006) and `PROGRESS.md` first.
+
+**Ground truths — do not "rediscover" or contradict without new evidence:**
+- Fabric was removed on purpose (D-002); the design is **centralised + officer-
+  validated** (D-005), with federation only as an optional later path (D-004).
+- **Kill logging:** present only in SC **≤ 4.3.0**; CIG removed it after 4.3.0 —
+  **not in the current game (4.8.0)**. Verified across 3 players' logs. The kill
+  rules parse *historical* logs only. (See `PROGRESS.md` / the combat memory.)
+- **Honesty rule:** label **validated** (officer/real-log) vs **inferred**
+  (telemetry/proxy); never overclaim. Qualify "verified on real data" by game
+  version. Secrets via env only (bot token, never a user token); never commit them.
+- Zero runtime deps; Node built-ins; tests run with `node --test test/*.test.js`.
+
+**Working practice — sub-agents for big batches:** for heavy read/analysis work
+(large `Game.log` corpora under `Gamelogs/`, broad multi-repo research), delegate
+to a **sub-agent** (its own context window) that returns a **summary**, rather than
+reading gigabytes into the main thread. Adopted as the default for big batches.
+
+**Active request:** see `REVIEW.md` for the current project-review scope and the
+collaboration log.
