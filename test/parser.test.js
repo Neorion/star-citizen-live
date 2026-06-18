@@ -129,6 +129,50 @@ test('detects player incapacitation (down) — VERIFIED in 4.7.0 logs', () => {
   assert.ok(r.text.startsWith('Incapacitated:'));
 });
 
+// --- VERIFIED current-build death + mission-lifecycle (real 4.7-4.8 logs, 2026-06) ---
+// SC stopped logging kills after 4.3.0; these are the current-build signals.
+
+test('detects local-player death via corpse body marker — VERIFIED on real 4.7-4.8 logs', () => {
+  // First line of the corpse-recovery burst; always the body, one per death.
+  const line = "<2026-06-02T19:30:56.875Z> [Notice] <Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'body_01_noMagicPocket_200128671231 - Class(body_01_noMagicPocket) - Context(Streamable Runtime-spawned) - Socpak()', Recorded data is: Port Name 'Body_ItemPort', Class GUID: 'dbaa8a7d-755f-4104-8b24-7b58fd1e76f6', KeptId: '200128671231' [Team_CoreGameplayFeatures][Unknown]";
+  const r = parseLine(line);
+  assert.strictEqual(r.kind, 'player:death');
+  assert.strictEqual(r.bodyId, '200128671231');
+});
+
+test('a corpse GEAR line is NOT a death (only the body marker counts)', () => {
+  // Same tag, but a helmet/armour item - must fall through, so we never double-count.
+  const line = "<2026-06-16T04:49:59.187Z> [Notice] <Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'kap_combat_heavy_helmet_02_03_01_510415156137 - Class(kap_combat_heavy_helmet_02_03_01) - Context(Streamable Runtime-spawned) - Socpak()', Recorded data is: Port Name 'Armor_Helmet', Class GUID: '1ee43c13-990f-4a3f-b4ed-d5727af01cac' [Team_CoreGameplayFeatures][Unknown]";
+  const r = parseLine(line);
+  assert.notStrictEqual(r.kind, 'player:death');
+});
+
+test('detects mission accepted/started (ContractId + MissionId) — VERIFIED 4.8.0', () => {
+  const line = "<2026-06-17T07:49:04.019Z> [Notice] <CSCPlayerMissionLog::MissionStartCommsNotification> MissionStart comms notification will not be sent - This mission has no MissionStart comms setup. ContractId: [c095ce31-4305-445f-806c-06d1b9001686]. MissionId: e50113b0-d438-4996-9755-1c3fc9532e85 [Team_MissionFeatures][Missions][Comms]";
+  const r = parseLine(line);
+  assert.strictEqual(r.kind, 'mission:start');
+  assert.strictEqual(r.contractId, 'c095ce31-4305-445f-806c-06d1b9001686');
+  assert.strictEqual(r.missionId, 'e50113b0-d438-4996-9755-1c3fc9532e85');
+});
+
+test('detects mission end with CompletionType=Complete — VERIFIED 4.8.0', () => {
+  const line = "<2026-06-17T08:05:40.457Z> [Notice] <EndMission> Ending mission for player. MissionId[58dc656e-e1a2-454f-92fd-c032b9e5c1d6] Player[Kersa] PlayerId[204821711285] CompletionType[Complete] Reason[Mission Ended] [Team_MissionFeatures][Missions]";
+  const r = parseLine(line);
+  assert.strictEqual(r.kind, 'mission:end');
+  assert.strictEqual(r.missionId, '58dc656e-e1a2-454f-92fd-c032b9e5c1d6');
+  assert.strictEqual(r.player, 'Kersa');
+  assert.strictEqual(r.completionType, 'Complete');
+  assert.strictEqual(r.reason, 'Mission Ended');
+});
+
+test('detects mission end with CompletionType=Abandon — VERIFIED 4.8.0', () => {
+  const line = "<2026-06-17T07:49:04.969Z> [Notice] <EndMission> Ending mission for player. MissionId[e50113b0-d438-4996-9755-1c3fc9532e85] Player[Kersa] PlayerId[204821711285] CompletionType[Abandon] Reason[Player left] [Team_MissionFeatures][Missions]";
+  const r = parseLine(line);
+  assert.strictEqual(r.kind, 'mission:end');
+  assert.strictEqual(r.completionType, 'Abandon');
+  assert.strictEqual(r.reason, 'Player left');
+});
+
 // --- VERIFIED helpers folded in from the community reference (validated on real log) ---
 
 test('shipName extracts and prettifies real ship IDs', () => {

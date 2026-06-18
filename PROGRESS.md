@@ -10,6 +10,35 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 🩸 Current-build DEATH signal + mission lifecycle parser rules (branch) ✅
+**Date:** 2026-06-17 · branch `feature/death-and-mission-lifecycle`
+
+A live test ("someone killed me earlier — did you get that?") exposed a gap: on
+4.8.0 the death produced **no kill line** (removed after 4.3.0) **and no
+`Incapacitated:` line** — so the relay missed it. Investigation (incl. a sub-agent
+sweep of the 525-file corpus) found the reliable current-build signals:
+
+- **Local-player DEATH** — when you die, your corpse spawns and the game lists your
+  gear for recovery. The **first** line of that ~30-line burst is always the body:
+  `<Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'body_01_noMagicPocket_<id>'`.
+  Keying on `body_01_noMagicPocket` = exactly **one event per death**, and it does
+  **not** match later corpse-*loot* bursts (those start with gear) → no double-count.
+  VERIFIED across 4.7.175→4.8.180 (3 players). New rule `player:death`.
+- **Mission lifecycle** — `<CSCPlayerMissionLog::MissionStartCommsNotification>`
+  (ContractId + MissionId) = **accepted/started** → `mission:start`; `<EndMission>
+  … CompletionType[…] Player[…]` = authoritative **outcome** → `mission:end`.
+  CompletionType vocab (corpus): **Complete 1043 / Abandon 292 / Fail 98 /
+  Deactivate 20**.
+
+**Built (this branch):** the three parser rules + 5 tests against verbatim real
+lines. Suite green (**50 tests**). Parser-only — no runtime/dashboard behaviour
+change yet. **Investigation written up in `DESIGN-mission-dashboard.md`** (proposed
+counters/table/wiring). **Awaiting owner go-ahead** for the service + UI wiring
+(per D-006). Note: still **local-player only** + self-reported — the officer
+register stays the source of truth (D-005).
+
+---
+
 ## ⚠️ Correction — kill logging was REMOVED after SC 4.3.0 (not in current game) ✅
 **Date:** 2026-06-14
 
