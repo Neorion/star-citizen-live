@@ -49,7 +49,7 @@ class StarCitizenService extends EventEmitter {
     }, settings);
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false }, settings.discord || {});
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, missionlog: {}, notifications: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, notifications: {}, logs: {}, startedAt: null };
     this.state.missionGroups = {};  // missions grouped by MissionId (built from the log)
     this.state.objectives = {};     // objective details keyed by ObjectiveId
     this.state.combatlog = {};      // combat progress inferred from mission objectives
@@ -82,7 +82,8 @@ class StarCitizenService extends EventEmitter {
   get logins () { return Object.values(this.state.logins); }     // every login event
   get vehicles () { return Object.values(this.state.vehicles); }
   get kills () { return Object.values(this.state.kills); }
-  get incaps () { return Object.values(this.state.incaps); }              // player down/death events
+  get incaps () { return Object.values(this.state.incaps); }              // player down (revivable) events
+  get deaths () { return Object.values(this.state.deaths); }              // local-player deaths (corpse-recovery signal)
   get missionlog () { return Object.values(this.state.missionlog); }
   get notifications () { return Object.values(this.state.notifications); }  // general HUD/zone notices
   get combatlog () { return Object.values(this.state.combatlog); }          // combat progress via mission objectives
@@ -92,8 +93,32 @@ class StarCitizenService extends EventEmitter {
     return Object.values(this.state.missionGroups).map((m) => {
       const objectives = Object.keys(m.objectiveIds).map((oid) => this.state.objectives[oid]).filter(Boolean);
       const last = m.notifications[m.notifications.length - 1];
-      return { id: m.id, title: last ? last.text : null, generator: m.generator || null, type: missionType(m.generator), firstSeen: m.firstSeen, lastSeen: m.lastSeen, objectives, notifications: m.notifications };
+      // Lifecycle status: an explicit outcome (Complete/Abandon/Fail/Deactivate) once
+      // ended, else 'Active' if we saw it start, else null (seen only via objectives).
+      const status = m.outcome || (m.startedAt ? 'Active' : null);
+      return { id: m.id, title: last ? last.text : null, generator: m.generator || null, type: missionType(m.generator),
+        firstSeen: m.firstSeen, lastSeen: m.lastSeen,
+        startedAt: m.startedAt || null, endedAt: m.endedAt || null, outcome: m.outcome || null, reason: m.reason || null,
+        status, contractId: m.contractId || null,
+        objectives, notifications: m.notifications };
     });
+  }
+
+  // Mission-outcome tallies for the dashboard, computed from the grouped missions.
+  // Local player only + self-reported (see DESIGN-mission-dashboard.md / D-005).
+  missionStats () {
+    const s = { accepted: 0, completed: 0, abandoned: 0, failed: 0, deactivated: 0, active: 0 };
+    for (const m of Object.values(this.state.missionGroups)) {
+      if (m.startedAt) s.accepted += 1;
+      switch (m.outcome) {
+        case 'Complete': s.completed += 1; break;
+        case 'Abandon': s.abandoned += 1; break;
+        case 'Fail': s.failed += 1; break;
+        case 'Deactivate': s.deactivated += 1; break;
+        default: if (m.startedAt) s.active += 1;   // started, no outcome yet
+      }
+    }
+    return s;
   }
   get logs () { return Object.values(this.state.logs); }
   get missions () { return this.missionManager ? this.missionManager.missions : []; }
@@ -132,10 +157,12 @@ class StarCitizenService extends EventEmitter {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
           channel: this.channel, session: this.session, sessions: this.sessions,
           missions: this.missionGroups,
+          missionStats: this.missionStats(),
           kills: newest(this.kills),
+          deaths: newest(this.deaths),
           counts: {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
-            vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length,
+            vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length, deaths: this.deaths.length,
             missionlog: this.missionlog.length, missions: this.missionGroups.length, notifications: this.notifications.length,
             combat: this.combatlog.length,
             logs: this.logs.length, flagged: this.flagged.length
@@ -148,16 +175,16 @@ class StarCitizenService extends EventEmitter {
         return send(200, { type: 'StarCitizen', data: {
           status: this.status, startedAt: this.state.startedAt, channel: this.channel, session: this.session, sessions: this.sessions.length,
           activities: this.activities.length, players: this.players.length, logins: this.logins.length,
-          vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length,
-          missionlog: this.missionlog.length,
+          vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length, deaths: this.deaths.length,
+          missionlog: this.missionlog.length, missionStats: this.missionStats(),
           logs: this.logs.length, missions: this.missions.length
         }});
       }
-      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, incaps: () => this.incaps, missionlog: () => this.missionlog, notifications: () => this.notifications, messages: () => this.logs };
+      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, notifications: () => this.notifications, messages: () => this.logs };
       for (const [name, getter] of Object.entries(collections)) {
         if (path === `${base}/${name}`) {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
-          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps') {
+          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths') {
             const data = await body();
             // Players dedupe by handle (distinct roster) rather than per-event.
             if (name === 'players' && data.name) {
@@ -278,6 +305,14 @@ class StarCitizenService extends EventEmitter {
         this.emit('player:incap', inc);
         break;
       }
+      case 'player:death': {
+        // Local-player death (corpse-recovery body marker). One event per death;
+        // SC stopped logging kills after 4.3.0, so this is the current-build signal.
+        const d = { id, kind: ev.kind, player: this._sessionHandle || null, bodyId: ev.bodyId, timestamp: ev.timestamp };
+        this.state.deaths[id] = d;
+        this.emit('player:death', d);
+        break;
+      }
       case 'vehicle:destroy': {
         const v = { id, vehicle: ev.vehicle, vehicleName: shipName(ev.vehicle), cause: ev.cause, attacker: ev.attacker, fromLevel: ev.fromLevel, toLevel: ev.toLevel, timestamp: ev.timestamp };
         this.state.vehicles[id] = v;
@@ -287,9 +322,12 @@ class StarCitizenService extends EventEmitter {
       case 'mission:contract':
       case 'mission:objective':
       case 'mission:notification':
-      case 'mission:marker': {
+      case 'mission:marker':
+      case 'mission:start':
+      case 'mission:end': {
         const me = { id, kind: ev.kind, timestamp: ev.timestamp,
-          contract: ev.contract, generator: ev.generator, text: ev.text, objectiveId: ev.objectiveId, missionId: ev.missionId };
+          contract: ev.contract, generator: ev.generator, text: ev.text, objectiveId: ev.objectiveId, missionId: ev.missionId,
+          contractId: ev.contractId, completionType: ev.completionType, reason: ev.reason, player: ev.player };
         this.state.missionlog[id] = me;
         this._indexMission(ev);
         this.emit(ev.kind, me);
@@ -336,6 +374,16 @@ class StarCitizenService extends EventEmitter {
         (this.state.missionGroups[ev.missionId] = { id: ev.missionId, firstSeen: ev.timestamp, objectiveIds: {}, notifications: [] });
       m.lastSeen = ev.timestamp;
       if (ev.generator) m.generator = ev.generator;   // template name -> mission type
+      // Lifecycle: start stamps acceptance + contract template; end stamps the outcome.
+      if (ev.kind === 'mission:start') {
+        if (!m.startedAt) m.startedAt = ev.timestamp;
+        if (ev.contractId) m.contractId = ev.contractId;
+      }
+      if (ev.kind === 'mission:end') {
+        m.endedAt = ev.timestamp;
+        m.outcome = ev.completionType;   // Complete | Abandon | Fail | Deactivate
+        m.reason = ev.reason;
+      }
       if (ev.kind === 'mission:notification') {
         m.notifications.push({ text: ev.text, objectiveId: ev.objectiveId || null, timestamp: ev.timestamp });
         if (m.notifications.length > 100) m.notifications.shift();

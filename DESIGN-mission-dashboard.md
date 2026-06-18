@@ -1,8 +1,8 @@
 # DESIGN — Mission lifecycle dashboard (from the log)
 
-**Status:** Investigation + proposal. *Parser rules + tests are built (this branch).
-The service wiring + UI panel below are NOT built — they await the owner's
-go-ahead* (per `AGENTS.md` §10 / D-006).
+**Status:** ✅ **Built** (branch `feature/death-and-mission-lifecycle`, owner
+go-ahead given 2026-06-17). Parser rules, service/REST wiring, dashboard panel, and
+tests are all in. This doc is kept as the design record.
 
 **Question asked:** can we show a dashboard of missions **accepted / completed /
 abandoned / failed** etc., from the `Game.log`?
@@ -96,10 +96,16 @@ Estimated: a focused, reversible change to 3 files + tests.
 
 ---
 
-## 5. Status
+## 5. Status — all built ✅
 
-- **Built on branch `feature/death-and-mission-lifecycle`:** parser rules
-  `mission:start`, `mission:end`, `player:death` + tests (all green).
-- **Awaiting go-ahead:** the §3 service/UI wiring.
+- **Parser:** rules `mission:start`, `mission:end`, `player:death`.
+- **Service/REST:** `deaths` collection + `GET …/deaths`; `missionStats()`;
+  lifecycle fields (`startedAt`/`endedAt`/`outcome`/`reason`/`status`/`contractId`)
+  on `…/missiongroups`; `deaths` + `missionStats` in `…/monitor`.
+- **Dashboard:** a `deaths` counter, a mission-outcome summary line
+  (accepted/✅/⤺/✖/active), and per-mission status badges.
+- **Tests:** parser (5) + service replay of a real-format fixture + API monitor/
+  deaths checks. Suite green (**53 tests**).
 
-Tell me to proceed and I'll wire it behind the same review-before-merge model.
+Next possible step (not built): Discord announce for deaths/mission outcomes, and
+rolling these per-session/per-op once multiple relays report in.

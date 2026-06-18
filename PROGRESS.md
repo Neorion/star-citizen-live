@@ -30,12 +30,17 @@ sweep of the 525-file corpus) found the reliable current-build signals:
   CompletionType vocab (corpus): **Complete 1043 / Abandon 292 / Fail 98 /
   Deactivate 20**.
 
-**Built (this branch):** the three parser rules + 5 tests against verbatim real
-lines. Suite green (**50 tests**). Parser-only — no runtime/dashboard behaviour
-change yet. **Investigation written up in `DESIGN-mission-dashboard.md`** (proposed
-counters/table/wiring). **Awaiting owner go-ahead** for the service + UI wiring
-(per D-006). Note: still **local-player only** + self-reported — the officer
-register stays the source of truth (D-005).
+**Built (this branch):** the three parser rules **+ full service/REST/UI wiring**
+(owner go-ahead given 2026-06-17). Service now has a `deaths` collection
+(`GET …/deaths`), `missionStats()`, mission-lifecycle fields on `…/missiongroups`,
+and `deaths`/`missionStats` in `…/monitor`; the dashboard shows a deaths counter, a
+mission-outcome summary, and per-mission status badges. **Validated on real backups**
+via the `logbackups` archive (SC keeps the previous `Game.log` per launch): replaying
+real 4.8.0 sessions detects the deaths (incl. the live-tested 2026-06-16 04:49:59
+death) and Complete/Abandon/Fail outcomes. Tests: parser (5) + a real-format replay
+fixture + API checks — suite green (**53 tests**). See `DESIGN-mission-dashboard.md`.
+Honest scope unchanged: **local-player only** + self-reported — the officer register
+stays the source of truth (D-005).
 
 ---
 

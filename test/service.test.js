@@ -115,6 +115,44 @@ test('player incapacitation routes to incaps, attributed to the session player',
   assert.strictEqual(downed.player, 'DeadMan1227');
 });
 
+test('player death routes to deaths, attributed to the session player (gear lines ignored)', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  let died = null;
+  s.on('player:death', (d) => { died = d; });
+  s.handleLogChange('<2026-06-17T07:00:00.000Z> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[Kersa] - Time[1] [Login]');
+  // the body marker = one death
+  s.handleLogChange("<2026-06-17T07:49:59.187Z> [Notice] <Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'body_01_noMagicPocket_200128671231 - Class(body_01_noMagicPocket) - Context(Streamable Runtime-spawned) - Socpak()', Recorded data is: Port Name 'Body_ItemPort', KeptId: '200128671231' [Team_CoreGameplayFeatures][Unknown]");
+  // a gear line from the same corpse burst must NOT add a second death
+  s.handleLogChange("<2026-06-17T07:49:59.188Z> [Notice] <Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'kap_combat_heavy_helmet_02_03_01_510415156137 - Class(kap_combat_heavy_helmet_02_03_01) - Context(Streamable Runtime-spawned) - Socpak()', Recorded data is: Port Name 'Armor_Helmet' [Team_CoreGameplayFeatures][Unknown]");
+  assert.strictEqual(s.deaths.length, 1, 'one death per corpse burst (only the body marker counts)');
+  assert.strictEqual(s.deaths[0].player, 'Kersa');
+  assert.strictEqual(died.player, 'Kersa');
+});
+
+test('replays a real-format session: death + mission lifecycle outcomes', async () => {
+  const path = require('node:path');
+  const s = new StarCitizenService({ discord: { enable: false } });
+  await s.replayLog(path.join(__dirname, 'fixtures', 'sample-missions.log'));
+
+  // two deaths (two body markers; the gear lines in between are not deaths)
+  assert.strictEqual(s.deaths.length, 2, 'two deaths detected');
+  assert.ok(s.deaths.every((d) => d.player === 'Kersa'), 'deaths attributed to the session player');
+
+  // mission lifecycle: 3 accepted, with Complete / Abandon / Fail outcomes
+  const stats = s.missionStats();
+  assert.deepStrictEqual(stats, { accepted: 3, completed: 1, abandoned: 1, failed: 1, deactivated: 0, active: 0 });
+
+  // each grouped mission carries its outcome + status
+  const complete = s.missionGroups.find((m) => m.id === 'aaaa1111-d438-4996-9755-1c3fc9532e85');
+  assert.strictEqual(complete.outcome, 'Complete');
+  assert.strictEqual(complete.status, 'Complete');
+  assert.strictEqual(complete.contractId, 'c095ce31-4305-445f-806c-06d1b9001686');
+  assert.ok(complete.startedAt && complete.endedAt, 'start + end timestamps captured');
+  const failed = s.missionGroups.find((m) => m.id === 'cccc3333-0319-4a6a-8b2b-ece75082c848');
+  assert.strictEqual(failed.outcome, 'Fail');
+  assert.strictEqual(failed.reason, 'Mission timer expired');
+});
+
 test('HUD notification routes to notifications, not missionlog', () => {
   const s = new StarCitizenService({ discord: { enable: false } });
   s.handleLogChange('<2026-06-13T07:12:41.081Z> [Notice] <SHUDEvent_OnNotification> Added notification "Entering Armistice Zone - Combat Prohibited: " [8] to queue. New queue size: 3, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]');

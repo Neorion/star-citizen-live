@@ -72,3 +72,31 @@ test('mission register REST flow (create→apply→accept→claim→validate) wi
     await s.stop();
   }
 });
+
+test('monitor + deaths endpoints expose death + mission-lifecycle data', async () => {
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false } });
+  await s.start();
+  PORT = s.server.address().port;
+  try {
+    s.handleLogChange('<2026-06-17T07:00:00.000Z> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[Kersa] - Time[1] [Login]');
+    s.handleLogChange("<2026-06-17T07:49:59.187Z> [Notice] <Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'body_01_noMagicPocket_200128671231 - Class(body_01_noMagicPocket)', Recorded data is: Port Name 'Body_ItemPort' [Team_CoreGameplayFeatures][Unknown]");
+    s.handleLogChange('<2026-06-17T07:10:00.019Z> [Notice] <CSCPlayerMissionLog::MissionStartCommsNotification> MissionStart comms notification will not be sent - This mission has no MissionStart comms setup. ContractId: [c095ce31-4305-445f-806c-06d1b9001686]. MissionId: aaaa1111-d438-4996-9755-1c3fc9532e85 [Team_MissionFeatures][Missions][Comms]');
+    s.handleLogChange('<2026-06-17T07:30:40.457Z> [Notice] <EndMission> Ending mission for player. MissionId[aaaa1111-d438-4996-9755-1c3fc9532e85] Player[Kersa] PlayerId[204821711285] CompletionType[Complete] Reason[Mission Ended] [Team_MissionFeatures][Missions]');
+
+    let r = await call('GET', `${BASE}/deaths`);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.data.length, 1);
+    assert.strictEqual(r.json.data[0].player, 'Kersa');
+
+    r = await call('GET', `${BASE}/monitor`);
+    assert.strictEqual(r.json.counts.deaths, 1);
+    assert.deepStrictEqual(r.json.missionStats, { accepted: 1, completed: 1, abandoned: 0, failed: 0, deactivated: 0, active: 0 });
+    assert.strictEqual(r.json.missions[0].outcome, 'Complete');
+
+    // deaths is read-only (no POST)
+    r = await call('POST', `${BASE}/deaths`, { foo: 1 });
+    assert.notStrictEqual(r.status, 200);
+  } finally {
+    await s.stop();
+  }
+});

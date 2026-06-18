@@ -48,6 +48,7 @@
   .b-warn{background:rgba(210,153,34,.18);color:var(--warn)}
   .b-raw{background:rgba(110,118,129,.18);color:var(--raw)}
   .b-kill{background:rgba(248,81,73,.18);color:var(--kill)}
+  .b-acc{background:rgba(59,130,246,.18);color:var(--accent)}
   .raw{font-family:'Cascadia Code',Consolas,monospace;font-size:12px;word-break:break-word;flex:1;line-height:1.45}
   .copy{opacity:0;font-size:11px;background:none;border:none;color:var(--accent);cursor:pointer;flex:none}
   .line:hover .copy{opacity:1}
@@ -70,7 +71,8 @@
     <div class="counts">
       <span class="k">kills <b id="c-kills">0</b></span>
       <span class="k" title="combat objectives progressed — inferred from missions (kills are not logged directly)">combat <b id="c-combat">0</b></span>
-      <span class="k" title="player incapacitations (downs) — the nearest combat-outcome signal the log gives">downs <b id="c-downs">0</b></span>
+      <span class="k" title="local-player deaths — corpse-recovery signal (kills aren't logged on current builds)">deaths <b id="c-deaths">0</b></span>
+      <span class="k" title="player incapacitations (revivable downs)">downs <b id="c-downs">0</b></span>
       <span>sessions <b id="c-sessions">0</b></span>
       <span>missions <b id="c-missions">0</b></span>
       <span id="chip-players" title="distinct players">players <b id="c-players">0</b></span>
@@ -105,7 +107,7 @@
   </section>
 
   <section class="panel full">
-    <h2>🎯 Missions <span class="sub">— grouped by mission, objectives nested</span></h2>
+    <h2>🎯 Missions <span class="sub" id="mstats">— grouped by mission, objectives nested</span></h2>
     <div class="feed" id="missions"></div>
   </section>
 
@@ -182,14 +184,24 @@ function renderKills(el, kills){
   }).join('');
 }
 
+const MISSION_STATUS = {
+  Complete:   ['b-good','✅ complete'],
+  Abandon:    ['b-warn','⤺ abandoned'],
+  Fail:       ['b-kill','✖ failed'],
+  Deactivate: ['b-raw','⊘ deactivated'],
+  Active:     ['b-acc','● active']
+};
 function renderMissions(el, missions){
   if(!missions.length){ el.innerHTML = '<div class="empty">no missions yet — take a contract in-game</div>'; return; }
   el.innerHTML = missions.slice().reverse().map(m=>{
     const objs = (m.objectives||[]).map(o=>`<div class="obj">${o.combat ? '⚔️' : '•'} ${esc(o.text || o.id)}</div>`).join('');
+    const st = MISSION_STATUS[m.status];
+    const statusHTML = st ? `<span class="badge ${st[0]}">${st[1]}</span>` : '';
     return `<div class="mission">
       <div class="mhead"><span class="badge b-good">${esc(m.type || 'mission')}</span>
+        ${statusHTML}
         <span class="mtitle">${esc(m.title || '(mission)')}</span>
-        <span class="time">${shortTime(m.lastSeen)}</span></div>
+        <span class="time">${shortTime(m.endedAt || m.lastSeen)}</span></div>
       <div class="mid">${esc(m.id)}</div>
       ${objs || '<div class="obj muted">(no objectives yet)</div>'}
     </div>`;
@@ -216,7 +228,10 @@ async function poll(){
     $('status').className = 'pill ' + (d.status==='STARTED'?'on':'off');
     $('c-kills').textContent = d.counts.kills;
     $('c-combat').textContent = d.counts.combat;
+    $('c-deaths').textContent = d.counts.deaths;
     $('c-downs').textContent = d.counts.incaps;
+    const ms = d.missionStats || {};
+    $('mstats').textContent = `— accepted ${ms.accepted||0} · ✅ ${ms.completed||0} · ⤺ ${ms.abandoned||0} · ✖ ${ms.failed||0} · ● ${ms.active||0} active`;
     $('c-sessions').textContent = (d.sessions || []).length;
     $('c-missions').textContent = d.counts.missions;
     $('c-players').textContent = d.counts.players;
