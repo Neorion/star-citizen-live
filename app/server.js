@@ -49,7 +49,7 @@ class StarCitizenService extends EventEmitter {
     }, settings);
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false }, settings.discord || {});
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, missionlog: {}, notifications: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, notifications: {}, logs: {}, startedAt: null };
     this.state.missionGroups = {};  // missions grouped by MissionId (built from the log)
     this.state.objectives = {};     // objective details keyed by ObjectiveId
     this.state.combatlog = {};      // combat progress inferred from mission objectives
@@ -74,7 +74,59 @@ class StarCitizenService extends EventEmitter {
     this.missionManager = (this.settings.missions && this.settings.missions.enable)
       ? new MissionManager(this.settings.missions) : null;
 
+    this.history = this._loadHistory();   // compact backfill of past logs (Analyze tab)
+
     if (this.settings.discord.enable) this._wireDiscord();
+  }
+
+  // Load the backfilled history aggregate (built by `npm run backfill`), if present.
+  _loadHistory () {
+    const empty = { missions: [], deaths: [], sessions: [], heat: {}, players: [], meta: {} };
+    try {
+      const f = this.settings.historyFile || require('path').join(__dirname, '..', 'stores', 'history.json');
+      if (fs.existsSync(f)) return Object.assign(empty, JSON.parse(fs.readFileSync(f, 'utf8')));
+    } catch (e) { console.error('[STAR-CITIZEN] history load failed:', e.message); }
+    return empty;
+  }
+
+  // Merge backfilled history with the current live session into one compact dataset
+  // for the Analyze tab. Local-player today; the same shape serves org-wide (M4).
+  _analyticsDataset () {
+    const h = this.history || { missions: [], deaths: [], sessions: [], heat: {}, players: [], meta: {} };
+    const me = this._sessionHandle || 'you';
+    const liveM = this.missionGroups.map((m) => ({ type: m.type, outcome: m.outcome, player: m.player || me, ts: m.startedAt || m.firstSeen })).filter((x) => x.ts);
+    const liveD = this.deaths.map((d) => ({ player: d.player || me, ts: d.timestamp })).filter((x) => x.ts);
+    const liveS = this.sessions.map((s) => ({ player: me, ts: s.detectedAt })).filter((x) => x.ts);
+
+    const heat = Object.assign({}, h.heat);
+    for (const a of this.activities) {
+      const t = Date.parse(a.timestamp); if (Number.isNaN(t)) continue;
+      const d = new Date(t);
+      const k = (d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')) + '|' + ((d.getDay() + 6) % 7) + '|' + d.getHours();
+      heat[k] = (heat[k] || 0) + 1;
+    }
+    const heatcells = Object.keys(heat).map((k) => { const p = k.split('|'); return { ym: p[0], d: +p[1], h: +p[2], n: heat[k] }; });
+
+    const missions = h.missions.concat(liveM);
+    const deaths = h.deaths.concat(liveD);
+    const sessions = (h.sessions || []).concat(liveS);
+    const ymOf = (s) => (typeof s === 'string' && s.length >= 7) ? s.slice(0, 7) : null;
+    const months = new Set();
+    missions.forEach((m) => { const y = ymOf(m.ts); if (y) months.add(y); });
+    deaths.forEach((d) => { const y = ymOf(d.ts); if (y) months.add(y); });
+    heatcells.forEach((c) => months.add(c.ym));
+    const players = [...new Set([].concat(h.players || [], this.players.map((p) => p.name), missions.map((m) => m.player), deaths.map((d) => d.player)))].filter(Boolean);
+
+    return {
+      type: 'Analytics',
+      generatedAt: (h.meta && h.meta.generatedAt) || null,
+      availableMonths: [...months].sort().reverse(),
+      players,
+      missions: missions.slice(-20000),
+      deaths: deaths.slice(-20000),
+      sessions,
+      heatcells
+    };
   }
 
   get activities () { return Object.values(this.state.activities); }
@@ -82,7 +134,8 @@ class StarCitizenService extends EventEmitter {
   get logins () { return Object.values(this.state.logins); }     // every login event
   get vehicles () { return Object.values(this.state.vehicles); }
   get kills () { return Object.values(this.state.kills); }
-  get incaps () { return Object.values(this.state.incaps); }              // player down/death events
+  get incaps () { return Object.values(this.state.incaps); }              // player down (revivable) events
+  get deaths () { return Object.values(this.state.deaths); }              // local-player deaths (corpse-recovery signal)
   get missionlog () { return Object.values(this.state.missionlog); }
   get notifications () { return Object.values(this.state.notifications); }  // general HUD/zone notices
   get combatlog () { return Object.values(this.state.combatlog); }          // combat progress via mission objectives
@@ -92,8 +145,32 @@ class StarCitizenService extends EventEmitter {
     return Object.values(this.state.missionGroups).map((m) => {
       const objectives = Object.keys(m.objectiveIds).map((oid) => this.state.objectives[oid]).filter(Boolean);
       const last = m.notifications[m.notifications.length - 1];
-      return { id: m.id, title: last ? last.text : null, generator: m.generator || null, type: missionType(m.generator), firstSeen: m.firstSeen, lastSeen: m.lastSeen, objectives, notifications: m.notifications };
+      // Lifecycle status: an explicit outcome (Complete/Abandon/Fail/Deactivate) once
+      // ended, else 'Active' if we saw it start, else null (seen only via objectives).
+      const status = m.outcome || (m.startedAt ? 'Active' : null);
+      return { id: m.id, title: last ? last.text : null, generator: m.generator || null, type: missionType(m.generator),
+        firstSeen: m.firstSeen, lastSeen: m.lastSeen,
+        startedAt: m.startedAt || null, endedAt: m.endedAt || null, outcome: m.outcome || null, reason: m.reason || null,
+        status, contractId: m.contractId || null, player: m.player || null,
+        objectives, notifications: m.notifications };
     });
+  }
+
+  // Mission-outcome tallies for the dashboard, computed from the grouped missions.
+  // Local player only + self-reported (see DESIGN-mission-dashboard.md / D-005).
+  missionStats () {
+    const s = { accepted: 0, completed: 0, abandoned: 0, failed: 0, deactivated: 0, active: 0 };
+    for (const m of Object.values(this.state.missionGroups)) {
+      if (m.startedAt) s.accepted += 1;
+      switch (m.outcome) {
+        case 'Complete': s.completed += 1; break;
+        case 'Abandon': s.abandoned += 1; break;
+        case 'Fail': s.failed += 1; break;
+        case 'Deactivate': s.deactivated += 1; break;
+        default: if (m.startedAt) s.active += 1;   // started, no outcome yet
+      }
+    }
+    return s;
   }
   get logs () { return Object.values(this.state.logs); }
   get missions () { return this.missionManager ? this.missionManager.missions : []; }
@@ -124,6 +201,12 @@ class StarCitizenService extends EventEmitter {
       if (req.method === 'GET' && path === `${base}/combat`) {
         return send(200, { type: 'Collection', data: this.combatlog });
       }
+      // Analytics: compact merged dataset (backfilled history + live session) for
+      // the "Analyze" dashboard tab. The client slices it by month/year + pilot +
+      // mission type + outcome. Local-player today; same shape serves org-wide (M4).
+      if (req.method === 'GET' && path === `${base}/analytics`) {
+        return send(200, this._analyticsDataset());
+      }
       // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
       if (req.method === 'GET' && path === `${base}/monitor`) {
         const limit = Math.min(parseInt(url.searchParams.get('limit'), 10) || 250, 1000);
@@ -132,10 +215,12 @@ class StarCitizenService extends EventEmitter {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
           channel: this.channel, session: this.session, sessions: this.sessions,
           missions: this.missionGroups,
+          missionStats: this.missionStats(),
           kills: newest(this.kills),
+          deaths: newest(this.deaths),
           counts: {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
-            vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length,
+            vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length, deaths: this.deaths.length,
             missionlog: this.missionlog.length, missions: this.missionGroups.length, notifications: this.notifications.length,
             combat: this.combatlog.length,
             logs: this.logs.length, flagged: this.flagged.length
@@ -148,16 +233,16 @@ class StarCitizenService extends EventEmitter {
         return send(200, { type: 'StarCitizen', data: {
           status: this.status, startedAt: this.state.startedAt, channel: this.channel, session: this.session, sessions: this.sessions.length,
           activities: this.activities.length, players: this.players.length, logins: this.logins.length,
-          vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length,
-          missionlog: this.missionlog.length,
+          vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length, deaths: this.deaths.length,
+          missionlog: this.missionlog.length, missionStats: this.missionStats(),
           logs: this.logs.length, missions: this.missions.length
         }});
       }
-      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, incaps: () => this.incaps, missionlog: () => this.missionlog, notifications: () => this.notifications, messages: () => this.logs };
+      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, notifications: () => this.notifications, messages: () => this.logs };
       for (const [name, getter] of Object.entries(collections)) {
         if (path === `${base}/${name}`) {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
-          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps') {
+          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths') {
             const data = await body();
             // Players dedupe by handle (distinct roster) rather than per-event.
             if (name === 'players' && data.name) {
@@ -278,6 +363,14 @@ class StarCitizenService extends EventEmitter {
         this.emit('player:incap', inc);
         break;
       }
+      case 'player:death': {
+        // Local-player death (corpse-recovery body marker). One event per death;
+        // SC stopped logging kills after 4.3.0, so this is the current-build signal.
+        const d = { id, kind: ev.kind, player: this._sessionHandle || null, bodyId: ev.bodyId, timestamp: ev.timestamp };
+        this.state.deaths[id] = d;
+        this.emit('player:death', d);
+        break;
+      }
       case 'vehicle:destroy': {
         const v = { id, vehicle: ev.vehicle, vehicleName: shipName(ev.vehicle), cause: ev.cause, attacker: ev.attacker, fromLevel: ev.fromLevel, toLevel: ev.toLevel, timestamp: ev.timestamp };
         this.state.vehicles[id] = v;
@@ -287,9 +380,12 @@ class StarCitizenService extends EventEmitter {
       case 'mission:contract':
       case 'mission:objective':
       case 'mission:notification':
-      case 'mission:marker': {
+      case 'mission:marker':
+      case 'mission:start':
+      case 'mission:end': {
         const me = { id, kind: ev.kind, timestamp: ev.timestamp,
-          contract: ev.contract, generator: ev.generator, text: ev.text, objectiveId: ev.objectiveId, missionId: ev.missionId };
+          contract: ev.contract, generator: ev.generator, text: ev.text, objectiveId: ev.objectiveId, missionId: ev.missionId,
+          contractId: ev.contractId, completionType: ev.completionType, reason: ev.reason, player: ev.player };
         this.state.missionlog[id] = me;
         this._indexMission(ev);
         this.emit(ev.kind, me);
@@ -336,6 +432,17 @@ class StarCitizenService extends EventEmitter {
         (this.state.missionGroups[ev.missionId] = { id: ev.missionId, firstSeen: ev.timestamp, objectiveIds: {}, notifications: [] });
       m.lastSeen = ev.timestamp;
       if (ev.generator) m.generator = ev.generator;   // template name -> mission type
+      // Lifecycle: start stamps acceptance + contract template; end stamps the outcome.
+      if (ev.kind === 'mission:start') {
+        if (!m.startedAt) m.startedAt = ev.timestamp;
+        if (ev.contractId) m.contractId = ev.contractId;
+      }
+      if (ev.kind === 'mission:end') {
+        m.endedAt = ev.timestamp;
+        m.outcome = ev.completionType;   // Complete | Abandon | Fail | Deactivate
+        m.reason = ev.reason;
+        if (ev.player) m.player = ev.player;
+      }
       if (ev.kind === 'mission:notification') {
         m.notifications.push({ text: ev.text, objectiveId: ev.objectiveId || null, timestamp: ev.timestamp });
         if (m.notifications.length > 100) m.notifications.shift();

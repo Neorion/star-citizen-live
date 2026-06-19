@@ -10,6 +10,96 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## ⚖️ Pilot-comparison panel + branch ready for review ✅
+**Date:** 2026-06-19 · branch `feature/death-and-mission-lifecycle`
+
+Added a **Pilot comparison** scorecard to the Analyze tab — per-pilot completion
+rate (with bar), missions, sessions, deaths and deaths/session, side by side over
+the selected months/type (ignores the single-pilot filter; needs ≥2 pilots). With
+the backfill corpus it's real now (DeadMan1227 / Fadingdoughnut0 / Kersa). Pure
+client SVG/HTML, no server change. Suite green (**55 tests**).
+
+This closes out the analytics feature set on this branch. Flagged for review in
+`REVIEW.md` (proposed merge into `feature/fabric-free-m1`, the fork trunk — no
+`main` exists on the remote). Owner opens the PR + merges after Codex's pass
+(`gh` isn't installed here, so the PR is opened from the browser/owner side).
+
+---
+
+## 🗄️ Historic backfill + month/year time slicer ✅
+**Date:** 2026-06-19 · branch `feature/death-and-mission-lifecycle`
+
+The Analyze tab now spans **real history**, not just the current session. Added
+`npm run backfill` (`scripts/backfill.js`): it scans saved logs (the game's own
+`logbackups` across channels + any `./Gamelogs` corpus), attributes each to its
+pilot via the login handle, and writes a compact `stores/history.json` (gitignored)
+— only ended missions, deaths, sessions and a per-month day×hour activity histogram,
+never raw lines, so it stays small over gigabytes. First run: **1,525 logs /
+85.7M lines → 3,843 missions, 2,980 deaths, 3 pilots (DeadMan1227, Fadingdoughnut0,
+Kersa), 10 months (Aug 2025–Jun 2026)**.
+
+The server loads that history on start and `GET …/analytics` now returns the merged
+history+live dataset (availableMonths, missions, deaths, sessions, heatcells, pilots).
+The dashboard's time control became a **month/year add-remove selector** — toggle
+whole years or individual months; every panel + the vs-prior-period deltas recompute
+client-side. Suite green (**55 tests**, incl. a backfill unit test). The corpus
+makes the multi-pilot leaderboard real *now* — a preview of the org-wide view (M4).
+Note: `history.json` aggregates other members' uploaded logs and is **gitignored**
+(never pushed).
+
+---
+
+## 📊 "Analyze" dashboard tab — slice-and-dice activity view ✅
+**Date:** 2026-06-18 · branch `feature/death-and-mission-lifecycle`
+
+Added a second dashboard tab (Live feed / Analyze) for analysing activity, backed
+by a new pre-aggregating `GET …/analytics?days=N` endpoint (real in-memory data,
+zero deps). Panels: KPI strip (active pilots, sessions, missions done, completion
+rate, deaths, each with a vs-previous-period delta), a **when-you-fly heatmap**
+(day × hour from real log timestamps), a **mission-outcome donut**, a
+**by-type stacked bar**, and a **pilot leaderboard**. Power-BI-style **slicers**
+(time / pilot / mission type / outcome) cross-filter every panel, and clicking a
+donut slice, a type bar, or a pilot row acts as a slicer too. Honest empty states
+where data is thin. Verified live: real LIVE session rendered (Kersa, 3 missions,
+4.4k-event heatmap). Suite green (**54 tests**). Still **local-player only** until
+the org-wide relay (M4) — the pilot slicer is already wired for it.
+
+---
+
+## 🩸 Current-build DEATH signal + mission lifecycle parser rules (branch) ✅
+**Date:** 2026-06-17 · branch `feature/death-and-mission-lifecycle`
+
+A live test ("someone killed me earlier — did you get that?") exposed a gap: on
+4.8.0 the death produced **no kill line** (removed after 4.3.0) **and no
+`Incapacitated:` line** — so the relay missed it. Investigation (incl. a sub-agent
+sweep of the 525-file corpus) found the reliable current-build signals:
+
+- **Local-player DEATH** — when you die, your corpse spawns and the game lists your
+  gear for recovery. The **first** line of that ~30-line burst is always the body:
+  `<Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'body_01_noMagicPocket_<id>'`.
+  Keying on `body_01_noMagicPocket` = exactly **one event per death**, and it does
+  **not** match later corpse-*loot* bursts (those start with gear) → no double-count.
+  VERIFIED across 4.7.175→4.8.180 (3 players). New rule `player:death`.
+- **Mission lifecycle** — `<CSCPlayerMissionLog::MissionStartCommsNotification>`
+  (ContractId + MissionId) = **accepted/started** → `mission:start`; `<EndMission>
+  … CompletionType[…] Player[…]` = authoritative **outcome** → `mission:end`.
+  CompletionType vocab (corpus): **Complete 1043 / Abandon 292 / Fail 98 /
+  Deactivate 20**.
+
+**Built (this branch):** the three parser rules **+ full service/REST/UI wiring**
+(owner go-ahead given 2026-06-17). Service now has a `deaths` collection
+(`GET …/deaths`), `missionStats()`, mission-lifecycle fields on `…/missiongroups`,
+and `deaths`/`missionStats` in `…/monitor`; the dashboard shows a deaths counter, a
+mission-outcome summary, and per-mission status badges. **Validated on real backups**
+via the `logbackups` archive (SC keeps the previous `Game.log` per launch): replaying
+real 4.8.0 sessions detects the deaths (incl. the live-tested 2026-06-16 04:49:59
+death) and Complete/Abandon/Fail outcomes. Tests: parser (5) + a real-format replay
+fixture + API checks — suite green (**53 tests**). See `DESIGN-mission-dashboard.md`.
+Honest scope unchanged: **local-player only** + self-reported — the officer register
+stays the source of truth (D-005).
+
+---
+
 ## ⚠️ Correction — kill logging was REMOVED after SC 4.3.0 (not in current game) ✅
 **Date:** 2026-06-14
 

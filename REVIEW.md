@@ -11,6 +11,28 @@ that authorises work.
 
 ---
 
+## Branch ready for review (2026-06-19)
+
+Branch **`feature/death-and-mission-lifecycle`** is ready for an independent pass,
+proposed for merge into the fork trunk **`feature/fabric-free-m1`** (there is no
+`main` on the remote). 5 commits, ~+900 lines, zero new runtime deps, 55 tests green.
+
+Scope of the change set (all current-build, SC 4.8.0):
+- **Parser** — `player:death` (corpse `body_01_noMagicPocket` marker), `mission:start`
+  (`MissionStartCommsNotification`), `mission:end` (`EndMission` CompletionType).
+- **Service/REST** — `deaths` collection, mission lifecycle on `…/missiongroups`,
+  `…/analytics` (merged history+live), `missionStats`.
+- **Dashboard** — Live/Analyze tabs; KPI strip, activity heatmap, outcome donut,
+  type bars, pilot leaderboard, pilot comparison; month/year add-remove slicer.
+- **Backfill** — `scripts/backfill.js` (`npm run backfill`) → compact gitignored
+  `stores/history.json` (1,525 logs ingested; 3 pilots; 10 months).
+
+Specific things worth a skeptical look: the death-marker dedupe (one event per
+corpse burst), `_analyticsDataset()` payload size/caps, month-vs-UTC boundary in
+the time slicer, and per-pilot attribution when a log has no login handle.
+
+---
+
 ## Requested review (for OpenAI Codex)
 
 Please perform an **independent project review** and write findings under

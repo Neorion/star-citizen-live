@@ -70,6 +70,25 @@ const RULES = [
     fields: (m) => ({ missionId: m[1], generator: m[2] })
   },
   {
+    // Mission ACCEPTED/STARTED for the local player. Fires once per mission the
+    // player takes on - even when no comms cutscene exists ("will not be sent").
+    // Carries both the ContractId (template) and the runtime MissionId, so it
+    // pairs with the mission:end CompletionType below to build an accepted->outcome
+    // lifecycle. VERIFIED on real 4.8.0 logs (Kersa HOTFIX 2026-06-17).
+    kind: 'mission:start', tag: 'CSCPlayerMissionLog::MissionStartCommsNotification',
+    test: /ContractId:\s*\[([0-9a-fA-F-]+)\]\.\s*MissionId:\s*([0-9a-fA-F-]+)/,
+    fields: (m) => ({ contractId: m[1], missionId: m[2] })
+  },
+  {
+    // Mission ENDED for the local player - the authoritative per-mission OUTCOME
+    // line. CompletionType is the dashboard signal: Complete | Abandon | Fail |
+    // Deactivate (full vocabulary verified across the 525-file corpus). Reason adds
+    // context (e.g. "Player left", "Mission Ended"). VERIFIED on real 4.7-4.8 logs.
+    kind: 'mission:end', tag: 'EndMission',
+    test: /MissionId\[([0-9a-fA-F-]+)\] Player\[([^\]]+)\] PlayerId\[(\d+)\] CompletionType\[([^\]]+)\] Reason\[([^\]]+)\]/,
+    fields: (m) => ({ missionId: m[1], player: m[2], playerId: m[3], completionType: m[4], reason: m[5] })
+  },
+  {
     kind: 'mission:objective', tag: 'CMissionLogEntry::UpdateActiveObjective',
     test: /id=([0-9a-fA-F-]+).*?\[Text=([^\]]*)\]/,
     fields: (m) => ({ objectiveId: m[1], text: m[2] })
@@ -89,6 +108,19 @@ const RULES = [
     kind: 'player:incap', tag: 'SHUDEvent_OnNotification',
     test: /Added notification "(Incapacitated:[^"]*)"/,
     fields: (m) => ({ text: m[1] })
+  },
+  {
+    // Local-player DEATH on current builds (4.7+). SC stopped logging kills after
+    // 4.3.0; instead, when you die your corpse is created and the game enumerates
+    // your gear for recovery. The FIRST line of that ~30-line burst is ALWAYS the
+    // body itself - Item 'body_01_noMagicPocket_<id>' - so keying on that marker
+    // yields exactly ONE event per death (the follow-on lines are gear) and does
+    // NOT match later corpse-LOOT bursts (which start with gear, not the body).
+    // VERIFIED across real 4.7.175 -> 4.8.180 logs (3 players). The victim is the
+    // running player; the service attributes it to the session handle.
+    kind: 'player:death', tag: 'Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]',
+    test: /Item 'body_01_noMagicPocket_(\d+)/,
+    fields: (m) => ({ bodyId: m[1] })
   },
   {
     // General HUD notification - zone/jurisdiction/tutorial "what's going on"
