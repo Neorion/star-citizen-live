@@ -10,6 +10,22 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## ⚖️ Pilot-comparison panel + branch ready for review ✅
+**Date:** 2026-06-19 · branch `feature/death-and-mission-lifecycle`
+
+Added a **Pilot comparison** scorecard to the Analyze tab — per-pilot completion
+rate (with bar), missions, sessions, deaths and deaths/session, side by side over
+the selected months/type (ignores the single-pilot filter; needs ≥2 pilots). With
+the backfill corpus it's real now (DeadMan1227 / Fadingdoughnut0 / Kersa). Pure
+client SVG/HTML, no server change. Suite green (**55 tests**).
+
+This closes out the analytics feature set on this branch. Flagged for review in
+`REVIEW.md` (proposed merge into `feature/fabric-free-m1`, the fork trunk — no
+`main` exists on the remote). Owner opens the PR + merges after Codex's pass
+(`gh` isn't installed here, so the PR is opened from the browser/owner side).
+
+---
+
 ## 🗄️ Historic backfill + month/year time slicer ✅
 **Date:** 2026-06-19 · branch `feature/death-and-mission-lifecycle`
 

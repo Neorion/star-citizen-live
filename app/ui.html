@@ -168,6 +168,10 @@
     <h2>🏅 Pilots <span class="sub">— click a row to filter; org-wide once relays report in (M4)</span></h2>
     <div id="az-lb" style="padding:6px 14px 12px"></div>
   </section>
+  <section class="panel full">
+    <h2>⚖️ Pilot comparison <span class="sub">— side-by-side over the selected period (ignores the pilot filter)</span></h2>
+    <div id="az-cmp" style="padding:12px 14px"></div>
+  </section>
 </main>
 
 <script>
@@ -434,6 +438,23 @@ poll();
     return head+rows.map(r=>{ const pc=r.tot?Math.round(100*r.done/r.tot):0;
       return '<div class="lbr click" data-pl="'+r.n+'"><span>'+r.n+'</span><span style="text-align:right">'+r.tot+'</span><span style="text-align:right">'+pc+'%</span><span style="text-align:right">'+r.deaths+'</span></div>'; }).join('');
   }
+  function rCompare(){
+    const by={};
+    const get=(p)=>by[p]||(by[p]={done:0,tot:0,deaths:0,sess:0});
+    (D.missions||[]).forEach(m=>{ if(!inSel(ymOf(m.ts)))return; if(S.type!=='all'&&m.type!==S.type)return; const b=get(m.player); b.tot++; if(m.outcome==='Complete')b.done++; });
+    (D.deaths||[]).forEach(d=>{ if(!inSel(ymOf(d.ts)))return; get(d.player).deaths++; });
+    (D.sessions||[]).forEach(s=>{ if(!inSel(ymOf(s.ts)))return; get(s.player).sess++; });
+    const rows=Object.keys(by).map(k=>{ const b=by[k]; return {n:k,rate:b.tot?Math.round(100*b.done/b.tot):0,tot:b.tot,deaths:b.deaths,sess:b.sess,dps:b.sess?b.deaths/b.sess:0}; })
+      .filter(r=>r.tot||r.sess).sort((a,b)=>b.rate-a.rate);
+    if(rows.length<2) return '<div class="empty">needs ≥2 pilots with activity — run "npm run backfill" or wait for org-wide relays (M4)</div>';
+    return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">'+rows.map(r=>
+      '<div class="mc"><div class="l">'+r.n+'</div>'
+      +'<div style="display:flex;align-items:baseline;gap:6px;margin:2px 0 6px"><span class="v" style="font-size:20px">'+r.rate+'%</span><span class="d">completion</span></div>'
+      +'<div style="height:7px;background:var(--panel);border-radius:999px;overflow:hidden;margin-bottom:8px"><span style="display:block;height:100%;width:'+r.rate+'%;background:'+GOOD+'"></span></div>'
+      +'<div class="d">'+r.tot+' missions · '+r.sess+' sessions</div>'
+      +'<div class="d">'+r.deaths+' deaths · '+r.dps.toFixed(2)+'/session</div></div>'
+    ).join('')+'</div>';
+  }
   function render(){
     rSlicers();
     if(!D){ g('az-kpis').innerHTML='<div class="empty" style="grid-column:1/-1">'+(loading?'loading…':'open to load')+'</div>'; return; }
@@ -443,6 +464,7 @@ poll();
     g('az-donut').innerHTML=rDonut(mt);
     g('az-bars').innerHTML=rBars(ms);
     g('az-lb').innerHTML=rLB(mt,curD());
+    g('az-cmp').innerHTML=rCompare();
   }
 
   function show(v){
