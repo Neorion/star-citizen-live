@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { parseLine, missionType } = require('../app/parser');
+const { parseLine, missionType, missionFaction } = require('../app/parser');
 
 const STORE = path.join(__dirname, '..', 'stores', 'history.json');
 
@@ -78,6 +78,7 @@ function processFile (file, acc) {
       if (ev.kind === 'mission:end') {
         acc.missions.push({
           type: missionType(gen[ev.missionId]),
+          faction: missionFaction(gen[ev.missionId]),
           outcome: ev.completionType,
           player: ev.player || handle || 'unknown',
           ts: ev.timestamp

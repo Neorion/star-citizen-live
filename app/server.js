@@ -20,7 +20,7 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const readline = require('readline');
 
-const { parseLine, shipName, parseSessionInfo, missionType, isNPC } = require('./parser');
+const { parseLine, shipName, parseSessionInfo, missionType, isNPC, missionFaction } = require('./parser');
 const { resolveLogFile, channelFromPath } = require('./locate');
 
 // Lines worth surfacing in the monitor - combat/death hints AND mission/objective
@@ -94,7 +94,7 @@ class StarCitizenService extends EventEmitter {
   _analyticsDataset () {
     const h = this.history || { missions: [], deaths: [], sessions: [], heat: {}, players: [], meta: {} };
     const me = this._sessionHandle || 'you';
-    const liveM = this.missionGroups.map((m) => ({ type: m.type, outcome: m.outcome, player: m.player || me, ts: m.startedAt || m.firstSeen })).filter((x) => x.ts);
+    const liveM = this.missionGroups.map((m) => ({ type: m.type, faction: missionFaction(m.generator), outcome: m.outcome, player: m.player || me, ts: m.startedAt || m.firstSeen })).filter((x) => x.ts);
     const liveD = this.deaths.map((d) => ({ player: d.player || me, ts: d.timestamp })).filter((x) => x.ts);
     const liveS = this.sessions.map((s) => ({ player: me, ts: s.detectedAt })).filter((x) => x.ts);
 
