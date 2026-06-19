@@ -223,6 +223,7 @@ Discord webhook into a tracked file.**
 | `SOLUTION-BRIEF.md` | Plain-English product brief for org leadership. |
 | `DESIGN-missions-mvp.md` | Technical design for the mission register (M5). |
 | `DESIGN-distributed.md` | Design-only: optional federated/decentralized future (D-004). |
+| `DESIGN-event-convergence.md` | How to merge many players' event streams into one org-wide view (transport-agnostic; for M4 + future Fabric). |
 | `REFERENCES.md` | Catalog of reusable SC open-source projects + log-format findings. |
 | `BACKLOG.md` | Idea backlog. |
 | `SPIKE-LOG-tier0-boot.md` | The spike that proved Fabric was too heavy. |
