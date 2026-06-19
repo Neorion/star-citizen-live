@@ -99,7 +99,7 @@ class StarCitizenService extends EventEmitter {
       return { id: m.id, title: last ? last.text : null, generator: m.generator || null, type: missionType(m.generator),
         firstSeen: m.firstSeen, lastSeen: m.lastSeen,
         startedAt: m.startedAt || null, endedAt: m.endedAt || null, outcome: m.outcome || null, reason: m.reason || null,
-        status, contractId: m.contractId || null,
+        status, contractId: m.contractId || null, player: m.player || null,
         objectives, notifications: m.notifications };
     });
   }
@@ -148,6 +148,48 @@ class StarCitizenService extends EventEmitter {
       // Combat progress inferred from mission objectives (proxy for kills).
       if (req.method === 'GET' && path === `${base}/combat`) {
         return send(200, { type: 'Collection', data: this.combatlog });
+      }
+      // Analytics: pre-aggregated activity for the "Analyze" dashboard tab.
+      // Real in-memory data, windowed by ?days=N. Local-player today; the same
+      // shape serves the org-wide view once multiple relays report in (M4).
+      if (req.method === 'GET' && path === `${base}/analytics`) {
+        const days = Math.min(parseInt(url.searchParams.get('days'), 10) || 30, 90);
+        const now = Date.now();
+        const span = days * 86400000;
+        const fromTs = now - span;
+        const prevFrom = fromTs - span;
+        const at = (s) => { const t = Date.parse(s); return Number.isNaN(t) ? null : t; };
+        const inWin = (s, lo, hi) => { const t = at(s); return t !== null && t >= lo && t < hi; };
+        const me = this._sessionHandle || 'you';
+
+        const missions = this.missionGroups
+          .filter((m) => inWin(m.startedAt || m.firstSeen, fromTs, now))
+          .map((m) => ({ type: m.type, outcome: m.outcome, status: m.status, startedAt: m.startedAt || m.firstSeen, player: m.player || me }));
+        const deaths = this.deaths
+          .filter((d) => inWin(d.timestamp, fromTs, now))
+          .map((d) => ({ player: d.player || me, timestamp: d.timestamp }));
+
+        // 7x24 activity heatmap (Mon=0 .. hour) from parsed-line timestamps -
+        // i.e. when this machine was actually in-game (local time).
+        const heatmap = Array.from({ length: 7 }, () => new Array(24).fill(0));
+        for (const a of this.activities) {
+          const t = at(a.timestamp); if (t === null || t < fromTs) continue;
+          const d = new Date(t); heatmap[(d.getDay() + 6) % 7][d.getHours()] += 1;
+        }
+
+        const sessionsIn = (lo, hi) => this.sessions.filter((s) => inWin(s.detectedAt, lo, hi)).length;
+        const players = [...new Set([...this.players.map((p) => p.name), ...missions.map((m) => m.player), ...deaths.map((d) => d.player)])];
+        return send(200, {
+          type: 'Analytics',
+          window: { days, from: new Date(fromTs).toISOString(), to: new Date(now).toISOString() },
+          players, missions, deaths, heatmap,
+          sessions: sessionsIn(fromTs, now),
+          prev: {
+            sessions: sessionsIn(prevFrom, fromTs),
+            missionsDone: this.missionGroups.filter((m) => inWin(m.endedAt, prevFrom, fromTs) && m.outcome === 'Complete').length,
+            deaths: this.deaths.filter((d) => inWin(d.timestamp, prevFrom, fromTs)).length
+          }
+        });
       }
       // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
       if (req.method === 'GET' && path === `${base}/monitor`) {
@@ -383,6 +425,7 @@ class StarCitizenService extends EventEmitter {
         m.endedAt = ev.timestamp;
         m.outcome = ev.completionType;   // Complete | Abandon | Fail | Deactivate
         m.reason = ev.reason;
+        if (ev.player) m.player = ev.player;
       }
       if (ev.kind === 'mission:notification') {
         m.notifications.push({ text: ev.text, objectiveId: ev.objectiveId || null, timestamp: ev.timestamp });

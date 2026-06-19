@@ -10,6 +10,23 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 📊 "Analyze" dashboard tab — slice-and-dice activity view ✅
+**Date:** 2026-06-18 · branch `feature/death-and-mission-lifecycle`
+
+Added a second dashboard tab (Live feed / Analyze) for analysing activity, backed
+by a new pre-aggregating `GET …/analytics?days=N` endpoint (real in-memory data,
+zero deps). Panels: KPI strip (active pilots, sessions, missions done, completion
+rate, deaths, each with a vs-previous-period delta), a **when-you-fly heatmap**
+(day × hour from real log timestamps), a **mission-outcome donut**, a
+**by-type stacked bar**, and a **pilot leaderboard**. Power-BI-style **slicers**
+(time / pilot / mission type / outcome) cross-filter every panel, and clicking a
+donut slice, a type bar, or a pilot row acts as a slicer too. Honest empty states
+where data is thin. Verified live: real LIVE session rendered (Kersa, 3 missions,
+4.4k-event heatmap). Suite green (**54 tests**). Still **local-player only** until
+the org-wide relay (M4) — the pilot slicer is already wired for it.
+
+---
+
 ## 🩸 Current-build DEATH signal + mission lifecycle parser rules (branch) ✅
 **Date:** 2026-06-17 · branch `feature/death-and-mission-lifecycle`
 

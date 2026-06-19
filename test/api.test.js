@@ -100,3 +100,29 @@ test('monitor + deaths endpoints expose death + mission-lifecycle data', async (
     await s.stop();
   }
 });
+
+test('analytics endpoint aggregates missions, deaths and a heatmap for the Analyze tab', async () => {
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false } });
+  await s.start();
+  PORT = s.server.address().port;
+  try {
+    const iso = (minsAgo) => new Date(Date.now() - minsAgo * 60000).toISOString();
+    s.handleLogChange(`<${iso(60)}> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[Kersa] - Time[1] [Login]`);
+    s.handleLogChange(`<${iso(50)}> [Notice] <CSCPlayerMissionLog::MissionStartCommsNotification> MissionStart comms notification will not be sent - This mission has no MissionStart comms setup. ContractId: [c095ce31-4305-445f-806c-06d1b9001686]. MissionId: aaaa1111-d438-4996-9755-1c3fc9532e85 [Team_MissionFeatures][Missions][Comms]`);
+    s.handleLogChange(`<${iso(40)}> [Notice] <EndMission> Ending mission for player. MissionId[aaaa1111-d438-4996-9755-1c3fc9532e85] Player[Kersa] PlayerId[204821711285] CompletionType[Complete] Reason[Mission Ended] [Team_MissionFeatures][Missions]`);
+    s.handleLogChange(`<${iso(30)}> [Notice] <Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'body_01_noMagicPocket_1 - Class(body_01_noMagicPocket)', Recorded data is: Port Name 'Body_ItemPort' [Team_CoreGameplayFeatures][Unknown]`);
+
+    const r = await call('GET', `${BASE}/analytics?days=7`);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.window.days, 7);
+    assert.ok(r.json.missions.length >= 1, 'a mission is in the window');
+    assert.strictEqual(r.json.missions[0].outcome, 'Complete');
+    assert.strictEqual(r.json.missions[0].player, 'Kersa');
+    assert.ok(r.json.deaths.length >= 1, 'a death is in the window');
+    assert.strictEqual(r.json.heatmap.length, 7);
+    assert.strictEqual(r.json.heatmap[0].length, 24);
+    assert.ok(r.json.players.includes('Kersa'));
+  } finally {
+    await s.stop();
+  }
+});
