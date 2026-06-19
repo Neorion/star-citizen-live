@@ -10,6 +10,21 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 🔎 Sourced issuer→type fallback — type-"Other" 45% → 14% ✅
+**Date:** 2026-06-19 · branch `feature/faction-dimension`
+
+Researched GitHub + the web (SC Wiki API, starcitizen.tools, StarStrings — logged in
+`REFERENCES.md`) to classify the issuer-only generator codenames that had no activity
+verb. Added a sourced `FACTION_TYPES` fallback in `missionType()`: when the activity
+rules don't match, fall back to the contract issuer (CleanAir→Event, Vaughn→Bounty,
+InterSec/Foxwell→Mercenary/Defense, Shubin→Mining, Hockrow/Adagio/TarPits→Recovery,
+FTL→Hauling, UnitedWayfarersClub→new "Support"). `Unaffiliated`/`GoblinG` left as Other
+(no authoritative source — no guessing). After re-backfill: **type-"Other" fell from
+~45% to 14%** (3,857 missions), the residue being genuinely issuer-only/no-generator.
+Tagged "verified ~4.8.0" — SC content is patch-volatile. Suite green (**57 tests**).
+
+---
+
 ## 🏷️ Faction dimension — "By faction" panel + slicer ✅
 **Date:** 2026-06-19 · branch `feature/faction-dimension`
 

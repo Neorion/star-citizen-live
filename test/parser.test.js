@@ -127,6 +127,19 @@ test('classifies mission types from real generator codenames', () => {
   assert.strictEqual(missionType('FTL_Courier'), 'Hauling');
 });
 
+test('classifies issuer-only generators via the faction fallback (sourced, ~4.8.0)', () => {
+  // no activity verb in the codename -> fall back to the contract issuer
+  assert.strictEqual(missionType('CleanAir'), 'Event');
+  assert.strictEqual(missionType('Adagio_Generator'), 'Recovery');
+  assert.strictEqual(missionType('Vaughn_Generator'), 'Bounty');
+  assert.strictEqual(missionType('InterSec_Generator'), 'Mercenary/Defense');
+  assert.strictEqual(missionType('Shubin_Generator'), 'Mining');
+  assert.strictEqual(missionType('UnitedWayfarersClub'), 'Support');
+  // genuinely unknown issuers stay Other (no guessing)
+  assert.strictEqual(missionType('Unaffiliated_Generator'), 'Other');
+  assert.strictEqual(missionType('GoblinG_Generator'), 'Other');
+});
+
 test('missionFaction extracts the contractor from the generator prefix', () => {
   assert.strictEqual(missionFaction('HockrowAgency_MissingPerson'), 'Hockrow Agency');
   assert.strictEqual(missionFaction('CitizensForProsperity_ShipWaveAttack'), 'Citizens For Prosperity');

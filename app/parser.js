@@ -253,9 +253,30 @@ const MISSION_TYPES = [
   [/collector/i, 'Event']
 ];
 
+// Issuer -> activity fallback, used ONLY when the activity token didn't match
+// (many generators are just "<Faction>_Generator" with no verb). Keyed on the
+// lowercased faction token. Sourced from the SC Wiki / Wiki API (reward_scope +
+// faction) and starcitizen.tools - see REFERENCES.md. **Verified ~SC 4.8.0
+// (2026-06); SC content is patch-volatile** (e.g. CleanAir is a time-limited event,
+// UnitedWayfarersClub is new in 4.8.0) - expect to revisit on patches.
+const FACTION_TYPES = {
+  cleanair: 'Event',                          // "Clearing The Air" limited-time event
+  vaughn: 'Bounty',                           // assassination contractor
+  intersec: 'Mercenary/Defense',              // InterSec Defense Solutions
+  foxwell: 'Mercenary/Defense', foxwellenforcement: 'Mercenary/Defense',
+  headhunters: 'Bounty', citizensforprosperity: 'Bounty', roughandready: 'Mercenary/Defense',
+  shubin: 'Mining', shubininterstellar: 'Mining',
+  hockrow: 'Recovery', hockrowagency: 'Recovery',   // investigation / locate-missing-person
+  adagio: 'Recovery', tarpits: 'Recovery',          // salvage contractors (folded into Recovery)
+  ftl: 'Hauling',                             // FTL Courier Service
+  unitedwayfarersclub: 'Support', wayfarers: 'Support'  // refuelling giver (new in 4.8.0)
+};
+
 function missionType (name) {
   if (!name) return 'Other';
   for (const [re, cat] of MISSION_TYPES) if (re.test(name)) return cat;
+  const fac = String(name).split('_')[0].toLowerCase();   // issuer fallback
+  if (FACTION_TYPES[fac]) return FACTION_TYPES[fac];
   return 'Other';
 }
 
@@ -273,4 +294,4 @@ function missionFaction (name) {
   return pretty || 'Unknown';
 }
 
-module.exports = { parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS, missionType, MISSION_TYPES, missionFaction };
+module.exports = { parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS, missionType, MISSION_TYPES, FACTION_TYPES, missionFaction };

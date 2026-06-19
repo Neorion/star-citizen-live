@@ -69,6 +69,29 @@ signals, metrics, cross-platform packaging, friendly-name enrichment).
 3. **unp4k + StarCitizen-GameData** — extract DataForge/global.ini locally to turn mission/ship codenames into friendly names (the enrichment we deferred).
 4. **StarCitizenWiki/discord-bot + IRCON-Bot** — reference shapes for the M5.3 Discord bot.
 
+## Mission-classification sources (researched 2026-06-19)
+For turning generator/contract codenames into mission types/factions. **No drop-in
+"generator codename → category" file exists**; the leads below key on faction/title,
+so we seed a small static issuer→type table (`FACTION_TYPES` in `app/parser.js`).
+- **Star Citizen Wiki API — `/missions`** (`https://api.star-citizen.wiki/missions`):
+  ~1,783 missions with `title`, `faction.name`, `reward_scope` (the category),
+  `has_combat`, `legality_label`. Public, no auth. **Caveat:** keys on display title +
+  faction, **not** the log's `<Faction>_<Activity>` codename — join via our prettified
+  faction token, not the raw codename. Its scopes (Investigation, Salvage, Refuel)
+  are finer than ours — candidates if we ever split categories.
+- **starcitizen.tools wiki** — per-faction lore pages confirmed the issuer→activity
+  mappings now in `FACTION_TYPES` (Vaughn=assassination, InterSec/Foxwell=mercenary,
+  Shubin=mining, Hockrow=investigation, Adagio/TarPits=salvage, CleanAir="Clearing The
+  Air" event, UnitedWayfarersClub=refuel [new 4.8.0]).
+- **MrKraken/StarStrings** (GitHub): `contracts.ini` keys mirror generator naming
+  (e.g. `Covalex_HaulCargo_AToB_title`) — a string-key reference, no category column,
+  community localization (see also the `sc-global-ini-strings` finding).
+- **SCMDB (scmdb.net), SCodex (scodex.garga.net)**: JS-rendered mission DBs; SCodex
+  exposes template strings but was unreachable at check time — revisit manually.
+- **Honesty/volatility:** `FACTION_TYPES` is tagged "verified ~4.8.0"; `CleanAir`
+  (event) and `UnitedWayfarersClub` (new) are patch-volatile — re-verify on updates.
+  `Unaffiliated` / `GoblinG` left as Other (no authoritative source).
+
 ## Stalled-but-promising (revive / repurpose for a future project)
 Idle ≥ ~12 months or archived (last-push checked 2026-06-14). Permissive licence =
 forkable; GPL = ideas/approach only (copyleft); none = ideas only. Archived/old means
