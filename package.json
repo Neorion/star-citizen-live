@@ -11,6 +11,7 @@
   "scripts": {
     "start": "node app/server.js",
     "replay": "node scripts/replay.js",
+    "backfill": "node scripts/backfill.js",
     "test": "node --test test/*.test.js",
     "start:fabric": "node scripts/node.js   # DEPRECATED original Fabric-based entry (kept for reference)"
   },

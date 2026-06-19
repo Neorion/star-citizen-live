@@ -321,14 +321,19 @@ poll();
   const OC={Complete:{t:'Completed',c:GOOD},Abandon:{t:'Abandoned',c:WARN},Fail:{t:'Failed',c:KILL},Deactivate:{t:'Deactivated',c:GRAY}};
   const OCK=['Complete','Abandon','Fail','Deactivate'];
   const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const S={days:14,player:'all',type:'all',outcome:'all'};
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const S={months:null,player:'all',type:'all',outcome:'all'};
   let D=null, loading=false;
   const g=(id)=>document.getElementById(id);
-  const curM=()=>(D&&D.missions||[]).filter(m=>S.player==='all'||m.player===S.player);
+  const ymOf=(ts)=>(typeof ts==='string'&&ts.length>=7)?ts.slice(0,7):'';
+  const inSel=(ym)=>S.months?S.months.has(ym):true;
+  const monthMinus=(ym,k)=>{ const p=ym.split('-'); let y=+p[0],m=+p[1]-k; while(m<=0){m+=12;y--;} return y+'-'+String(m).padStart(2,'0'); };
+  const curM=()=>(D&&D.missions||[]).filter(m=>(S.player==='all'||m.player===S.player)&&inSel(ymOf(m.ts)));
+  const curD=()=>(D&&D.deaths||[]).filter(d=>(S.player==='all'||d.player===S.player)&&inSel(ymOf(d.ts)));
 
   function fetchA(){ loading=true; render();
-    fetch('/services/star-citizen/analytics?days='+S.days)
-      .then(r=>r.json()).then(j=>{ D=j; loading=false; render(); })
+    fetch('/services/star-citizen/analytics')
+      .then(r=>r.json()).then(j=>{ D=j; if(!S.months)S.months=new Set(D.availableMonths); loading=false; render(); })
       .catch(()=>{ loading=false; g('az-kpis').innerHTML='<div class="empty" style="grid-column:1/-1">analytics offline</div>'; });
   }
 
@@ -336,30 +341,55 @@ poll();
     g(cid).innerHTML='<span class="flab">'+label+'</span>'+opts.map(o=>
       '<button class="chip '+(String(S[key])===String(o.v)?'on':'')+'" data-k="'+key+'" data-v="'+o.v+'">'+o.t+'</button>').join('');
   }
+  function rTime(){
+    if(!D){ g('az-time').innerHTML=''; return; }
+    const months=D.availableMonths||[], years=[], byYear={};
+    months.forEach(m=>{ const y=m.slice(0,4); if(years.indexOf(y)<0){years.push(y);byYear[y]=[];} byYear[y].push(m); });
+    let h='<span class="flab">period</span><button class="chip" data-allmonths="1">All</button><button class="chip" data-nomonths="1">None</button>';
+    years.forEach(y=>{ const ms=byYear[y], allOn=ms.length&&ms.every(m=>inSel(m));
+      h+='<span style="display:inline-flex;gap:5px;align-items:center;margin-left:8px">'
+        +'<button class="chip '+(allOn?'on':'')+'" data-yr="'+y+'">'+y+'</button>'
+        +ms.map(m=>'<button class="chip '+(inSel(m)?'on':'')+'" data-ym="'+m+'">'+MON[+m.split('-')[1]-1]+'</button>').join('')+'</span>'; });
+    g('az-time').innerHTML=h;
+  }
   function rSlicers(){
-    chips('az-time','time',[{t:'7d',v:7},{t:'14d',v:14},{t:'30d',v:30}],'days');
+    rTime();
     chips('az-player','pilot',[{t:'All',v:'all'}].concat((D&&D.players||[]).map(n=>({t:n,v:n}))),'player');
     const ts=[]; (D&&D.missions||[]).forEach(m=>{ if(ts.indexOf(m.type)<0) ts.push(m.type); });
     chips('az-type','mission',[{t:'All',v:'all'}].concat(ts.map(t=>({t:t,v:t}))),'type');
     chips('az-outcome','outcome',[{t:'All',v:'all'}].concat(OCK.map(o=>({t:OC[o].t,v:o}))),'outcome');
     const af=[]; if(S.player!=='all')af.push(['player',S.player]); if(S.type!=='all')af.push(['type',S.type]); if(S.outcome!=='all')af.push(['outcome',OC[S.outcome].t]);
     g('az-active').innerHTML=af.length ? af.map(f=>'<button class="chip on" data-clear="'+f[0]+'">'+f[1]+' ✕</button>').join('')+'<button class="chip" data-reset="1">↺ reset</button>' : '';
-    g('az-scope').textContent=D ? ((S.player==='all'?'all pilots':S.player)+' · last '+S.days+'d · this relay') : '';
+    const sel=S.months?S.months.size:(D?D.availableMonths.length:0), tot=D?D.availableMonths.length:0;
+    g('az-scope').textContent=D ? (sel+'/'+tot+' months · '+(S.player==='all'?'all pilots':S.player)+(D.generatedAt?' · history loaded':'')) : '';
+  }
+  function aggMonths(set){
+    const ms=(D.missions||[]).filter(m=>(S.player==='all'||m.player===S.player)&&set.has(ymOf(m.ts))&&(S.type==='all'||m.type===S.type));
+    return {
+      done: ms.filter(m=>m.outcome==='Complete').length,
+      deaths: (D.deaths||[]).filter(d=>(S.player==='all'||d.player===S.player)&&set.has(ymOf(d.ts))).length,
+      sessions: (D.sessions||[]).filter(s=>(S.player==='all'||s.player===S.player)&&set.has(ymOf(s.ts))).length
+    };
   }
   function rKPI(){
-    const ms=curM(), mt=S.type==='all'?ms:ms.filter(m=>m.type===S.type);
-    const ds=(D.deaths||[]).filter(x=>S.player==='all'||x.player===S.player);
+    const ms=curM(), mt=S.type==='all'?ms:ms.filter(m=>m.type===S.type), ds=curD();
     const done=mt.filter(m=>m.outcome==='Complete').length, rate=mt.length?Math.round(100*done/mt.length):0;
     const pil=new Set(); ms.forEach(m=>pil.add(m.player)); ds.forEach(x=>pil.add(x.player));
-    const pilots=S.player!=='all'?1:(pil.size||(D.players||[]).length), p=D.prev||{};
-    const dl=(c,pv)=>'<div class="d">'+(pv?((c-pv>=0?'+':'')+Math.round((c-pv)/pv*100)+'% vs prev'):'—')+'</div>';
-    const cards=[['Active pilots',pilots,''],['Sessions',D.sessions||0,dl(D.sessions||0,p.sessions||0)],
-      ['Missions done',done,dl(done,p.missionsDone||0)],['Completion',rate+'%',''],['Deaths',ds.length,dl(ds.length,p.deaths||0)]];
-    return cards.map(k=>'<div class="mc"><div class="l">'+k[0]+'</div><div class="v">'+k[1]+'</div>'+k[2]+'</div>').join('');
+    const pilots=S.player!=='all'?(pil.size?1:0):pil.size;
+    const selArr=S.months?[...S.months].sort():[], n=selArr.length;
+    const curSessions=S.months?aggMonths(S.months).sessions:(D.sessions||[]).filter(s=>S.player==='all'||s.player===S.player).length;
+    let prev=null;
+    if(n){ const pset=new Set(); for(let i=1;i<=n;i++)pset.add(monthMinus(selArr[0],i)); prev=aggMonths(pset); }
+    const dl=(c,pv)=>'<div class="d">'+(pv?((c-pv>=0?'+':'')+Math.round((c-pv)/pv*100)+'% vs prior '+n+'mo'):(c?'new':'—'))+'</div>';
+    const cards=[['Active pilots',pilots,''],['Sessions',curSessions,prev?dl(curSessions,prev.sessions):''],
+      ['Missions done',done,prev?dl(done,prev.done):''],['Completion',rate+'%',''],['Deaths',ds.length,prev?dl(ds.length,prev.deaths):'']];
+    return cards.map(k=>'<div class="mc"><div class="l">'+k[0]+'</div><div class="v">'+k[1]+'</div>'+(k[2]||'')+'</div>').join('');
   }
   function rHeat(){
-    const H=D.heatmap; let mx=0; H.forEach(r=>r.forEach(v=>{ if(v>mx)mx=v; }));
-    if(!mx) return '<div class="empty">no activity recorded in this window yet</div>';
+    const H=Array.from({length:7},()=>new Array(24).fill(0)); let mx=0;
+    (D.heatcells||[]).forEach(c=>{ if(inSel(c.ym)) H[c.d][c.h]+=c.n; });
+    H.forEach(r=>r.forEach(v=>{ if(v>mx)mx=v; }));
+    if(!mx) return '<div class="empty">no activity in the selected months</div>';
     const lw=30,cw=22,ch=15,top=16,W=lw+24*cw,Ht=top+7*ch+4;
     let s='<svg width="100%" viewBox="0 0 '+W+' '+Ht+'" style="max-width:'+W+'px">';
     [0,6,12,18].forEach(h=>{ s+='<text x="'+(lw+h*cw)+'" y="11" font-size="10" fill="'+GRAY+'">'+h+':00</text>'; });
@@ -412,7 +442,7 @@ poll();
     const ms=curM(), mt=S.type==='all'?ms:ms.filter(m=>m.type===S.type);
     g('az-donut').innerHTML=rDonut(mt);
     g('az-bars').innerHTML=rBars(ms);
-    g('az-lb').innerHTML=rLB(mt,(D.deaths||[]).filter(x=>S.player==='all'||x.player===S.player));
+    g('az-lb').innerHTML=rLB(mt,curD());
   }
 
   function show(v){
@@ -426,10 +456,14 @@ poll();
   g('tab-live').addEventListener('click',()=>show('live'));
   g('tab-analyze').addEventListener('click',()=>show('analyze'));
   g('view-analyze').addEventListener('click',(e)=>{
-    const t=e.target.closest('[data-k],[data-clear],[data-reset],[data-oc],[data-ty],[data-pl]'); if(!t)return;
-    if(t.dataset.k){ const v=t.dataset.v; S[t.dataset.k]=t.dataset.k==='days'?parseInt(v,10):v; if(t.dataset.k==='days'){ fetchA(); return; } }
+    const t=e.target.closest('[data-k],[data-clear],[data-reset],[data-oc],[data-ty],[data-pl],[data-ym],[data-yr],[data-allmonths],[data-nomonths]'); if(!t)return;
+    if(t.dataset.k){ S[t.dataset.k]=t.dataset.v; }
+    else if(t.dataset.ym){ if(!S.months)S.months=new Set(D.availableMonths); if(S.months.has(t.dataset.ym))S.months.delete(t.dataset.ym); else S.months.add(t.dataset.ym); }
+    else if(t.dataset.yr){ if(!S.months)S.months=new Set(D.availableMonths); const ms=(D.availableMonths||[]).filter(m=>m.slice(0,4)===t.dataset.yr); const allOn=ms.every(m=>S.months.has(m)); ms.forEach(m=>{ if(allOn)S.months.delete(m); else S.months.add(m); }); }
+    else if(t.dataset.allmonths){ S.months=new Set(D.availableMonths); }
+    else if(t.dataset.nomonths){ S.months=new Set(); }
     else if(t.dataset.clear){ S[t.dataset.clear]='all'; }
-    else if(t.dataset.reset){ S.player='all'; S.type='all'; S.outcome='all'; }
+    else if(t.dataset.reset){ S.player='all'; S.type='all'; S.outcome='all'; S.months=new Set(D.availableMonths); }
     else if(t.dataset.oc){ S.outcome=S.outcome===t.dataset.oc?'all':t.dataset.oc; }
     else if(t.dataset.ty){ S.type=S.type===t.dataset.ty?'all':t.dataset.ty; }
     else if(t.dataset.pl){ S.player=S.player===t.dataset.pl?'all':t.dataset.pl; }

@@ -74,7 +74,59 @@ class StarCitizenService extends EventEmitter {
     this.missionManager = (this.settings.missions && this.settings.missions.enable)
       ? new MissionManager(this.settings.missions) : null;
 
+    this.history = this._loadHistory();   // compact backfill of past logs (Analyze tab)
+
     if (this.settings.discord.enable) this._wireDiscord();
+  }
+
+  // Load the backfilled history aggregate (built by `npm run backfill`), if present.
+  _loadHistory () {
+    const empty = { missions: [], deaths: [], sessions: [], heat: {}, players: [], meta: {} };
+    try {
+      const f = this.settings.historyFile || require('path').join(__dirname, '..', 'stores', 'history.json');
+      if (fs.existsSync(f)) return Object.assign(empty, JSON.parse(fs.readFileSync(f, 'utf8')));
+    } catch (e) { console.error('[STAR-CITIZEN] history load failed:', e.message); }
+    return empty;
+  }
+
+  // Merge backfilled history with the current live session into one compact dataset
+  // for the Analyze tab. Local-player today; the same shape serves org-wide (M4).
+  _analyticsDataset () {
+    const h = this.history || { missions: [], deaths: [], sessions: [], heat: {}, players: [], meta: {} };
+    const me = this._sessionHandle || 'you';
+    const liveM = this.missionGroups.map((m) => ({ type: m.type, outcome: m.outcome, player: m.player || me, ts: m.startedAt || m.firstSeen })).filter((x) => x.ts);
+    const liveD = this.deaths.map((d) => ({ player: d.player || me, ts: d.timestamp })).filter((x) => x.ts);
+    const liveS = this.sessions.map((s) => ({ player: me, ts: s.detectedAt })).filter((x) => x.ts);
+
+    const heat = Object.assign({}, h.heat);
+    for (const a of this.activities) {
+      const t = Date.parse(a.timestamp); if (Number.isNaN(t)) continue;
+      const d = new Date(t);
+      const k = (d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')) + '|' + ((d.getDay() + 6) % 7) + '|' + d.getHours();
+      heat[k] = (heat[k] || 0) + 1;
+    }
+    const heatcells = Object.keys(heat).map((k) => { const p = k.split('|'); return { ym: p[0], d: +p[1], h: +p[2], n: heat[k] }; });
+
+    const missions = h.missions.concat(liveM);
+    const deaths = h.deaths.concat(liveD);
+    const sessions = (h.sessions || []).concat(liveS);
+    const ymOf = (s) => (typeof s === 'string' && s.length >= 7) ? s.slice(0, 7) : null;
+    const months = new Set();
+    missions.forEach((m) => { const y = ymOf(m.ts); if (y) months.add(y); });
+    deaths.forEach((d) => { const y = ymOf(d.ts); if (y) months.add(y); });
+    heatcells.forEach((c) => months.add(c.ym));
+    const players = [...new Set([].concat(h.players || [], this.players.map((p) => p.name), missions.map((m) => m.player), deaths.map((d) => d.player)))].filter(Boolean);
+
+    return {
+      type: 'Analytics',
+      generatedAt: (h.meta && h.meta.generatedAt) || null,
+      availableMonths: [...months].sort().reverse(),
+      players,
+      missions: missions.slice(-20000),
+      deaths: deaths.slice(-20000),
+      sessions,
+      heatcells
+    };
   }
 
   get activities () { return Object.values(this.state.activities); }
@@ -149,47 +201,11 @@ class StarCitizenService extends EventEmitter {
       if (req.method === 'GET' && path === `${base}/combat`) {
         return send(200, { type: 'Collection', data: this.combatlog });
       }
-      // Analytics: pre-aggregated activity for the "Analyze" dashboard tab.
-      // Real in-memory data, windowed by ?days=N. Local-player today; the same
-      // shape serves the org-wide view once multiple relays report in (M4).
+      // Analytics: compact merged dataset (backfilled history + live session) for
+      // the "Analyze" dashboard tab. The client slices it by month/year + pilot +
+      // mission type + outcome. Local-player today; same shape serves org-wide (M4).
       if (req.method === 'GET' && path === `${base}/analytics`) {
-        const days = Math.min(parseInt(url.searchParams.get('days'), 10) || 30, 90);
-        const now = Date.now();
-        const span = days * 86400000;
-        const fromTs = now - span;
-        const prevFrom = fromTs - span;
-        const at = (s) => { const t = Date.parse(s); return Number.isNaN(t) ? null : t; };
-        const inWin = (s, lo, hi) => { const t = at(s); return t !== null && t >= lo && t < hi; };
-        const me = this._sessionHandle || 'you';
-
-        const missions = this.missionGroups
-          .filter((m) => inWin(m.startedAt || m.firstSeen, fromTs, now))
-          .map((m) => ({ type: m.type, outcome: m.outcome, status: m.status, startedAt: m.startedAt || m.firstSeen, player: m.player || me }));
-        const deaths = this.deaths
-          .filter((d) => inWin(d.timestamp, fromTs, now))
-          .map((d) => ({ player: d.player || me, timestamp: d.timestamp }));
-
-        // 7x24 activity heatmap (Mon=0 .. hour) from parsed-line timestamps -
-        // i.e. when this machine was actually in-game (local time).
-        const heatmap = Array.from({ length: 7 }, () => new Array(24).fill(0));
-        for (const a of this.activities) {
-          const t = at(a.timestamp); if (t === null || t < fromTs) continue;
-          const d = new Date(t); heatmap[(d.getDay() + 6) % 7][d.getHours()] += 1;
-        }
-
-        const sessionsIn = (lo, hi) => this.sessions.filter((s) => inWin(s.detectedAt, lo, hi)).length;
-        const players = [...new Set([...this.players.map((p) => p.name), ...missions.map((m) => m.player), ...deaths.map((d) => d.player)])];
-        return send(200, {
-          type: 'Analytics',
-          window: { days, from: new Date(fromTs).toISOString(), to: new Date(now).toISOString() },
-          players, missions, deaths, heatmap,
-          sessions: sessionsIn(fromTs, now),
-          prev: {
-            sessions: sessionsIn(prevFrom, fromTs),
-            missionsDone: this.missionGroups.filter((m) => inWin(m.endedAt, prevFrom, fromTs) && m.outcome === 'Complete').length,
-            deaths: this.deaths.filter((d) => inWin(d.timestamp, prevFrom, fromTs)).length
-          }
-        });
+        return send(200, this._analyticsDataset());
       }
       // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
       if (req.method === 'GET' && path === `${base}/monitor`) {

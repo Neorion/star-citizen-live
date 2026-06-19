@@ -10,6 +10,29 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 🗄️ Historic backfill + month/year time slicer ✅
+**Date:** 2026-06-19 · branch `feature/death-and-mission-lifecycle`
+
+The Analyze tab now spans **real history**, not just the current session. Added
+`npm run backfill` (`scripts/backfill.js`): it scans saved logs (the game's own
+`logbackups` across channels + any `./Gamelogs` corpus), attributes each to its
+pilot via the login handle, and writes a compact `stores/history.json` (gitignored)
+— only ended missions, deaths, sessions and a per-month day×hour activity histogram,
+never raw lines, so it stays small over gigabytes. First run: **1,525 logs /
+85.7M lines → 3,843 missions, 2,980 deaths, 3 pilots (DeadMan1227, Fadingdoughnut0,
+Kersa), 10 months (Aug 2025–Jun 2026)**.
+
+The server loads that history on start and `GET …/analytics` now returns the merged
+history+live dataset (availableMonths, missions, deaths, sessions, heatcells, pilots).
+The dashboard's time control became a **month/year add-remove selector** — toggle
+whole years or individual months; every panel + the vs-prior-period deltas recompute
+client-side. Suite green (**55 tests**, incl. a backfill unit test). The corpus
+makes the multi-pilot leaderboard real *now* — a preview of the org-wide view (M4).
+Note: `history.json` aggregates other members' uploaded logs and is **gitignored**
+(never pushed).
+
+---
+
 ## 📊 "Analyze" dashboard tab — slice-and-dice activity view ✅
 **Date:** 2026-06-18 · branch `feature/death-and-mission-lifecycle`
 

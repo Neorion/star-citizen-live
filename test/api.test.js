@@ -112,15 +112,16 @@ test('analytics endpoint aggregates missions, deaths and a heatmap for the Analy
     s.handleLogChange(`<${iso(40)}> [Notice] <EndMission> Ending mission for player. MissionId[aaaa1111-d438-4996-9755-1c3fc9532e85] Player[Kersa] PlayerId[204821711285] CompletionType[Complete] Reason[Mission Ended] [Team_MissionFeatures][Missions]`);
     s.handleLogChange(`<${iso(30)}> [Notice] <Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'body_01_noMagicPocket_1 - Class(body_01_noMagicPocket)', Recorded data is: Port Name 'Body_ItemPort' [Team_CoreGameplayFeatures][Unknown]`);
 
-    const r = await call('GET', `${BASE}/analytics?days=7`);
+    const r = await call('GET', `${BASE}/analytics`);
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.json.window.days, 7);
-    assert.ok(r.json.missions.length >= 1, 'a mission is in the window');
-    assert.strictEqual(r.json.missions[0].outcome, 'Complete');
-    assert.strictEqual(r.json.missions[0].player, 'Kersa');
-    assert.ok(r.json.deaths.length >= 1, 'a death is in the window');
-    assert.strictEqual(r.json.heatmap.length, 7);
-    assert.strictEqual(r.json.heatmap[0].length, 24);
+    assert.ok(Array.isArray(r.json.availableMonths) && r.json.availableMonths.length >= 1, 'months listed');
+    const mine = r.json.missions.filter((m) => m.player === 'Kersa');
+    assert.ok(mine.length >= 1, 'my mission present');
+    assert.ok(mine.some((m) => m.outcome === 'Complete'), 'my completed mission present');
+    assert.ok(mine.every((m) => typeof m.ts === 'string'), 'missions carry a timestamp');
+    assert.ok(r.json.deaths.some((d) => d.player === 'Kersa'), 'my death present');
+    assert.ok(Array.isArray(r.json.heatcells) && r.json.heatcells.length >= 1, 'heatcells present');
+    assert.ok(r.json.heatcells[0].d >= 0 && r.json.heatcells[0].h >= 0 && r.json.heatcells[0].n >= 1, 'heatcell shape');
     assert.ok(r.json.players.includes('Kersa'));
   } finally {
     await s.stop();
