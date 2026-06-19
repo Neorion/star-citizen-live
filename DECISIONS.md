@@ -5,6 +5,38 @@ understands the direction. Newest at the top.
 
 ---
 
+## D-007 — Analytics dashboard + player log backload are adopted project goals
+**Date:** 2026-06-19 · **Status:** Adopted
+
+**Decision:** Two capabilities are now first-class project goals, alongside the
+officer-validated mission register (D-005):
+1. **Activity analytics** — an Analyze dashboard over real gameplay data (missions,
+   outcomes, deaths, sessions, activity heatmap) with slicers for pilot, mission
+   type, and **month/year**. Served by `GET …/analytics`.
+2. **Player log backload** — players can ingest their own saved logs (the game's
+   `logbackups`) via `npm run backfill` into a compact, gitignored
+   `stores/history.json`, so the org sees real history rather than only the live
+   session. Each log is attributed to its pilot by the login handle, so a
+   multi-pilot corpus yields an org-wide view today (a preview of M4).
+
+**Why:** the live relay alone only shows the current session on one machine. The
+org's actual questions are comparative and historical ("who flew, when; how do our
+missions end; how dangerous are our ops"). Analytics + backload answer those now,
+at zero hosting cost, and the same shapes carry forward to the org-wide service (M4).
+
+**Consequences / guardrails (protect these — do not regress):**
+- Keep the analytics path **zero-runtime-dependency** (hand-rolled SVG charts,
+  in-memory/file aggregation) — same rule as the rest of the service (D-002).
+- Backfill stays **read-only on logs** and keeps only **compact aggregates**, never
+  raw lines; `stores/` remains **gitignored** (it aggregates other members' logs —
+  never commit/push it).
+- Label **validated vs inferred** in the UI (officer-validated register vs
+  log-derived analytics); the register stays the source of truth (D-005).
+- These goals are recorded in `AGENTS.md` §1/§5 so both Claude Code and Codex treat
+  them as binding context.
+
+---
+
 ## D-006 — AI collaboration & human-control model; sub-agents for big batches
 **Date:** 2026-06-14 · **Status:** Adopted
 

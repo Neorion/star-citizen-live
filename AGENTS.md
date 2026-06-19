@@ -22,8 +22,18 @@ register**: officers post missions/fleet actions (in-game *or* out-of-game),
 members apply and do the work, and an officer validates completion. Every register
 mutation is recorded in a **hash-chained, tamper-evident audit log**.
 
-**One-line summary:** turn the live game log into a Discord/dashboard/API feed, and
-run an officer-validated mission register with an auditable trail on top.
+The relay also powers an **activity-analytics dashboard** (missions, outcomes,
+deaths, sessions and an activity heatmap, sliced by pilot / mission type / month &
+year) and lets players **backload their saved logs** (`npm run backfill` over the
+game's `logbackups`) so the org can see real history, not just the live session.
+
+**One-line summary:** turn the live game log into a Discord/dashboard/API feed,
+analyse activity (incl. backloaded history), and run an officer-validated mission
+register with an auditable trail on top.
+
+**Core goals (do not regress — see `DECISIONS.md` D-005, D-007):** (1) the officer-
+validated mission register with an auditable trail; (2) the activity-analytics
+dashboard; (3) player log backload into shared history. New work must protect these.
 
 **Product context for non-technical readers:** `SOLUTION-BRIEF.md`.
 
@@ -136,13 +146,23 @@ Kept during migration; safe to ignore unless explicitly working on migration.
 
 ## 5. Current state — what works vs. what's next
 
-**Built and tested (45 tests pass):**
+**Built and tested (55 tests pass):**
 - Read-only live log monitoring with **auto-detect** of install/channel, plus
   **offline replay**. Survives the game rotating/recreating `Game.log`
   (session tracking).
 - Rule-based parser: logins, sessions/build/hardware, level/mode loads, missions,
   objectives, notifications (HUD vs. mission split), mission-type classification,
   player-down (incapacitation) detection, and a combat-progress proxy.
+- **Current-build (4.8.0) death + mission lifecycle:** `player:death` (corpse
+  `body_01_noMagicPocket` marker), `mission:start` and `mission:end`
+  (CompletionType: Complete/Abandon/Fail/Deactivate). Kills are still parsed but
+  dormant on the current game (only ≤4.3.0 logged them — §1).
+- **Activity-analytics dashboard** (Analyze tab): KPI strip, activity heatmap,
+  outcome donut, mission-type bars, pilot leaderboard, pilot comparison; **month/
+  year add-remove slicer**; served by `GET …/analytics`.
+- **Player log backload:** `npm run backfill` (`scripts/backfill.js`) ingests saved
+  logs into a compact, gitignored `stores/history.json` (per-pilot, attributed by
+  login handle); merged with the live session in the analytics view.
 - Kill / vehicle-destruction parsing — **format-verified on real ≤4.3.0 logs**,
   wired to the dashboard 💀 panel + Discord, but dormant on the current game (§1).
 - Live dashboard + REST API + optional Discord webhook embeds.
