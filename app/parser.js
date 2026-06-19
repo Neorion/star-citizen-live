@@ -243,10 +243,10 @@ function parseSessionInfo (line) {
 // friendly category. Order matters (first match wins). Editable - CIG adds
 // content every patch, same as the NPC list. ---
 const MISSION_TYPES = [
-  [/killship|killnpc|fpskill|bountyhunter|assassinat|\bhunt/i, 'Bounty'],
+  [/killship|killnpc|fpskill|bountyhunter|assassinat|stationassault|shipwaveattack|headhunters|\bhunt/i, 'Bounty'],
   [/mercenary|enforcement|security|patrol|ambush|defend|escort|protect/i, 'Mercenary/Defense'],
-  [/haul|cargo|deliver|recovercargo/i, 'Hauling'],
-  [/recoveritem|recoverdata|recover|investigat|salvage/i, 'Recovery'],
+  [/haul|cargo|deliver|recovercargo|courier/i, 'Hauling'],
+  [/recoveritem|recoverdata|recover|investigat|salvage|missingperson/i, 'Recovery'],
   [/mining|resourcegather|gather|extract/i, 'Mining'],
   [/facilitydelve|delve|\bfps/i, 'FPS/Facility'],
   [/destroyitems|sabotage|destroy/i, 'Sabotage'],
@@ -259,4 +259,18 @@ function missionType (name) {
   return 'Other';
 }
 
-module.exports = { parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS, missionType, MISSION_TYPES };
+// --- Mission faction / contractor [from the generator codename's leading token].
+// Generator names are structured <Faction>_<Activity>, e.g. "Adagio_Generator",
+// "HockrowAgency_MissingPerson", "Covalex_Hauling". The first underscore-token is
+// the contract issuer. Orthogonal to missionType() (what you do vs who issued it).
+// Returns a prettified faction name, or 'Unknown' when no generator was captured. ---
+function missionFaction (name) {
+  if (!name) return 'Unknown';
+  const head = String(name).split('_')[0];
+  const pretty = head
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')   // CamelCase -> spaced
+    .trim();
+  return pretty || 'Unknown';
+}
+
+module.exports = { parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS, missionType, MISSION_TYPES, missionFaction };

@@ -147,6 +147,7 @@
       <div class="slrow" id="az-time"></div>
       <div class="slrow" id="az-player"></div>
       <div class="slrow" id="az-type"></div>
+      <div class="slrow" id="az-faction"></div>
       <div class="slrow" id="az-outcome"></div>
       <div class="slrow" id="az-active" style="margin-bottom:0"></div>
     </div>
@@ -161,8 +162,12 @@
     <div id="az-donut" style="padding:12px 14px"></div>
   </section>
   <section class="panel">
-    <h2>📊 By mission type <span class="sub">— click a bar to focus</span></h2>
+    <h2>📊 By mission type <span class="sub">— what you do; click a bar to focus</span></h2>
     <div id="az-bars" style="padding:12px 14px"></div>
+  </section>
+  <section class="panel full">
+    <h2>🏷️ By faction <span class="sub">— who issued the contract; click a row to filter</span></h2>
+    <div id="az-fac" style="padding:12px 14px;overflow:auto"></div>
   </section>
   <section class="panel full">
     <h2>🏅 Pilots <span class="sub">— click a row to filter; org-wide once relays report in (M4)</span></h2>
@@ -326,15 +331,17 @@ poll();
   const OCK=['Complete','Abandon','Fail','Deactivate'];
   const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const S={months:null,players:null,types:null,outcomes:null};   // null = all (multi-select Sets otherwise)
+  const S={months:null,players:null,types:null,outcomes:null,factions:null};   // null = all (multi-select Sets otherwise)
   let D=null, loading=false;
   const g=(id)=>document.getElementById(id);
   const ymOf=(ts)=>(typeof ts==='string'&&ts.length>=7)?ts.slice(0,7):'';
+  const facOf=(m)=>m.faction||'Unknown';
   const has=(set,v)=>(!set||!set.size)?true:set.has(v);
   const mSel=(ym)=>S.months?S.months.has(ym):true;
   const pSel=(p)=>has(S.players,p);
   const tSel=(t)=>has(S.types,t);
   const oSel=(o)=>has(S.outcomes,o);
+  const fSel=(f)=>has(S.factions,f);
   const monthMinus=(ym,k)=>{ const p=ym.split('-'); let y=+p[0],m=+p[1]-k; while(m<=0){m+=12;y--;} return y+'-'+String(m).padStart(2,'0'); };
   const baseM=()=>(D&&D.missions||[]).filter(m=>mSel(ymOf(m.ts))&&pSel(m.player));
   const baseD=()=>(D&&D.deaths||[]).filter(d=>mSel(ymOf(d.ts))&&pSel(d.player));
@@ -373,10 +380,13 @@ poll();
     multi('az-player','pilot',(D&&D.players||[]).map(n=>({t:n,v:n})),'players');
     const ts=[]; (D&&D.missions||[]).forEach(m=>{ if(ts.indexOf(m.type)<0) ts.push(m.type); });
     multi('az-type','mission',ts.map(t=>({t:t,v:t})),'types');
+    const fs=[]; (D&&D.missions||[]).forEach(m=>{ const f=facOf(m); if(fs.indexOf(f)<0) fs.push(f); }); fs.sort();
+    multi('az-faction','faction',fs.map(f=>({t:f,v:f})),'factions');
     multi('az-outcome','outcome',OCK.map(o=>({t:OC[o].t,v:o})),'outcomes');
     const af=[];
     if(S.players&&S.players.size)af.push(['players','pilots: '+[...S.players].join(', ')]);
     if(S.types&&S.types.size)af.push(['types','type: '+[...S.types].join(', ')]);
+    if(S.factions&&S.factions.size)af.push(['factions','faction: '+[...S.factions].join(', ')]);
     if(S.outcomes&&S.outcomes.size)af.push(['outcomes','outcome: '+[...S.outcomes].map(o=>OC[o].t).join(', ')]);
     const monthsAll=D&&S.months&&S.months.size===D.availableMonths.length;
     if(S.months&&!monthsAll)af.push(['months',S.months.size+' month'+(S.months.size===1?'':'s')+' selected']);
@@ -386,7 +396,7 @@ poll();
     g('az-scope').textContent=D ? (sel+'/'+tot+' months · '+np+(D.generatedAt?' · history loaded':'')) : '';
   }
   function aggMonths(set){
-    const ms=(D.missions||[]).filter(m=>pSel(m.player)&&set.has(ymOf(m.ts))&&tSel(m.type));
+    const ms=(D.missions||[]).filter(m=>pSel(m.player)&&set.has(ymOf(m.ts))&&tSel(m.type)&&fSel(facOf(m)));
     return {
       done: ms.filter(m=>m.outcome==='Complete').length,
       deaths: (D.deaths||[]).filter(d=>pSel(d.player)&&set.has(ymOf(d.ts))).length,
@@ -394,7 +404,7 @@ poll();
     };
   }
   function rKPI(){
-    const msType=baseM().filter(m=>tSel(m.type)), ds=baseD();
+    const msType=baseM().filter(m=>tSel(m.type)&&fSel(facOf(m))), ds=baseD();
     const done=msType.filter(m=>m.outcome==='Complete').length, rate=msType.length?Math.round(100*done/msType.length):0;
     const pil=new Set(); msType.forEach(m=>pil.add(m.player)); ds.forEach(x=>pil.add(x.player));
     const selArr=S.months?[...S.months].sort():[], n=selArr.length;
@@ -455,10 +465,24 @@ poll();
     return head+rows.map(r=>{ const pc=r.tot?Math.round(100*r.done/r.tot):0;
       return '<div class="lbr click" data-pl="'+r.n+'"><span>'+r.n+'</span><span style="text-align:right">'+r.tot+'</span><span style="text-align:right">'+pc+'%</span><span style="text-align:right">'+r.deaths+'</span></div>'; }).join('');
   }
+  function rFaction(ms){
+    const facs=[]; ms.forEach(m=>{ const f=facOf(m); if(facs.indexOf(f)<0)facs.push(f); });
+    if(!facs.length) return '<div class="empty">no missions in range yet</div>';
+    const by={}; facs.forEach(f=>by[f]={Complete:0,Abandon:0,Fail:0,Deactivate:0,tot:0});
+    ms.forEach(m=>{ const f=facOf(m); if(m.outcome)by[f][m.outcome]++; by[f].tot++; });
+    const order=facs.slice().sort((a,b)=>by[b].tot-by[a].tot);
+    let mx=1; order.forEach(f=>{ if(by[f].tot>mx)mx=by[f].tot; });
+    const bw=96,x0=150,rh=24; let s='<svg width="100%" viewBox="0 0 300 '+(order.length*rh+6)+'" style="max-width:300px">';
+    order.forEach((f,i)=>{ const y=i*rh+6, rop=fSel(f)?1:0.4;
+      s+='<g opacity="'+rop+'" data-fac="'+f.replace(/"/g,'')+'" style="cursor:pointer"><text x="0" y="'+(y+12)+'" font-size="10.5" fill="var(--muted)">'+f+'</text>';
+      let cxp=x0; OCK.forEach(o=>{ const w=(by[f][o]||0)/mx*bw; if(w>0){ const op=oSel(o)?1:0.4; s+='<rect x="'+cxp.toFixed(1)+'" y="'+(y+2)+'" width="'+w.toFixed(1)+'" height="13" fill="'+OC[o].c+'" fill-opacity="'+op+'"/>'; cxp+=w; } });
+      s+='<text x="'+(x0+bw+6)+'" y="'+(y+12)+'" font-size="11" font-weight="650" fill="var(--text)">'+by[f].tot+'</text></g>'; });
+    return s+'</svg>';
+  }
   function rCompare(){
     const by={};
     const get=(p)=>by[p]||(by[p]={done:0,tot:0,deaths:0,sess:0});
-    baseM().forEach(m=>{ if(!tSel(m.type))return; const b=get(m.player); b.tot++; if(m.outcome==='Complete')b.done++; });
+    baseM().forEach(m=>{ if(!tSel(m.type)||!fSel(facOf(m)))return; const b=get(m.player); b.tot++; if(m.outcome==='Complete')b.done++; });
     baseD().forEach(d=>{ get(d.player).deaths++; });
     (D.sessions||[]).forEach(s=>{ if(mSel(ymOf(s.ts))&&pSel(s.player)) get(s.player).sess++; });
     const rows=Object.keys(by).map(k=>{ const b=by[k]; return {n:k,rate:b.tot?Math.round(100*b.done/b.tot):0,tot:b.tot,deaths:b.deaths,sess:b.sess,dps:b.sess?b.deaths/b.sess:0}; })
@@ -477,10 +501,14 @@ poll();
     if(!D){ g('az-kpis').innerHTML='<div class="empty" style="grid-column:1/-1">'+(loading?'loading…':'open to load')+'</div>'; return; }
     g('az-kpis').innerHTML=rKPI();
     g('az-heat').innerHTML=rHeat();
-    const base=baseM(), msType=base.filter(m=>tSel(m.type)), msOut=base.filter(m=>oSel(m.outcome));
-    g('az-donut').innerHTML=rDonut(msType);
-    g('az-bars').innerHTML=rBars(msOut);
-    g('az-lb').innerHTML=rLB(msType,baseD());
+    const base=baseM();
+    const msMain=base.filter(m=>tSel(m.type)&&fSel(facOf(m)));            // type + faction (donut, leaderboard)
+    const msBars=base.filter(m=>oSel(m.outcome)&&fSel(facOf(m)));         // outcome + faction (type bars)
+    const msFac=base.filter(m=>oSel(m.outcome)&&tSel(m.type));            // outcome + type (faction bars)
+    g('az-donut').innerHTML=rDonut(msMain);
+    g('az-bars').innerHTML=rBars(msBars);
+    g('az-fac').innerHTML=rFaction(msFac);
+    g('az-lb').innerHTML=rLB(msMain,baseD());
     g('az-cmp').innerHTML=rCompare();
   }
 
@@ -496,16 +524,17 @@ poll();
   g('tab-analyze').addEventListener('click',()=>show('analyze'));
   const tog=(key,v)=>{ if(!S[key])S[key]=new Set(); if(S[key].has(v))S[key].delete(v); else S[key].add(v); if(!S[key].size)S[key]=null; };
   g('view-analyze').addEventListener('click',(e)=>{
-    const t=e.target.closest('[data-all],[data-multi],[data-clear],[data-reset],[data-oc],[data-ty],[data-pl],[data-ym],[data-allmonths],[data-nomonths]'); if(!t)return;
+    const t=e.target.closest('[data-all],[data-multi],[data-clear],[data-reset],[data-oc],[data-ty],[data-fac],[data-pl],[data-ym],[data-allmonths],[data-nomonths]'); if(!t)return;
     if(t.dataset.all){ S[t.dataset.all]=null; }
     else if(t.dataset.multi){ tog(t.dataset.multi,t.dataset.v); }
     else if(t.dataset.ym){ if(!S.months)S.months=new Set(D.availableMonths); if(S.months.has(t.dataset.ym))S.months.delete(t.dataset.ym); else S.months.add(t.dataset.ym); }
     else if(t.dataset.allmonths){ S.months=new Set(D.availableMonths); }
     else if(t.dataset.nomonths){ S.months=new Set(); }
     else if(t.dataset.clear){ if(t.dataset.clear==='months')S.months=new Set(D.availableMonths); else S[t.dataset.clear]=null; }
-    else if(t.dataset.reset){ S.months=new Set(D.availableMonths); S.players=null; S.types=null; S.outcomes=null; }
+    else if(t.dataset.reset){ S.months=new Set(D.availableMonths); S.players=null; S.types=null; S.outcomes=null; S.factions=null; }
     else if(t.dataset.oc){ tog('outcomes',t.dataset.oc); }
     else if(t.dataset.ty){ tog('types',t.dataset.ty); }
+    else if(t.dataset.fac){ tog('factions',t.dataset.fac); }
     else if(t.dataset.pl){ tog('players',t.dataset.pl); }
     render();
   });

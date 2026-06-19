@@ -10,8 +10,24 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
-## 🎛️ Analyze multi-select slicers + range chooser + compare-by-pilot ✅
-**Date:** 2026-06-19 · branch `feature/analyze-multiselect` → merged to `feature/fabric-free-m1`
+## 🏷️ Faction dimension — "By faction" panel + slicer ✅
+**Date:** 2026-06-19 · branch `feature/faction-dimension`
+
+Split the contract **issuer** out as its own dimension instead of cramming faction
+names into the activity-type list. `missionFaction(generator)` takes the generator
+codename's leading token (`<Faction>_<Activity>`) and prettifies it (`HockrowAgency`
+→ "Hockrow Agency"); `Unknown` when no generator was captured. Added:
+- **"By faction" panel** (outcome-segmented bars per contractor — CleanAir, Adagio,
+  HeadHunters, InterSec…) + a **faction multi-select slicer**; clicking a row filters.
+- Faction now flows through `scripts/backfill.js` → `stores/history.json` and the
+  `/analytics` payload (history + live), and cross-filters every panel.
+- Also folded the **safe activity patterns** into `missionType()` (StationAssault/
+  ShipWaveAttack/HeadHunters → Bounty; MissingPerson → Recovery; Courier → Hauling),
+  shrinking type-"Other" without overloading it — the org-name generators are now
+  explained by the faction view rather than dumped in "Other".
+
+Zero deps, JS syntax-checked, suite green (**56 tests**, incl. `missionFaction` +
+new type-pattern cases). History re-backfilled to populate faction.
 
 Reworked the Analyze slicers from single-select to **multi-select**: pilot, mission
 type, and outcome are now Sets (toggle several at once; "All" clears). Period gained

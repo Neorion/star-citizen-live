@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseLine, shipName, isNPC, parseSessionInfo, missionType } = require('../app/parser');
+const { parseLine, shipName, isNPC, parseSessionInfo, missionType, missionFaction } = require('../app/parser');
 
 // --- VERIFIED patterns (from a real Game.log hangar session) ---
 
@@ -120,6 +120,20 @@ test('classifies mission types from real generator codenames', () => {
   assert.strictEqual(missionType('Rayari_RecoverItem'), 'Recovery');
   assert.strictEqual(missionType('Shubin_ResourceGathering_ShipMining'), 'Mining');
   assert.strictEqual(missionType('SomeUnknown_Generator'), 'Other');
+  // added activity patterns (real codenames previously falling to Other)
+  assert.strictEqual(missionType('InterSec_StationAssault'), 'Bounty');
+  assert.strictEqual(missionType('CitizensForProsperity_ShipWaveAttack'), 'Bounty');
+  assert.strictEqual(missionType('HockrowAgency_MissingPerson'), 'Recovery');
+  assert.strictEqual(missionType('FTL_Courier'), 'Hauling');
+});
+
+test('missionFaction extracts the contractor from the generator prefix', () => {
+  assert.strictEqual(missionFaction('HockrowAgency_MissingPerson'), 'Hockrow Agency');
+  assert.strictEqual(missionFaction('CitizensForProsperity_ShipWaveAttack'), 'Citizens For Prosperity');
+  assert.strictEqual(missionFaction('CleanAir'), 'Clean Air');
+  assert.strictEqual(missionFaction('Covalex_Hauling'), 'Covalex');
+  assert.strictEqual(missionFaction(undefined), 'Unknown');
+  assert.strictEqual(missionFaction(null), 'Unknown');
 });
 
 test('detects player incapacitation (down) — VERIFIED in 4.7.0 logs', () => {
