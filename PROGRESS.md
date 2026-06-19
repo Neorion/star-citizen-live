@@ -10,6 +10,21 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 🎛️ Analyze multi-select slicers + range chooser + compare-by-pilot ✅
+**Date:** 2026-06-19 · branch `feature/analyze-multiselect` → merged to `feature/fabric-free-m1`
+
+Reworked the Analyze slicers from single-select to **multi-select**: pilot, mission
+type, and outcome are now Sets (toggle several at once; "All" clears). Period gained
+a **from→to range chooser** (two dropdowns) replacing the fixed per-year toggle, and
+the month chips remain as fine multi-select toggles. Clicking the donut, a type bar,
+or a pilot row now toggles that value in its multi-select (cross-filter). The
+**Pilot comparison** scorecard now respects the pilot multi-select, so you can
+compare a chosen subset of pilots ("compare by user"). Every panel + the
+vs-prior-period deltas recompute client-side. Pure UI; JS syntax-checked; zero deps;
+suite green (**55 tests**). Merged to trunk on owner instruction.
+
+---
+
 ## ⚖️ Pilot-comparison panel + branch ready for review ✅
 **Date:** 2026-06-19 · branch `feature/death-and-mission-lifecycle`
 
