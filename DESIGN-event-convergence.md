@@ -113,12 +113,12 @@ to Fabric later if/when the org wants to drop the single VPS (the D-004 trigger)
 
 ```mermaid
 flowchart LR
-  R1[Relay - Kersa] -->|signed events| HUB
-  R2[Relay - DeadMan] -->|signed events| HUB
-  R3[Relay - Fadingdoughnut] -->|signed events| HUB
-  HUB[Convergence: dedup by content-id; group shared by mission_id] --> LOG[(Append-only event log)]
-  LOG --> AN[Analytics fold: heatmap / missions / deaths / factions]
-  REG[Mission register - officer-validated] --> DASH[Dashboard]
+  R1["Relay: Kersa"] -->|events| HUB
+  R2["Relay: DeadMan"] -->|events| HUB
+  R3["Relay: Fadingdoughnut"] -->|events| HUB
+  HUB["Converge: dedup by content-id, group shared by mission_id"] --> LOG[("Append-only event log")]
+  LOG --> AN["Analytics fold: heatmap, missions, deaths, factions"]
+  REG["Mission register (officer-validated)"] --> DASH["Dashboard"]
   AN --> DASH
 ```
 
