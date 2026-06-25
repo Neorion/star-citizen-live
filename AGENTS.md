@@ -292,3 +292,33 @@ reading gigabytes into the main thread. Adopted as the default for big batches.
 
 **Active request:** see `REVIEW.md` for the current project-review scope and the
 collaboration log.
+
+---
+
+## Cursor Cloud specific instructions
+
+Standard commands live in §3 (`npm start`, `npm test`, `npm run replay`,
+`npm run backfill`). Cloud-specific, non-obvious notes only:
+
+- **Runtime:** Node 22 is present on the VM (only Node 18+ is required). There are
+  no runtime deps; `npm install` only pulls the *optional* `tail` package and is a
+  fast no-op when already up to date.
+- **Test suite is green except one Windows-only test.** `npm test` reports
+  **55 pass / 1 fail / 1 skip** on this Linux VM. The single failure —
+  `auto-detect picks the most recently modified channel log` in
+  `test/locate.test.js` — is expected off-Windows: it builds backslash paths and
+  `path.join` only treats `\` as a separator on Windows, so the injected
+  `statSync` keys never match and it returns `none`. This is **not** a regression;
+  do not "fix" it by editing app code.
+- **`npm start` runs but finds no Game.log here.** `app/locate.js` only scans
+  Windows drive letters, so on the VM the dashboard comes up at
+  `http://localhost:3041/` with `channel: null` and empty live panels — that is
+  expected. To exercise real functionality without the game:
+  - **Parser/relay:** `npm run replay test/fixtures/sample-missions.log` (or
+    `sample-combat.log`).
+  - **Mission register (core feature):** start with an officer allowlist, e.g.
+    `SC_OFFICERS=Neorion npm start`, then drive the lifecycle over REST at base
+    `/services/star-citizen` (POST `missions` with `createdBy`; `missions/:id/apply`
+    with `applicantId`; `applications/:id/decision`, `missions/:id/claim`,
+    `claims/:id/validate` with `officerId`). State is in-memory unless
+    `SC_REGISTER_DIR` is set.
