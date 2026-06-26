@@ -307,6 +307,30 @@ separable follow-up — not built here.
 
 ---
 
+## 💥 `<FatalCollision>` — current-build ship-collision parser (live on 4.8.0) ✅
+**Date:** 2026-06-25 · branch `feature/fatal-collision-parser`
+
+Found a current-build combat-destruction signal the parser was missing. Unlike
+`<Actor Death>` / `<Vehicle Destruction>` (gone after 4.3.0), **`<FatalCollision>`
+still fires on live builds** — VERIFIED across **236 real lines** in builds
+4.6/4.7/**4.8.0** (Apr 2026 corpus). The line names the crashing vehicle, whether a
+player flew it (`PlayerPilot`), what it hit (a named player/ship, or `UNKNOWN` =
+terrain/structure), the hit ship's `Class`, and the relative velocity (→ closing-speed
+severity).
+
+Added a `vehicle:collision` parser rule (regex matched **236/236**, zero misses),
+wired through the service: a new `collisions` collection + REST `…/collisions`, a
+count in `…/monitor`, a `vehicle:collision` event, and an optional (default-off)
+`💥 Collision` Discord embed. Also added the missing **`KRIG`** (Krieger) ship-name
+prefix so the L22 Alpha Wolf et al. resolve. End-to-end replay of a real Apr-2026 log:
+16,707 lines → 9 collisions (1 ship-vs-ship, 8 terrain), fully enriched. **+2 tests,
+suite green (59).** This is the **first real current-build "ship destroyed" signal**,
+filling the gap left by kill / vehicle-destruction removal (alongside `player:death`).
+Branch is a **proposal for owner review — not merged**; a dashboard UI panel is the
+remaining follow-up.
+
+---
+
 ## 🔎 Sourced issuer→type fallback — type-"Other" 45% → 14% ✅
 **Date:** 2026-06-19 · branch `feature/faction-dimension`
 

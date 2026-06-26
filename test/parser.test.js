@@ -42,6 +42,31 @@ test('plain header line classified as log:raw', () => {
   assert.strictEqual(r.kind, 'log:raw');
 });
 
+// --- VERIFIED: <FatalCollision> (current-build ship collision, 236 real lines, 4.6-4.8.0) ---
+
+test('detects a ship collision into a named player ship (<FatalCollision>)', () => {
+  const r = parseLine("<2026-04-04T01:34:53.124Z> [Notice] <FatalCollision> Fatal Collision occured for vehicle KRIG_L22_AlphaWolf_9798566033823 [Part: body, Pos: x: -583003.064663, y: 133665.998236, z: 801725.733425, Zone: ellis3, PlayerPilot: 1] after hitting entity: Tigzz [Zone: RSI_Aurora_Mk2_9798566033040 - Class(RSI_Aurora_Mk2) - Context(Streamable Runtime-spawned) - Socpak() State: ]. Hit Pos: x: 0.000000, y: 0.000000, z: 0.000000, Distance: 2.369894, Relative Vel: x: 20.035746, y: -98.950386, z: -90.624771, Collider [Id: 1]");
+  assert.strictEqual(r.kind, 'vehicle:collision');
+  assert.strictEqual(r.verified, true);
+  assert.strictEqual(r.vehicleName, 'L22 Alpha Wolf');
+  assert.strictEqual(r.zone, 'ellis3');
+  assert.strictEqual(r.playerPiloted, true);
+  assert.strictEqual(r.hitEntity, 'Tigzz');
+  assert.strictEqual(r.hitClass, 'RSI_Aurora_Mk2');
+  assert.strictEqual(r.hitShip, 'Aurora Mk2');
+  assert.strictEqual(r.hitTerrain, false);
+  assert.strictEqual(r.closingSpeed, 136);   // |relVel| magnitude, rounded
+});
+
+test('detects a ship collision into terrain (entity UNKNOWN)', () => {
+  const r = parseLine("<2026-04-04T01:37:03.291Z> [Notice] <FatalCollision> Fatal Collision occured for vehicle KRIG_L22_AlphaWolf_9798566034600 [Part: body, Pos: x: -580317.249398, y: 139871.241217, z: 802653.143801, Zone: ellis3, PlayerPilot: 1] after hitting entity: UNKNOWN [Zone: UNKNOWN State: ]. Hit Pos: x: 0.000000, y: 0.000000, z: 0.000000, Distance: 5.646770, Relative Vel: x: -28.754354, y: -183.587723, z: -4.991623");
+  assert.strictEqual(r.kind, 'vehicle:collision');
+  assert.strictEqual(r.hitEntity, null);
+  assert.strictEqual(r.hitTerrain, true);
+  assert.strictEqual(r.hitShip, null);
+  assert.strictEqual(r.playerPiloted, true);
+});
+
 // --- UNVERIFIED patterns (documented SC 4.x format; pending real combat log) ---
 
 test('parses a player kill (Actor Death) — VERIFIED on real member data', () => {
