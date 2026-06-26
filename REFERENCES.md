@@ -24,6 +24,8 @@ signals, metrics, cross-platform packaging, friendly-name enrichment).
 | [greluc/SC-Kill-Monitor](https://github.com/greluc/SC-Kill-Monitor) | Java | ideas only | **GPL-3.0, archived Nov 2025** — its archival is consistent with the kill-log format changing. |
 | [ckuma/scplay](https://github.com/ckuma/scplay) | Python | idea | Playtime from log timestamps — a session/play-time metric we could add. |
 
+> **Log-format finding (2026-06-25): `<FatalCollision>` is a LIVE current-build collision/destruction signal.** Across our corpus it appears **236×** in builds 4.6/4.7/**4.8.0** (Apr 2026): `<FatalCollision> Fatal Collision occured for vehicle <ship> [… Zone: <z>, PlayerPilot: 0|1] after hitting entity: <name|UNKNOWN> [Zone: <ship/zone> - Class(<class>) …]. Hit Pos: …, Distance: <d>, Relative Vel: x/y/z`. It names the crasher, whether a player flew it, what it hit, and the closing speed. Now parsed as `vehicle:collision` ([app/parser.js](app/parser.js)). **The FIRST current-build "ship destroyed" signal** after kills / `<Vehicle Destruction>` were removed post-4.3.0 — fills that gap alongside `player:death`. (CIG's typo "occured" is in the real line; preserve it in any regex.) See `PROGRESS.md` (2026-06-25) and the `sc-log-combat-vs-missions` finding.
+
 ### B. Discord bots / org & fleet management  *(M5.3 + register)*
 | Project | Lang | Take | Notes |
 |---|---|---|---|

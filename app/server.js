@@ -44,12 +44,12 @@ class StarCitizenService extends EventEmitter {
       logfile: null,
       channel: null, // SC channel (LIVE/PTU/EPTU/HOTFIX/TECH-PREVIEW) for display
       seed: null,   // optional: replay a past log once on start to pre-fill the monitor
-      discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false },
+      discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false, announceCollisions: false },
       missions: { enable: true }
     }, settings);
-    this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false }, settings.discord || {});
+    this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false, announceCollisions: false }, settings.discord || {});
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, notifications: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, collisions: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, notifications: {}, logs: {}, startedAt: null };
     this.state.missionGroups = {};  // missions grouped by MissionId (built from the log)
     this.state.objectives = {};     // objective details keyed by ObjectiveId
     this.state.combatlog = {};      // combat progress inferred from mission objectives
@@ -133,6 +133,7 @@ class StarCitizenService extends EventEmitter {
   get players () { return Object.values(this.state.players); }   // distinct handles
   get logins () { return Object.values(this.state.logins); }     // every login event
   get vehicles () { return Object.values(this.state.vehicles); }
+  get collisions () { return Object.values(this.state.collisions); }       // current-build ship collisions (<FatalCollision>)
   get kills () { return Object.values(this.state.kills); }
   get incaps () { return Object.values(this.state.incaps); }              // player down (revivable) events
   get deaths () { return Object.values(this.state.deaths); }              // local-player deaths (corpse-recovery signal)
@@ -218,9 +219,10 @@ class StarCitizenService extends EventEmitter {
           missionStats: this.missionStats(),
           kills: newest(this.kills),
           deaths: newest(this.deaths),
+          collisions: newest(this.collisions),
           counts: {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
-            vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length, deaths: this.deaths.length,
+            vehicles: this.vehicles.length, collisions: this.collisions.length, kills: this.kills.length, incaps: this.incaps.length, deaths: this.deaths.length,
             missionlog: this.missionlog.length, missions: this.missionGroups.length, notifications: this.notifications.length,
             combat: this.combatlog.length,
             logs: this.logs.length, flagged: this.flagged.length
@@ -238,11 +240,11 @@ class StarCitizenService extends EventEmitter {
           logs: this.logs.length, missions: this.missions.length
         }});
       }
-      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, notifications: () => this.notifications, messages: () => this.logs };
+      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, collisions: () => this.collisions, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, notifications: () => this.notifications, messages: () => this.logs };
       for (const [name, getter] of Object.entries(collections)) {
         if (path === `${base}/${name}`) {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
-          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths') {
+          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths' && name !== 'collisions') {
             const data = await body();
             // Players dedupe by handle (distinct roster) rather than per-event.
             if (name === 'players' && data.name) {
@@ -375,6 +377,19 @@ class StarCitizenService extends EventEmitter {
         const v = { id, vehicle: ev.vehicle, vehicleName: shipName(ev.vehicle), cause: ev.cause, attacker: ev.attacker, fromLevel: ev.fromLevel, toLevel: ev.toLevel, timestamp: ev.timestamp };
         this.state.vehicles[id] = v;
         this.emit('vehicle:destroy', v);
+        break;
+      }
+      case 'vehicle:collision': {
+        // CURRENT-BUILD ship collision (<FatalCollision>) - fires live on 4.8.0,
+        // unlike the dormant vehicle:destroy. Who crashed, what they hit, severity.
+        const col = {
+          id, vehicle: ev.vehicle, vehicleName: ev.vehicleName, zone: ev.zone,
+          playerPiloted: ev.playerPiloted, hitEntity: ev.hitEntity, hitShip: ev.hitShip,
+          hitClass: ev.hitClass, hitTerrain: ev.hitTerrain, distance: ev.distance,
+          closingSpeed: ev.closingSpeed, timestamp: ev.timestamp
+        };
+        this.state.collisions[id] = col;
+        this.emit('vehicle:collision', col);
         break;
       }
       case 'mission:contract':
@@ -543,6 +558,20 @@ class StarCitizenService extends EventEmitter {
     this.on('mission:objective', (m) => { if (this.settings.discord.announceMissions) this._discordMission(m); });
     this.on('combat:progress', (c) => { if (this.settings.discord.announceCombat) this._discordCombat(c); });
     this.on('player:incap', (i) => { if (this.settings.discord.announceIncaps) this._discordIncap(i); });
+    this.on('vehicle:collision', (c) => { if (this.settings.discord.announceCollisions) this._discordCollision(c); });
+  }
+
+  _discordCollision (c) {
+    const who = c.vehicleName || 'A ship';
+    const hit = c.hitTerrain ? 'terrain/a structure' : (c.hitShip || c.hitEntity || 'something');
+    const sev = c.closingSpeed != null ? ` at ~${c.closingSpeed} m/s` : '';
+    return this.postToDiscord({ embeds: [{ title: '💥 Collision',
+      description: `${who} crashed into ${hit}${sev}`,
+      fields: [
+        { name: 'Zone', value: c.zone || 'Unknown', inline: true },
+        { name: 'Player-piloted', value: c.playerPiloted ? 'Yes' : 'No', inline: true }
+      ],
+      color: 0xE67E22, timestamp: new Date().toISOString() }] });
   }
 
   _discordIncap (i) {
