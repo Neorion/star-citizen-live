@@ -304,6 +304,7 @@ function parseSessionInfo (line) {
 // friendly category. Order matters (first match wins). Editable - CIG adds
 // content every patch, same as the NPC list. ---
 const MISSION_TYPES = [
+  [/refuel|refueling|wayfarer/i, 'Refueling'],   // UnitedWayfarersClub refuel runs (new in 4.8.0)
   [/killship|killnpc|fpskill|bountyhunter|assassinat|stationassault|shipwaveattack|headhunters|\bhunt/i, 'Bounty'],
   [/mercenary|enforcement|security|patrol|ambush|defend|escort|protect/i, 'Mercenary/Defense'],
   [/haul|cargo|deliver|recovercargo|courier/i, 'Hauling'],
@@ -330,7 +331,7 @@ const FACTION_TYPES = {
   hockrow: 'Recovery', hockrowagency: 'Recovery',   // investigation / locate-missing-person
   adagio: 'Recovery', tarpits: 'Recovery',          // salvage contractors (folded into Recovery)
   ftl: 'Hauling',                             // FTL Courier Service
-  unitedwayfarersclub: 'Support', wayfarers: 'Support'  // refuelling giver (new in 4.8.0)
+  unitedwayfarersclub: 'Refueling', wayfarers: 'Refueling'  // refuelling giver (new in 4.8.0)
 };
 
 function missionType (name) {

@@ -150,6 +150,7 @@ test('classifies mission types from real generator codenames', () => {
   assert.strictEqual(missionType('CitizensForProsperity_ShipWaveAttack'), 'Bounty');
   assert.strictEqual(missionType('HockrowAgency_MissingPerson'), 'Recovery');
   assert.strictEqual(missionType('FTL_Courier'), 'Hauling');
+  assert.strictEqual(missionType('UnitedWayfarersClub_Refuel'), 'Refueling');   // activity-verb path
 });
 
 test('classifies issuer-only generators via the faction fallback (sourced, ~4.8.0)', () => {
@@ -159,7 +160,7 @@ test('classifies issuer-only generators via the faction fallback (sourced, ~4.8.
   assert.strictEqual(missionType('Vaughn_Generator'), 'Bounty');
   assert.strictEqual(missionType('InterSec_Generator'), 'Mercenary/Defense');
   assert.strictEqual(missionType('Shubin_Generator'), 'Mining');
-  assert.strictEqual(missionType('UnitedWayfarersClub'), 'Support');
+  assert.strictEqual(missionType('UnitedWayfarersClub'), 'Refueling');
   // genuinely unknown issuers stay Other (no guessing)
   assert.strictEqual(missionType('Unaffiliated_Generator'), 'Other');
   assert.strictEqual(missionType('GoblinG_Generator'), 'Other');
