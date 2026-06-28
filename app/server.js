@@ -45,7 +45,8 @@ class StarCitizenService extends EventEmitter {
       channel: null, // SC channel (LIVE/PTU/EPTU/HOTFIX/TECH-PREVIEW) for display
       seed: null,   // optional: replay a past log once on start to pre-fill the monitor
       discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false },
-      missions: { enable: true }
+      missions: { enable: true },
+      cargo: { enable: false }   // optional, strippable cargo route-optimizer (services/CargoRouter.js)
     }, settings);
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false }, settings.discord || {});
 
@@ -75,6 +76,12 @@ class StarCitizenService extends EventEmitter {
       ? new MissionManager(this.settings.missions) : null;
 
     this.history = this._loadHistory();   // compact backfill of past logs (Analyze tab)
+
+    // Optional cargo route-optimizer. Self-contained; fed raw lines via observe()
+    // in handleLogChange. Remove this line + the /cargo,/route routes + the UI
+    // panel to strip the feature entirely (the core relay is unaffected).
+    this.cargoRouter = (this.settings.cargo && this.settings.cargo.enable)
+      ? new (require('../services/CargoRouter'))() : null;
 
     if (this.settings.discord.enable) this._wireDiscord();
   }
@@ -207,6 +214,17 @@ class StarCitizenService extends EventEmitter {
       if (req.method === 'GET' && path === `${base}/analytics`) {
         return send(200, this._analyticsDataset());
       }
+      // ---- Cargo route optimizer (optional; only when enabled) ----
+      if (req.method === 'GET' && path === `${base}/route`) {
+        if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled (set SC_CARGO_ROUTER=1)' });
+        const scu = parseInt(url.searchParams.get('scu'), 10) || null;   // optional ship capacity
+        return send(200, this.cargoRouter.route({ shipScu: scu }));
+      }
+      if (req.method === 'GET' && path === `${base}/cargo`) {
+        if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
+        return send(200, { type: 'Collection', enabled: true, data: this.cargoRouter.activeParcels() });
+      }
+
       // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
       if (req.method === 'GET' && path === `${base}/monitor`) {
         const limit = Math.min(parseInt(url.searchParams.get('limit'), 10) || 250, 1000);
@@ -214,6 +232,7 @@ class StarCitizenService extends EventEmitter {
         return send(200, {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
           channel: this.channel, session: this.session, sessions: this.sessions,
+          cargoEnabled: !!this.cargoRouter,
           missions: this.missionGroups,
           missionStats: this.missionStats(),
           kills: newest(this.kills),
@@ -316,6 +335,10 @@ class StarCitizenService extends EventEmitter {
   handleLogChange (entry) {
     const ev = parseLine(entry);
     const id = idFor(entry);
+
+    // Optional cargo router: observe every line (does its own extraction; only
+    // reads ev to drop a mission's cargo when it ends). Strippable seam.
+    if (this.cargoRouter) { try { this.cargoRouter.observe(entry, ev); } catch (_) { /* never break the relay */ } }
 
     // Stamp session build/hardware from header lines (one-shot, additive).
     const sinfo = parseSessionInfo(entry);
@@ -630,7 +653,8 @@ if (require.main === module) {
     channel: resolved.channel,
     seed: process.env.SC_SEED || resolved.file,   // pre-fill from history by default
     missions: { enable: true, dir: process.env.SC_REGISTER_DIR || null, officers: (process.env.SC_OFFICERS || '').split(',').map((s) => s.trim()).filter(Boolean) },
-    discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null }
+    discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null },
+    cargo: { enable: !!process.env.SC_CARGO_ROUTER }   // opt-in cargo route optimizer
   });
   svc.start();
 }

@@ -129,6 +129,18 @@
     <div class="feed" id="missions"></div>
   </section>
 
+  <section class="panel full" id="cargo-panel" style="display:none">
+    <h2>🚚 Cargo route
+      <span class="sub">— optimal delivery order for your active hauling missions, grouped by moon/planet</span>
+      <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <input type="number" id="cargo-scu" placeholder="ship SCU" min="1"
+          style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:84px">
+        <button class="btn" id="cargo-route-btn">⟳ Route</button>
+      </span>
+    </h2>
+    <div id="cargo-body" style="padding:12px 14px"><div class="empty">Accept hauling contracts in-game, then hit Route.</div></div>
+  </section>
+
   <section class="panel">
     <h2>✅ Recognized events <span class="sub">— what the parser understands</span></h2>
     <div class="feed" id="recognized"></div>
@@ -300,6 +312,7 @@ async function poll(){
     const parts = [d.channel, s.branch, s.changelist].filter(Boolean);
     $('build').textContent = parts.join(' · ');
     $('updated').textContent = 'updated ' + shortTime(d.now);
+    $('cargo-panel').style.display = d.cargoEnabled ? '' : 'none';
     last = { flagged: d.flagged, recent: d.recent, missions: d.missions || [], kills: d.kills || [] };
     paint();
   }catch(e){
@@ -321,6 +334,44 @@ $('copyAll').addEventListener('click', ()=>{
   $('copyAll').textContent='copied!'; setTimeout(()=>$('copyAll').textContent='Copy all',1200);
 });
 ['filter','hideKnown'].forEach(id=>$(id).addEventListener('input',paint));
+
+function renderCargoRoute(out){
+  const el = $('cargo-body');
+  if(out && out.enabled===false){ el.innerHTML='<div class="empty">cargo router is disabled (start with SC_CARGO_ROUTER=1)</div>'; return; }
+  const s = out.summary || {};
+  const kpi = (l,v)=>`<div class="mc" style="padding:8px 12px"><div class="l">${l}</div><div class="v" style="font-size:20px">${v}</div></div>`;
+  let h = `<div class="kpis" style="padding:0 0 12px">
+      ${kpi('Stops', s.stops||0)}${kpi('Total SCU', s.totalScu||0)}${kpi('Missions', s.missions||0)}${kpi('Bodies', s.bodies||0)}${kpi('Commodities', s.commodities||0)}</div>`;
+  if((out.stops||[]).length){
+    h += out.stops.map((st,i)=>`
+      <div class="mission" style="border-bottom:1px solid #20262f">
+        <div class="mhead">
+          <span class="badge b-acc">${i+1}</span>
+          <span class="badge b-good">${esc(st.body)}</span>
+          <span class="mtitle">${esc(st.station)}</span>
+          <span class="time">${st.totalScu} SCU</span></div>
+        <div class="obj">${st.parcels.map(p=>`<span class="badge b-warn" style="margin-right:6px">${p.scu} ${esc(p.commodity)}</span>`).join('')}</div>
+      </div>`).join('');
+  } else {
+    h += '<div class="empty">no routable deliveries — accept hauling contracts, then hit Route</div>';
+  }
+  if((out.unrouted||[]).length){
+    h += `<div style="padding:10px 2px 4px;color:var(--muted);font-size:12px">📍 destination pending (open delivery / cross-system) — ${out.unrouted.length}:</div>`;
+    h += out.unrouted.map(u=>`<div class="obj muted">${u.scu} ${esc(u.commodity)} → ${esc(u.destSystem||'?')}</div>`).join('');
+  }
+  if((out.notes||[]).length) h += '<div style="margin-top:10px">'+out.notes.map(n=>`<div class="obj muted" style="color:var(--warn)">⚠ ${esc(n)}</div>`).join('')+'</div>';
+  el.innerHTML = h;
+}
+async function runRoute(){
+  const btn=$('cargo-route-btn'); btn.textContent='…routing';
+  try{
+    const scu = parseInt($('cargo-scu').value,10);
+    const r = await fetch('/services/star-citizen/route'+(scu?('?scu='+scu):''));
+    renderCargoRoute(await r.json());
+  }catch(e){ $('cargo-body').innerHTML='<div class="empty">route request failed</div>'; }
+  btn.textContent='⟳ Route';
+}
+$('cargo-route-btn').addEventListener('click', runRoute);
 
 let timer=setInterval(()=>{ if($('auto').checked) poll(); }, 2000);
 poll();
