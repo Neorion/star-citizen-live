@@ -352,10 +352,16 @@ function renderCargoRoute(out){
   if(hubs.length){
     h += hubs.map((hb,i)=>{
       const legs = (hb.legs||[]).map(l=>{
-        const cargo = l.commodity!=null ? `<span class="badge b-warn">${l.scu} ${esc(l.commodity)}</span>` : '<span class="badge b-raw">cargo pending</span>';
-        const dest = l.dropoff ? `<span>${esc(l.dropoff)}</span><span class="badge ${l.stale?'b-raw':'b-good'}" style="font-size:10px">${esc(l.dropBody)}</span>` : '<span class="muted">📍 dropoff pending</span>';
-        return `<div class="obj" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap${l.stale?';opacity:.6':''}">
-          <span style="color:var(--muted)">↳</span>${cargo}<span style="color:var(--muted)">to</span>${dest}</div>`;
+        const rank = l.rank ? `<span class="badge b-raw" style="font-size:10px">${esc(l.rank)}</span>` : '';
+        const rep = l.reward ? `<span class="badge b-acc" style="font-size:10px" title="reputation reward tiers">🏅 ${esc(l.reward)}</span>` : '';
+        const cargo = l.commodity!=null ? `<span class="badge b-warn">📦 ${l.scu} ${esc(l.commodity)}</span>` : '<span class="badge b-raw">📦 cargo pending</span>';
+        const dest = l.dropoff ? `<b>${esc(l.dropoff)}</b> <span class="badge ${l.stale?'b-raw':'b-good'}" style="font-size:10px">${esc(l.dropBody)}</span>` : '<span class="muted">📍 dropoff pending</span>';
+        return `<div style="padding:8px 0 10px 28px;border-top:1px solid #20262f${l.stale?';opacity:.6':''}">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span style="font-weight:600">${esc(l.contractType||'Hauling contract')}</span>${rank}${rep}</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px;font-size:12.5px">
+            ${cargo}<span style="color:var(--muted)">→</span>${dest}</div>
+        </div>`;
       }).join('');
       return `<div class="mission" style="border-bottom:1px solid #20262f${hb.stale?';opacity:.78':''}">
         <div class="mhead">

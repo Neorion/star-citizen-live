@@ -85,6 +85,9 @@ test('shows an accepted mission from its title before any cargo line (the 7-miss
   assert.strictEqual(ruin.dropoff, 'Ruin Station');                        // dropoff from the "| to Y" title
   assert.strictEqual(ruin.dropBody, 'Pyro');
   assert.strictEqual(ruin.awaiting, true);                                 // cargo not known yet
+  assert.strictEqual(ruin.contractType, 'Stellar Small Haul');             // in-game header fields
+  assert.strictEqual(ruin.rank, 'Junior');
+  assert.match(ruin.reward, /Rep/);
 });
 
 test('carries a mission over a new session (crash/exit) until re-confirmed', () => {

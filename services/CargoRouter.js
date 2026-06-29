@@ -96,6 +96,9 @@ class CargoRouter {
       if (missionId !== ZERO_GUID) {
         const mi = this._mission(missionId);
         mi.title = title; mi.lastSession = this.session;
+        // Reward tiers live in the "<EM4>[50/200/.. Rep]" segment (reputation, not aUEC).
+        const rew = line.match(/<EM\d>\[([^\]]+)\]/);
+        if (rew) mi.reward = rew[1].trim();
         const dir = title.match(/\|\s*(from|to)\s+(.+?)\s*$/i);
         if (dir) { if (/^from$/i.test(dir[1])) mi.pickup = dir[2].trim(); else mi.titleDropoff = dir[2].trim(); }
       }
@@ -158,19 +161,25 @@ class CargoRouter {
       const hub = byHub[pickup] || (byHub[pickup] = { pickup, pickupBody: bodyFromStation(pickup) || 'Unknown', collectScu: 0, legs: [], missions: 0, stale: true });
       hub.missions += 1;
       if (!stale) hub.stale = false;
+      // Mission header, mirroring the in-game contract card: rank | type | route.
+      const parts = String(mi.title || '').split('|').map((x) => x.trim()).filter(Boolean);
+      const hdr = { title: mi.title || null, reward: mi.reward || null,
+        rank: parts.length >= 3 ? parts[0] : null,
+        contractType: parts.length >= 3 ? parts[1] : (parts[1] || parts[0] || 'Hauling contract'),
+        missionId: mi.missionId, stale };
       const undelivered = Object.values(mi.parcels).filter((p) => p.scuHave < p.scuNeed);
       if (undelivered.length) {
         for (const p of undelivered) {
           const scu = p.scuNeed - p.scuHave;
           hub.collectScu += scu;
           const dropoff = p.station || mi.titleDropoff || null;
-          hub.legs.push({ dropoff, dropBody: dropoff ? ((p.body && p.body.name) || bodyFromStation(dropoff) || 'Unknown') : null, commodity: p.commodity, scu, missionId: mi.missionId, stale, pending: !dropoff });
+          hub.legs.push(Object.assign({}, hdr, { dropoff, dropBody: dropoff ? ((p.body && p.body.name) || bodyFromStation(dropoff) || 'Unknown') : null, commodity: p.commodity, scu, pending: !dropoff }));
         }
       } else {
         // Accepted but no Deliver objective yet — show the title endpoint; cargo TBD.
         awaiting += 1;
         const dropoff = mi.titleDropoff || null;
-        hub.legs.push({ dropoff, dropBody: dropoff ? (bodyFromStation(dropoff) || 'Unknown') : null, commodity: null, scu: null, missionId: mi.missionId, stale, pending: !dropoff, awaiting: true });
+        hub.legs.push(Object.assign({}, hdr, { dropoff, dropBody: dropoff ? (bodyFromStation(dropoff) || 'Unknown') : null, commodity: null, scu: null, pending: !dropoff, awaiting: true }));
       }
     }
     const hubs = Object.values(byHub).map((h) => {
