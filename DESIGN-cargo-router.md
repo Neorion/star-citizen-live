@@ -70,7 +70,11 @@ GET …/cargo                      # raw active cargo parcels
 
 ## 5. Future improvements (slick ideas, not yet built)
 
-- **Pickup legs** for A→B hauls that *do* name a source (`HaulCargo_AtoB_*`).
+- **Pickup legs — DONE.** The route is now a pickup→dropoff breakdown: the
+  "Contract Accepted: … | from `<Pickup>`" notification names the source, joined
+  to each delivery by MissionId, and the route groups deliveries under their
+  pickup hub with dropoffs ordered by body. Open-delivery hauls (no named source)
+  fall under an "open pickup" hub.
 - **UEX Corp API** (optional, behind a 2nd flag) for real inter-station distances →
   true nearest-neighbour ordering instead of the fixed circuit.
 - **Payout/SCU efficiency** ranking if a reward signal can be tied to the mission.

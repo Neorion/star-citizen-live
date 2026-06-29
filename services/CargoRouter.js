@@ -57,13 +57,15 @@ function bodyFromStation (name) {
   if (/^mic-|tressler|new babbage|microtech/.test(n)) return 'microTech';
   if (/wikelo|collector/.test(n)) return 'Asteroid bases';
   // Pyro: orbital stations + surface outposts (no planet prefix, so matched by name).
-  if (/pyro|ruin station|checkmate|rod'?s end|rat'?s nest|dudley|patch city|gaslight|orbituary|starlight|seer'?s canyon|rustville|hdpc-|shepherd'?s rest|bueno|last landing|ashland|chawla|canard|sacren|refinery ravine|megumi|endgame|terminus|feo |dunboro|prospect depot/.test(n)) return 'Pyro';
+  if (/pyro|ruin station|checkmate|rod'?s end|rat'?s nest|dudley|patch city|gaslight|orbituary|starlight|seer'?s canyon|rustville|hdpc-|shepherd'?s rest|bueno|last landing|ashland|chawla|canard|sacren|fallow field|refinery ravine|megumi|endgame|terminus|feo |dunboro|prospect depot/.test(n)) return 'Pyro';
   return null;
 }
 // A destination that is just "<System> System" is not a routable station.
 function isGenericSystem (dest) { return /^(stanton|pyro)\s+system$/i.test(String(dest).trim()); }
 
 const OBJECTIVE_RE = /Deliver (\d+)\/(\d+) SCU of (.+?) to ([^:"]+?):.*?MissionId:\s*\[([0-9a-fA-F-]+)\],\s*ObjectiveId:\s*\[(dropoff_[0-9a-fA-F-]+_\d+)\]/;
+// Contract acceptance names the PICKUP/source: "Contract Accepted: <title> | from <Pickup> <EM..>".
+const ACCEPT_RE = /Contract Accepted:\s*(.+?)\s*(?:<EM\d|:\s*")[\s\S]*?MissionId:\s*\[([0-9a-fA-F-]+)\]/;
 const DROPOFF_RE = /Dropoff created.*?locationName:\s*(.+?)\s*\[([^\]]+)\].*?objectiveId:\s*(dropoff_[0-9a-fA-F-]+(?:_\d+)*)/;
 const GUID_RE = /dropoff_([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
 const ZERO_GUID = '00000000-0000-0000-0000-000000000000';
@@ -77,8 +79,9 @@ function bodyFromToken (token) {
 }
 class CargoRouter {
   constructor () {
-    this.parcels = {};         // dropKey -> parcel
+    this.parcels = {};         // dropKey -> parcel (a delivery leg)
     this.stationByGuid = {};   // dropoff GUID -> { station, token, body }
+    this.pickups = {};         // missionId -> { pickup, title } (the source/collect point)
     this.missionActive = {};   // missionId -> true while open
     this.session = 0;          // increments on each new game session ("Log started on")
   }
@@ -99,6 +102,15 @@ class CargoRouter {
 
   ingest (line) {
     let m;
+    if ((m = line.match(ACCEPT_RE))) {
+      const title = m[1].trim(), missionId = m[2];
+      const fm = title.match(/\|\s*from (.+?)\s*$/);   // pickup = the "| from <X>" tail
+      if (missionId !== ZERO_GUID) {
+        this.pickups[missionId] = { pickup: fm ? fm[1].trim() : null, title };
+        this.missionActive[missionId] = true;
+      }
+      return 'accept';
+    }
     if ((m = line.match(OBJECTIVE_RE))) {
       const [, have, need, commodity, destRaw, missionId, dropKey] = m;
       const dest = destRaw.trim();
@@ -138,6 +150,7 @@ class CargoRouter {
 
   endMission (missionId) {
     delete this.missionActive[missionId];
+    delete this.pickups[missionId];
     for (const k of Object.keys(this.parcels)) if (this.parcels[k].missionId === missionId) delete this.parcels[k];
   }
 
@@ -147,9 +160,10 @@ class CargoRouter {
       this.missionActive[p.missionId] && p.scuHave < p.scuNeed);
   }
 
-  // The "Route" button calls this. Groups active deliveries by station, clusters
-  // stations by celestial body, orders bodies into a circuit.
-  //   opts.shipScu   — flag trips that exceed this capacity.
+  // The "Route" button calls this. Builds pickup -> dropoff legs, groups legs by
+  // their pickup hub, and within each hub orders the dropoffs by celestial body.
+  // Output is the routing breakdown: where to collect, where to deliver, in order.
+  //   opts.shipScu   — flag when a hub's load exceeds this capacity.
   //   opts.freshOnly — drop carried-over (unconfirmed-this-session) deliveries.
   route (opts = {}) {
     // "Carried over": last confirmed in an earlier session. After a crash / exit
@@ -159,43 +173,45 @@ class CargoRouter {
     let active = this.activeParcels();
     if (opts.freshOnly) active = active.filter((p) => !staleOf(p));
 
-    const byStation = {};          // key -> stop
-    const unrouted = [];           // parcels with no resolved station
+    const byHub = {};              // pickup location -> hub
+    const unrouted = [];           // deliveries with no resolved dropoff station
     let carriedOver = 0;
     for (const p of active) {
       const stale = staleOf(p);
       if (stale) carriedOver += 1;
-      const remaining = p.scuNeed - p.scuHave;
-      if (!p.station) { unrouted.push({ commodity: p.commodity, scu: remaining, missionId: p.missionId, destSystem: p.destSystem, stale }); continue; }
-      const key = p.station;
-      const bodyName = (p.body && p.body.name) || 'Unknown';
-      const stop = byStation[key] || (byStation[key] = {
-        station: p.station, body: bodyName,
-        order: BODY_ORDER[bodyName] || 90,
-        parcels: [], totalScu: 0, stale: true
+      const scu = p.scuNeed - p.scuHave;
+      const pick = this.pickups[p.missionId] || {};
+      const pickup = pick.pickup || 'Open pickup (source your own)';
+      const leg = { dropoff: p.station, dropBody: (p.body && p.body.name) || 'Unknown', commodity: p.commodity, scu, missionId: p.missionId, stale };
+      const hub = byHub[pickup] || (byHub[pickup] = {
+        pickup, pickupBody: bodyFromStation(pickup) || 'Unknown', collectScu: 0, legs: [], pending: [], stale: true
       });
-      stop.parcels.push({ commodity: p.commodity, scu: remaining, missionId: p.missionId, stale });
-      stop.totalScu += remaining;
-      if (!stale) stop.stale = false;   // a stop is fresh if ANY parcel is confirmed this session
+      if (!stale) hub.stale = false;
+      hub.collectScu += scu;
+      if (p.station) hub.legs.push(leg); else hub.pending.push(leg);
+      if (!p.station) unrouted.push({ commodity: p.commodity, scu, destSystem: p.destSystem, pickup, stale });
     }
-    const stops = Object.values(byStation).sort((a, b) =>
-      (a.stale - b.stale) || (a.order - b.order) || a.station.localeCompare(b.station));   // confirmed first, then by body
+    // Order dropoffs within a hub by body circuit, then station; order hubs by body.
+    const hubs = Object.values(byHub).map((h) => {
+      h.legs.sort((a, b) => (BODY_ORDER[a.dropBody] || 90) - (BODY_ORDER[b.dropBody] || 90) || String(a.dropoff).localeCompare(b.dropoff));
+      h.dropoffs = h.legs.length; h.pendingCount = h.pending.length;
+      return h;
+    }).sort((a, b) => (a.stale - b.stale) || (BODY_ORDER[a.pickupBody] || 90) - (BODY_ORDER[b.pickupBody] || 90) || a.pickup.localeCompare(b.pickup));
 
-    const totalScu = stops.reduce((s, x) => s + x.totalScu, 0) + unrouted.reduce((s, x) => s + x.scu, 0);
-    const bodies = [...new Set(stops.map((s) => s.body))];
+    const totalScu = active.reduce((s, p) => s + (p.scuNeed - p.scuHave), 0);
     const missions = new Set(active.map((p) => p.missionId));
-    const commodities = [...new Set(active.map((p) => p.commodity))];
+    const dropoffs = active.filter((p) => p.station).length;
 
     const notes = [];
-    if (opts.shipScu && totalScu > opts.shipScu) notes.push(`Total ${totalScu} SCU exceeds the ${opts.shipScu} SCU you entered — plan multiple trips.`);
+    if (opts.shipScu) for (const h of hubs) if (h.collectScu > opts.shipScu) notes.push(`Pickup at ${h.pickup} is ${h.collectScu} SCU — exceeds your ${opts.shipScu} SCU hold, so split it into multiple loads.`);
     if (carriedOver) notes.push(`${carriedOver} delivery(ies) carried over from a previous session (game exit/crash logs no end-event) — confirm they're still in your contract manager, or hit Route after the objectives refresh in-game.`);
-    if (unrouted.length) notes.push(`${unrouted.length} delivery(ies) have no named station yet (open delivery / not seen in log) — shown under "destination pending".`);
-    if (!stops.length && !unrouted.length) notes.push('No active cargo deliveries detected. Accept a hauling contract, then hit Route.');
+    if (unrouted.length) notes.push(`${unrouted.length} delivery(ies) have no named dropoff station yet (logged only as a system) — listed under each hub as "destination pending".`);
+    if (!hubs.length) notes.push('No active cargo deliveries detected. Accept a hauling contract, then hit Route.');
 
     return {
       enabled: true,
-      summary: { missions: missions.size, stops: stops.length, bodies: bodies.filter(Boolean).length, totalScu, commodities: commodities.length, carriedOver },
-      stops, unrouted, notes
+      summary: { missions: missions.size, pickups: hubs.length, dropoffs, totalScu, carriedOver },
+      hubs, unrouted, notes
     };
   }
 }

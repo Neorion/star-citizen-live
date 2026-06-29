@@ -342,24 +342,34 @@ function renderCargoRoute(out){
   const s = out.summary || {};
   const kpi = (l,v)=>`<div class="mc" style="padding:8px 12px"><div class="l">${l}</div><div class="v" style="font-size:20px">${v}</div></div>`;
   let h = `<div class="kpis" style="padding:0 0 12px">
-      ${kpi('Stops', s.stops||0)}${kpi('Total SCU', s.totalScu||0)}${kpi('Missions', s.missions||0)}${kpi('Bodies', s.bodies||0)}${s.carriedOver?kpi('Carried over', s.carriedOver):kpi('Commodities', s.commodities||0)}</div>`;
-  if((out.stops||[]).length){
-    h += out.stops.map((st,i)=>`
-      <div class="mission" style="border-bottom:1px solid #20262f${st.stale?';opacity:.62':''}">
+      ${kpi('Pickups', s.pickups||0)}${kpi('Dropoffs', s.dropoffs||0)}${kpi('Total SCU', s.totalScu||0)}${kpi('Missions', s.missions||0)}${s.carriedOver?kpi('Carried over', s.carriedOver):''}</div>`;
+  const hubs = out.hubs||[];
+  if(hubs.length){
+    h += hubs.map((hb,i)=>{
+      const legs = (hb.legs||[]).map(l=>`
+        <div class="obj" style="display:flex;gap:8px;align-items:center${l.stale?';opacity:.6':''}">
+          <span style="color:var(--muted)">↳</span>
+          <span class="badge b-warn">${l.scu} ${esc(l.commodity)}</span>
+          <span style="color:var(--muted)">to</span>
+          <span>${esc(l.dropoff)}</span>
+          <span class="badge ${l.stale?'b-raw':'b-good'}" style="font-size:10px">${esc(l.dropBody)}</span>
+        </div>`).join('');
+      const pend = (hb.pending||[]).map(l=>`
+        <div class="obj muted" style="display:flex;gap:8px;align-items:center">
+          <span>↳</span><span class="badge b-raw">${l.scu} ${esc(l.commodity)}</span>
+          <span>to 📍 destination pending</span></div>`).join('');
+      return `<div class="mission" style="border-bottom:1px solid #20262f${hb.stale?';opacity:.78':''}">
         <div class="mhead">
-          <span class="badge b-acc">${i+1}</span>
-          <span class="badge ${st.stale?'b-raw':'b-good'}">${esc(st.body)}</span>
-          <span class="mtitle">${esc(st.station)}</span>
-          ${st.stale?'<span class="badge b-warn" title="last confirmed in a previous session — verify it is still active">⏳ carried over</span>':''}
-          <span class="time">${st.totalScu} SCU</span></div>
-        <div class="obj">${st.parcels.map(p=>`<span class="badge b-warn" style="margin-right:6px">${p.scu} ${esc(p.commodity)}</span>`).join('')}</div>
-      </div>`).join('');
+          <span class="badge b-acc">📦 ${i+1}</span>
+          <span class="mtitle">Pick up at <b>${esc(hb.pickup)}</b></span>
+          <span class="badge ${hb.pickupBody==='Unknown'?'b-raw':'b-good'}" style="font-size:10px">${esc(hb.pickupBody)}</span>
+          ${hb.stale?'<span class="badge b-warn" title="last confirmed a previous session — verify">⏳ carried over</span>':''}
+          <span class="time">${hb.collectScu} SCU</span></div>
+        ${legs}${pend}
+      </div>`;
+    }).join('');
   } else {
     h += '<div class="empty">no routable deliveries — accept hauling contracts, then hit Route</div>';
-  }
-  if((out.unrouted||[]).length){
-    h += `<div style="padding:10px 2px 4px;color:var(--muted);font-size:12px">📍 destination pending (open delivery / cross-system) — ${out.unrouted.length}:</div>`;
-    h += out.unrouted.map(u=>`<div class="obj muted">${u.scu} ${esc(u.commodity)} → ${esc(u.destSystem||'?')}</div>`).join('');
   }
   if((out.notes||[]).length) h += '<div style="margin-top:10px">'+out.notes.map(n=>`<div class="obj muted" style="color:var(--warn)">⚠ ${esc(n)}</div>`).join('')+'</div>';
   el.innerHTML = h;
