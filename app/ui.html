@@ -74,6 +74,21 @@
   .mc .d{font-size:11px;color:var(--muted);margin-top:2px}
   .lbr{display:grid;grid-template-columns:1fr 72px 86px 56px;gap:8px;align-items:center;padding:6px 8px;font-size:12.5px;border-radius:6px}
   .lbr.click{cursor:pointer}.lbr.click:hover{background:var(--panel2)}
+  /* --- in-app help --- */
+  .tip{display:none;font-size:11.5px;color:var(--muted);margin:2px 0 0;padding:3px 0}
+  body.tips .tip{display:block}
+  body.tips [title]{cursor:help}
+  #help{display:none;border-bottom:1px solid var(--line);background:var(--panel2);padding:14px 18px}
+  #help.show{display:block}
+  #help h3{margin:0 0 8px;font-size:14px}
+  #help .hgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  #help .hcard{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  #help .hcard h4{margin:0 0 5px;font-size:12.5px;color:var(--accent);font-weight:600}
+  #help p,#help li{font-size:12px;color:var(--text);line-height:1.55;margin:3px 0}
+  #help ol,#help ul{margin:4px 0 0;padding-left:18px}
+  #help .muted{color:var(--muted)}
+  .hbtn{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:5px 12px;font-size:13px;cursor:pointer}
+  .hbtn.on{color:var(--accent);border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -104,12 +119,62 @@
     <button class="tab" id="tab-analyze">Analyze</button>
     <button class="tab" id="tab-cargo" style="display:none">🚚 Cargo</button>
     <span class="sub" id="az-scope" style="color:var(--muted);font-size:12px"></span>
+    <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <label class="hbtn" title="show one-line hints under panels"><input type="checkbox" id="tips-toggle" style="margin-right:5px">💡 Tips</label>
+      <button class="hbtn" id="help-btn" title="quick guide to the dashboard">❓ Help</button>
+    </span>
   </div>
   <div class="row" id="live-filter" style="margin-top:10px">
     <input type="text" id="filter" placeholder="filter lines by keyword(s), comma-separated… e.g. kill, death, ship">
     <label><input type="checkbox" id="hideKnown"> hide already-recognized in candidates</label>
   </div>
 </header>
+
+<div id="help">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <h3 style="margin:0">How to use this dashboard</h3>
+      <span class="muted" style="font-size:11.5px">reads your Star Citizen <code>Game.log</code> — read-only, nothing is sent anywhere</span>
+      <button class="hbtn" id="help-close" style="margin-left:auto;padding:3px 9px">✕ close</button>
+    </div>
+    <div class="hgrid">
+      <div class="hcard">
+        <h4>🚀 Quick start</h4>
+        <ol>
+          <li>Leave this open while you play — it auto-updates every 2s.</li>
+          <li><b>Live feed</b> = what's happening now. <b>Analyze</b> = your history &amp; stats.</li>
+          <li>Run hauling missions? Open the <b>🚚 Cargo</b> tab for an optimized delivery route.</li>
+          <li>Flip <b>💡 Tips</b> (top-right) for hints under each panel.</li>
+        </ol>
+      </div>
+      <div class="hcard">
+        <h4>📡 Live feed</h4>
+        <p><b>Mission &amp; combat activity</b> — objectives, contracts and combat lines as they log.</p>
+        <p><b>Missions</b> — grouped by contract, outcomes shown (✅ complete / ⤺ abandon / ✖ fail).</p>
+        <p><b>Collisions</b> — ship crashes on the current build (who hit what, closing speed).</p>
+        <p class="muted">Type in the filter box to narrow the feed by keyword.</p>
+      </div>
+      <div class="hcard">
+        <h4>🔎 Analyze</h4>
+        <p>Your activity over time — heatmap, mission outcomes, types, factions, pilot stats.</p>
+        <p>Every chip/slice <b>cross-filters</b> all panels. Use the period range to scope months.</p>
+        <p class="muted">Spans backloaded history (<code>npm run backfill</code>) plus the live session.</p>
+      </div>
+      <div class="hcard">
+        <h4>🚚 Cargo route</h4>
+        <p>Active hauling contracts grouped by <b>pickup → dropoff</b>, ordered by moon/planet.</p>
+        <p><b>⟳ Route</b> recomputes; <b>auto-refresh</b> updates it as you pick up cargo.</p>
+        <p>Enter your ship <b>SCU</b> for capacity warnings. <b>⏳ carried over</b> = seen a previous session; verify it's still active.</p>
+      </div>
+      <div class="hcard">
+        <h4>💡 Good to know (honesty)</h4>
+        <ul>
+          <li><b>Kills</b> aren't logged on current builds (only ≤4.3.0) — the panel stays empty live.</li>
+          <li><b>Combat</b> is an <i>inferred</i> proxy from mission objectives, not exact kills.</li>
+          <li>Everything is <b>self-reported</b> from your own machine's log.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
 
 <main id="view-live">
   <section class="panel full">
@@ -122,6 +187,7 @@
 
   <section class="panel full">
     <h2>💀 Kills <span class="sub">— kills involving the running player (yours + your deaths). Third-party kills are not logged.</span></h2>
+    <div class="tip" style="padding:0 14px">💡 This stays empty on current game builds — CIG stopped logging kills after 4.3.0. It only fills on older (≤4.3.0) logs.</div>
     <div class="feed" id="kills"></div>
   </section>
 
@@ -193,6 +259,7 @@
         <button class="btn" id="cargo-route-btn">⟳ Route</button>
       </span>
     </h2>
+    <div class="tip" style="padding:0 14px 4px">💡 Accept hauling contracts in-game → hit ⟳ Route. "from X" contracts show their pickup; "to X" contracts only log the dropoff (pickup is shown in-game). Tick auto-refresh to watch cargo fill in as you collect it.</div>
     <div id="cargo-body" style="padding:12px 14px"><div class="empty">Accept hauling contracts in-game, then hit Route (or turn on auto-refresh).</div></div>
   </section>
 </main>
@@ -340,6 +407,13 @@ $('copyAll').addEventListener('click', ()=>{
   $('copyAll').textContent='copied!'; setTimeout(()=>$('copyAll').textContent='Copy all',1200);
 });
 ['filter','hideKnown'].forEach(id=>$(id).addEventListener('input',paint));
+
+// In-app help: a toggleable guide + persistent inline tips.
+$('help-btn').addEventListener('click', ()=>{ const h=$('help'); h.classList.toggle('show'); $('help-btn').classList.toggle('on', h.classList.contains('show')); });
+$('help-close').addEventListener('click', ()=>{ $('help').classList.remove('show'); $('help-btn').classList.remove('on'); });
+function setTips(on){ document.body.classList.toggle('tips', on); $('tips-toggle').checked = on; try{ localStorage.setItem('sc-tips', on?'1':'0'); }catch(e){} }
+$('tips-toggle').addEventListener('change', ()=> setTips($('tips-toggle').checked));
+try{ if(localStorage.getItem('sc-tips')==='1') setTips(true); }catch(e){}
 
 function renderCargoRoute(out){
   const el = $('cargo-body');
