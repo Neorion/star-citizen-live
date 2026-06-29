@@ -89,6 +89,10 @@
   #help .muted{color:var(--muted)}
   .hbtn{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:5px 12px;font-size:13px;cursor:pointer}
   .hbtn.on{color:var(--accent);border-color:var(--accent)}
+  .micro{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:5px;padding:1px 7px;font-size:12px;cursor:pointer;line-height:1.5}
+  .micro:hover{border-color:var(--accent)}
+  .micro.ok:hover{border-color:var(--good);color:var(--good)}
+  .micro.no:hover{border-color:var(--kill);color:var(--kill)}
 </style>
 </head>
 <body>
@@ -256,10 +260,22 @@
         <span style="font-size:12px;color:var(--muted);display:flex;gap:5px;align-items:center">ship
           <input type="number" id="cargo-scu" placeholder="SCU" min="1"
             style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:72px"></span>
+        <button class="btn" id="cargo-add-btn" title="add a contract by hand (planning)">＋ Add</button>
         <button class="btn" id="cargo-route-btn">⟳ Route</button>
       </span>
     </h2>
-    <div class="tip" style="padding:0 14px 4px">💡 Accept hauling contracts in-game → hit ⟳ Route. "from X" contracts show their pickup; "to X" contracts only log the dropoff (pickup is shown in-game). Tick auto-refresh to watch cargo fill in as you collect it.</div>
+    <div class="tip" style="padding:0 14px 4px">💡 Tick a leg's box as you <b>pick it up</b>; mark a mission <b>✓ done</b> or <b>✕ abandon</b> (your marks override the log). <b>＋ Add</b> a contract by hand to plan before accepting. "to X" contracts only log the dropoff (pickup is shown in-game).</div>
+    <div id="cargo-add" style="display:none;padding:8px 14px;border-bottom:1px solid var(--line);display:none">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px">
+        <input id="ca-type" placeholder="contract / type" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:150px">
+        <input id="ca-pickup" placeholder="pickup (optional)" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:140px">
+        <input id="ca-dropoff" placeholder="dropoff" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:140px">
+        <input id="ca-commodity" placeholder="commodity" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:120px">
+        <input id="ca-scu" type="number" placeholder="SCU" min="0" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:70px">
+        <button class="btn" id="ca-save">Add candidate</button>
+        <span class="mid">added as a planning candidate</span>
+      </div>
+    </div>
     <div id="cargo-body" style="padding:12px 14px"><div class="empty">Accept hauling contracts in-game, then hit Route (or turn on auto-refresh).</div></div>
   </section>
 </main>
@@ -421,19 +437,27 @@ function renderCargoRoute(out){
   const s = out.summary || {};
   const kpi = (l,v)=>`<div class="mc" style="padding:8px 12px"><div class="l">${l}</div><div class="v" style="font-size:20px">${v}</div></div>`;
   let h = `<div class="kpis" style="padding:0 0 12px">
-      ${kpi('Pickups', s.pickups||0)}${kpi('Dropoffs', s.dropoffs||0)}${kpi('Total SCU', s.totalScu||0)}${kpi('Missions', s.missions||0)}${s.carriedOver?kpi('Carried over', s.carriedOver):''}</div>`;
+      ${kpi('Pickups', s.pickups||0)}${kpi('Dropoffs', s.dropoffs||0)}${kpi('Total SCU', s.totalScu||0)}${kpi('Missions', s.missions||0)}${s.carriedOver?kpi('Carried over', s.carriedOver):''}${s.done?kpi('Done', s.done):''}</div>`;
   const hubs = out.hubs||[];
   if(hubs.length){
     h += hubs.map((hb,i)=>{
       const legs = (hb.legs||[]).map(l=>{
+        const id=esc(l.missionId), dk=esc(l.dropKey||'m0');
+        const src = l.source==='manual' ? '<span title="added by you">✋</span>' : '<span title="from your Game.log" style="opacity:.55">📡</span>';
+        const cand = l.candidate ? '<span class="badge b-raw" style="font-size:10px;border:1px dashed var(--muted)" title="planning candidate — not accepted yet">OFFER</span>' : '';
         const rank = l.rank ? `<span class="badge b-raw" style="font-size:10px">${esc(l.rank)}</span>` : '';
         const rep = l.reward ? `<span class="badge b-acc" style="font-size:10px" title="reputation reward tiers">🏅 ${esc(l.reward)}</span>` : '';
         const cargo = l.commodity!=null ? `<span class="badge b-warn">📦 ${l.scu} ${esc(l.commodity)}</span>` : '<span class="badge b-raw">📦 cargo pending</span>';
         const dest = l.dropoff ? `<b>${esc(l.dropoff)}</b> <span class="badge ${l.stale?'b-raw':'b-good'}" style="font-size:10px">${esc(l.dropBody)}</span>` : '<span class="muted">📍 dropoff pending</span>';
-        return `<div style="padding:8px 0 10px 28px;border-top:1px solid #20262f${l.stale?';opacity:.6':''}">
+        const rm = l.source==='manual' ? `<button class="micro no" data-act="remove" data-id="${id}" title="remove">🗑</button>` : '';
+        return `<div style="padding:8px 0 10px 14px;border-top:1px solid #20262f${l.pickedUp?';opacity:.5':''}${l.stale?';opacity:.6':''}">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <span style="font-weight:600">${esc(l.contractType||'Hauling contract')}</span>${rank}${rep}</div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px;font-size:12.5px">
+            <label title="picked up?" style="display:flex"><input type="checkbox" data-act="pickup" data-id="${id}" data-dk="${dk}" ${l.pickedUp?'checked':''}></label>
+            ${src}<span style="font-weight:600">${esc(l.contractType||'Hauling contract')}</span>${cand}${rank}${rep}
+            <span style="margin-left:auto;display:flex;gap:4px">
+              <button class="micro ok" data-act="status" data-id="${id}" data-status="completed" title="mark complete">✓ done</button>
+              <button class="micro no" data-act="status" data-id="${id}" data-status="abandoned" title="mark abandoned">✕</button>${rm}</span></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px;font-size:12.5px;padding-left:24px">
             ${cargo}<span style="color:var(--muted)">→</span>${dest}</div>
         </div>`;
       }).join('');
@@ -453,8 +477,44 @@ function renderCargoRoute(out){
     h += '<div class="empty">no routable deliveries — accept hauling contracts, then hit Route</div>';
   }
   if((out.notes||[]).length) h += '<div style="margin-top:10px">'+out.notes.map(n=>`<div class="obj muted" style="color:var(--warn)">⚠ ${esc(n)}</div>`).join('')+'</div>';
+  if((out.done||[]).length){
+    h += `<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:8px">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)">✅ Done (${out.done.length})
+        <button class="micro no" data-act="purge" title="clear all manual marks + added contracts" style="margin-left:auto">🧹 purge board</button></div>`;
+    h += out.done.map(d=>{
+      const id=esc(d.missionId);
+      const rm = d.source==='manual'?`<button class="micro no" data-act="remove" data-id="${id}">🗑</button>`:'';
+      return `<div style="display:flex;gap:8px;align-items:center;padding:5px 0 5px 14px;opacity:.6;font-size:12.5px">
+        ${d.source==='manual'?'✋':'<span style="opacity:.55">📡</span>'}
+        <span style="text-decoration:line-through">${esc(d.contractType||'mission')}${d.dropoff?' → '+esc(d.dropoff):''}</span>
+        <span class="badge ${d.status==='completed'?'b-good':'b-raw'}" style="font-size:10px">${esc(d.status)}</span>
+        <span style="margin-left:auto;display:flex;gap:4px">
+          <button class="micro" data-act="status" data-id="${id}" data-status="" title="reactivate">↺</button>${rm}</span></div>`;
+    }).join('')+'</div>';
+  }
   el.innerHTML = h;
 }
+async function cargoAction(payload){
+  try{ await fetch('/services/star-citizen/cargo/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); runRoute(true); }
+  catch(e){}
+}
+$('cargo-body').addEventListener('click', (e)=>{
+  const t=e.target.closest('[data-act]'); if(!t) return;
+  const a=t.dataset.act;
+  if(a==='status') cargoAction({action:'status', id:t.dataset.id, status:t.dataset.status||null});
+  else if(a==='remove') cargoAction({action:'remove', id:t.dataset.id});
+  else if(a==='purge'){ if(confirm('Clear all your manual marks and hand-added contracts? (log-derived missions stay.)')) cargoAction({action:'purge'}); }
+});
+$('cargo-body').addEventListener('change', (e)=>{
+  if(e.target.matches('[data-act="pickup"]')) cargoAction({action:'pickup', id:e.target.dataset.id, dropKey:e.target.dataset.dk, value:e.target.checked});
+});
+$('cargo-add-btn').addEventListener('click', ()=>{ const a=$('cargo-add'); a.style.display = a.style.display==='none'?'block':'none'; });
+$('ca-save').addEventListener('click', ()=>{
+  const data={ contractType:$('ca-type').value.trim()||'Manual', pickup:$('ca-pickup').value.trim()||null, dropoff:$('ca-dropoff').value.trim()||null, commodity:$('ca-commodity').value.trim()||null, scu:parseInt($('ca-scu').value,10)||0, status:'candidate' };
+  cargoAction({action:'add', data});
+  ['ca-type','ca-pickup','ca-dropoff','ca-commodity','ca-scu'].forEach(id=>$(id).value='');
+  $('cargo-add').style.display='none';
+});
 async function runRoute(silent){
   const btn=$('cargo-route-btn'); if(!silent) btn.textContent='…routing';
   try{

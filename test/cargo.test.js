@@ -67,15 +67,6 @@ test('a fully delivered objective drops out', () => {
   assert.strictEqual(r.route().hubs.length, 0);
 });
 
-test('ending a mission removes it entirely', () => {
-  const r = new CargoRouter();
-  r.ingest(acceptFrom('Fallow Field'));
-  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
-  r.observe('irrelevant', { kind: 'mission:end', missionId: MID });
-  assert.strictEqual(r.route().hubs.length, 0);
-  assert.strictEqual(r.missions[MID], undefined);
-});
-
 test('shows an accepted mission from its title before any cargo line (the 7-missions case)', () => {
   const r = new CargoRouter();
   r.ingest(acceptFrom('Fallow Field'));                                    // "| from X" (pickup named)
@@ -104,6 +95,54 @@ test('carries a mission over a new session (crash/exit) until re-confirmed', () 
   assert.strictEqual(r.route({ freshOnly: true }).hubs.length, 0);
   r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));       // re-confirm this session
   assert.strictEqual(r.route().hubs[0].stale, false);
+});
+
+test('log completion greys the mission into Done instead of deleting it', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.observe('end', { kind: 'mission:end', missionId: MID, completionType: 'Complete' });
+  const out = r.route();
+  assert.strictEqual(out.hubs.length, 0);                       // off the active board
+  assert.strictEqual(out.done.length, 1);                       // but visible in Done
+  assert.strictEqual(out.done[0].status, 'completed');
+});
+
+test('manual mark complete / reactivate overrides the log (precedence)', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.setStatus(MID, 'completed');
+  assert.strictEqual(r.route().done.length, 1);
+  r.setStatus(MID, null);                                       // reactivate
+  assert.strictEqual(r.route().done.length, 0);
+  assert.strictEqual(r.route().hubs.length, 1);
+});
+
+test('picked-up legs drop out of the collect total', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  const dk = r.route().hubs[0].legs[0].dropKey;
+  assert.strictEqual(r.route().hubs[0].collectScu, 7);
+  r.togglePickup(MID, dk, true);
+  assert.strictEqual(r.route().hubs[0].legs[0].pickedUp, true);
+  assert.strictEqual(r.route().hubs[0].collectScu, 0);          // already collected
+});
+
+test('hand-added candidate appears as a manual OFFER; purge clears manual but keeps log', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  const mi = r.addManual({ contractType: 'Small Haul', dropoff: 'Orbituary', commodity: 'Quartz', scu: 6 });
+  const leg = r.route().hubs.flatMap((h) => h.legs).find((l) => l.missionId === mi.missionId);
+  assert.strictEqual(leg.source, 'manual');
+  assert.strictEqual(leg.candidate, true);
+  assert.strictEqual(leg.dropoff, 'Orbituary');
+  r.purge();
+  const legs = r.route().hubs.flatMap((h) => h.legs);
+  assert.ok(!legs.some((l) => l.source === 'manual'));          // manual gone
+  assert.strictEqual(r.route().summary.missions, 1);            // log mission remains
 });
 
 test('flags when a hub load exceeds the entered ship capacity', () => {

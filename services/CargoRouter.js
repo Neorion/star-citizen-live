@@ -69,9 +69,25 @@ const ZERO_GUID = '00000000-0000-0000-0000-000000000000';
 
 class CargoRouter {
   constructor () {
-    this.missions = {};        // missionId -> mission { title, pickup, titleDropoff, parcels, lastSession }
+    this.missions = {};        // missionId -> mission (log-derived)
     this.stationByGuid = {};   // dropoff GUID -> { station, token, body }
     this.session = 0;          // increments on each new game session ("Log started on")
+    // --- Manual board layer (Phase 1): user overrides + hand-added candidates,
+    // persisted to an optional JSON file so they survive a relay restart. The user
+    // is the authority — precedence is manual > log > OCR. ---
+    this.file = (arguments[0] && arguments[0].file) || null;
+    this.manual = { overrides: {}, added: {} };   // overrides[id]={status?,pickedUp:{},notes?}; added[id]=mission
+    this._c = 0;
+    this._load();
+  }
+
+  _load () {
+    if (!this.file) return;
+    try { const fs = require('fs'); if (fs.existsSync(this.file)) { const j = JSON.parse(fs.readFileSync(this.file, 'utf8')); this.manual = { overrides: j.overrides || {}, added: j.added || {} }; } } catch (e) { /* ignore a corrupt store */ }
+  }
+  _save () {
+    if (!this.file) return;
+    try { const fs = require('fs'), path = require('path'); fs.mkdirSync(path.dirname(this.file), { recursive: true }); fs.writeFileSync(this.file, JSON.stringify(this.manual)); } catch (e) { /* non-fatal */ }
   }
 
   _guid (objectiveId) { const m = String(objectiveId).match(GUID_RE); return m ? m[1].toLowerCase() : null; }
@@ -84,7 +100,7 @@ class CargoRouter {
     // <EndMission>, so missions may still be live. Bump the counter; route() flags
     // anything not re-confirmed this session as "carried over".
     if (ev && ev.kind === 'session:start') this.session += 1;
-    if (ev && ev.kind === 'mission:end' && ev.missionId) this.endMission(ev.missionId);
+    if (ev && ev.kind === 'mission:end' && ev.missionId) this.logEnd(ev.missionId, ev.completionType);
     this.ingest(String(rawLine));
   }
 
@@ -134,22 +150,63 @@ class CargoRouter {
     return null;
   }
 
-  endMission (missionId) { delete this.missions[missionId]; }
-
-  // Active = not ended and not fully delivered (all parcels have >= need).
-  activeMissions () {
-    return Object.values(this.missions).filter((mi) => {
-      const parcels = Object.values(mi.parcels);
-      return !(parcels.length && parcels.every((p) => p.scuHave >= p.scuNeed));
-    });
+  // Log says the mission ended. DON'T delete — grey it out with a status so it
+  // ages into the "Done" section instead of silently vanishing (owner decision).
+  logEnd (missionId, completionType) {
+    const mi = this.missions[missionId];
+    if (!mi) return;
+    const c = String(completionType || '');
+    mi.status = /abandon/i.test(c) ? 'abandoned' : /fail/i.test(c) ? 'failed' : /deactiv/i.test(c) ? 'abandoned' : 'completed';
+    mi.statusSource = 'log';
   }
+
+  // ---- Manual board actions (Phase 1). Precedence: manual override > log > OCR. ----
+  _ov (id) { return this.manual.overrides[id] || (this.manual.overrides[id] = {}); }
+  setStatus (id, status) { if (status) this._ov(id).status = status; else delete this._ov(id).status; this._save(); }
+  togglePickup (id, dropKey, val) { const o = this._ov(id); o.pickedUp = o.pickedUp || {}; o.pickedUp[dropKey] = (val === undefined) ? !o.pickedUp[dropKey] : !!val; this._save(); }
+  setNotes (id, notes) { this._ov(id).notes = String(notes || ''); this._save(); }
+  addManual (d = {}) {
+    const id = 'm-' + Date.now().toString(36) + '-' + (++this._c);
+    const mi = { missionId: id, source: 'manual', status: d.status || 'candidate',
+      title: d.title || null, pickup: d.pickup || null, titleDropoff: d.dropoff || null,
+      reward: d.reward || null, contractType: d.contractType || d.type || 'Manual', parcels: {}, lastSession: this.session };
+    if (d.dropoff || d.commodity || d.scu) mi.parcels.m0 = { dropKey: 'm0', commodity: d.commodity || null, scuHave: 0, scuNeed: Number(d.scu) || 0, station: d.dropoff || null, body: d.dropoff ? { name: bodyFromStation(d.dropoff) } : null };
+    this.manual.added[id] = mi; this._save(); return mi;
+  }
+  removeManual (id) { delete this.manual.added[id]; delete this.manual.overrides[id]; this._save(); }
+  purge () { this.manual = { overrides: {}, added: {} }; this._save(); }
+
+  // ---- status resolution (manual override wins, then log, then derived) ----
+  _allMissions () { return Object.values(this.missions).concat(Object.values(this.manual.added)); }
+  _fullyDelivered (mi) { const p = Object.values(mi.parcels).filter((x) => x.scuNeed > 0); return p.length > 0 && p.every((x) => x.scuHave >= x.scuNeed); }
+  statusOf (mi) {
+    const ov = this.manual.overrides[mi.missionId];
+    if (ov && ov.status) return ov.status;          // manual wins
+    if (mi.status) return mi.status;                // log status
+    if (this._fullyDelivered(mi)) return 'completed';
+    return mi.source === 'manual' ? 'candidate' : 'active';
+  }
+  // Active board missions (not done) — used by /cargo and the router.
+  activeMissions () { return this._allMissions().filter((mi) => !['completed', 'abandoned', 'failed'].includes(this.statusOf(mi))); }
 
   // The "Route" button. Groups active missions by pickup hub; orders each hub's
   // dropoffs by celestial body. opts.shipScu flags over-capacity hubs;
   // opts.freshOnly hides carried-over (unconfirmed-this-session) missions.
   route (opts = {}) {
-    const staleOf = (mi) => this.session > 0 && mi.lastSession < this.session;
-    let missions = this.activeMissions();
+    const DONE = ['completed', 'abandoned', 'failed'];
+    const staleOf = (mi) => mi.source !== 'manual' && this.session > 0 && mi.lastSession < this.session;
+    const pickedUpOf = (id, dropKey) => { const o = this.manual.overrides[id]; return !!(o && o.pickedUp && o.pickedUp[dropKey]); };
+    const all = this._allMissions();
+
+    // Done section (greyed): completed / abandoned / failed — never silently dropped.
+    const done = all.filter((mi) => DONE.includes(this.statusOf(mi))).map((mi) => {
+      const parts = String(mi.title || '').split('|').map((x) => x.trim()).filter(Boolean);
+      return { missionId: mi.missionId, status: this.statusOf(mi), source: mi.source || 'log',
+        contractType: parts.length >= 3 ? parts[1] : (mi.contractType || 'Hauling contract'),
+        dropoff: mi.titleDropoff || (Object.values(mi.parcels)[0] && Object.values(mi.parcels)[0].station) || null };
+    });
+
+    let missions = all.filter((mi) => !DONE.includes(this.statusOf(mi)));
     if (opts.freshOnly) missions = missions.filter((mi) => !staleOf(mi));
 
     const byHub = {};
@@ -157,6 +214,7 @@ class CargoRouter {
     for (const mi of missions) {
       const stale = staleOf(mi);
       if (stale) carriedOver += 1;
+      const candidate = this.statusOf(mi) === 'candidate';
       // "from X" contracts name the pickup; "to X" contracts only name the dropoff
       // (the game assigns a collect point but doesn't write it to the log on 4.8.0).
       const pickup = mi.pickup || null;
@@ -168,25 +226,26 @@ class CargoRouter {
       const parts = String(mi.title || '').split('|').map((x) => x.trim()).filter(Boolean);
       const hdr = { title: mi.title || null, reward: mi.reward || null,
         rank: parts.length >= 3 ? parts[0] : null,
-        contractType: parts.length >= 3 ? parts[1] : (parts[1] || parts[0] || 'Hauling contract'),
-        missionId: mi.missionId, stale };
+        contractType: parts.length >= 3 ? parts[1] : (mi.contractType || parts[1] || parts[0] || 'Hauling contract'),
+        missionId: mi.missionId, source: mi.source || 'log', stale, candidate };
       const undelivered = Object.values(mi.parcels).filter((p) => p.scuHave < p.scuNeed);
       if (undelivered.length) {
         for (const p of undelivered) {
           const scu = p.scuNeed - p.scuHave;
-          hub.collectScu += scu;
+          const pickedUp = pickedUpOf(mi.missionId, p.dropKey);
+          if (!pickedUp) hub.collectScu += scu;     // already-collected legs don't count toward what's left to load
           const dropoff = p.station || mi.titleDropoff || null;
-          hub.legs.push(Object.assign({}, hdr, { dropoff, dropBody: dropoff ? ((p.body && p.body.name) || bodyFromStation(dropoff) || 'Unknown') : null, commodity: p.commodity, scu, pending: !dropoff }));
+          hub.legs.push(Object.assign({}, hdr, { dropKey: p.dropKey, dropoff, dropBody: dropoff ? ((p.body && p.body.name) || bodyFromStation(dropoff) || 'Unknown') : null, commodity: p.commodity, scu, pending: !dropoff, pickedUp }));
         }
       } else {
         // Accepted but no Deliver objective yet — show the title endpoint; cargo TBD.
         awaiting += 1;
         const dropoff = mi.titleDropoff || null;
-        hub.legs.push(Object.assign({}, hdr, { dropoff, dropBody: dropoff ? (bodyFromStation(dropoff) || 'Unknown') : null, commodity: null, scu: null, pending: !dropoff, awaiting: true }));
+        hub.legs.push(Object.assign({}, hdr, { dropKey: 'm0', dropoff, dropBody: dropoff ? (bodyFromStation(dropoff) || 'Unknown') : null, commodity: null, scu: null, pending: !dropoff, awaiting: true, pickedUp: pickedUpOf(mi.missionId, 'm0') }));
       }
     }
     const hubs = Object.values(byHub).map((h) => {
-      h.legs.sort((a, b) => (a.pending - b.pending) || (BODY_ORDER[a.dropBody] || 90) - (BODY_ORDER[b.dropBody] || 90) || String(a.dropoff || '').localeCompare(String(b.dropoff || '')));
+      h.legs.sort((a, b) => (a.pickedUp - b.pickedUp) || (a.pending - b.pending) || (BODY_ORDER[a.dropBody] || 90) - (BODY_ORDER[b.dropBody] || 90) || String(a.dropoff || '').localeCompare(String(b.dropoff || '')));
       return h;
     }).sort((a, b) => (a.stale - b.stale) || (b.pickupKnown - a.pickupKnown) || (BODY_ORDER[a.pickupBody] || 90) - (BODY_ORDER[b.pickupBody] || 90) || a.pickup.localeCompare(b.pickup));
 
@@ -199,12 +258,12 @@ class CargoRouter {
     if (carriedOver) notes.push(`${carriedOver} mission(s) carried over from a previous session (a crash/exit logs no end-event) — confirm in your contract manager, or open it in-game to refresh.`);
     if (awaiting) notes.push(`${awaiting} mission(s) accepted but no cargo line yet — pick up the cargo or open the contract in-game, then hit Route to fill them in.`);
     if (pickupNotLogged) notes.push(`${pickupNotLogged} "deliver to…" contract(s) don't record their pickup in the log on this build — the game assigns a collect point and shows it in-game; here only the dropoff is known.`);
-    if (!hubs.length) notes.push('No active cargo missions detected. Accept a hauling contract, then hit Route.');
+    if (!hubs.length && !done.length) notes.push('No cargo missions yet. Accept a hauling contract in-game, or add one manually with + Add.');
 
     return {
       enabled: true,
-      summary: { missions: missions.length, pickups: hubs.length, dropoffs, totalScu, carriedOver },
-      hubs, notes
+      summary: { missions: missions.length, pickups: hubs.length, dropoffs, totalScu, carriedOver, done: done.length },
+      hubs, done, notes
     };
   }
 }

@@ -81,7 +81,8 @@ class StarCitizenService extends EventEmitter {
     // in handleLogChange. Remove this line + the /cargo,/route routes + the UI
     // panel to strip the feature entirely (the core relay is unaffected).
     this.cargoRouter = (this.settings.cargo && this.settings.cargo.enable)
-      ? new (require('../services/CargoRouter'))() : null;
+      ? new (require('../services/CargoRouter'))({ file: (this.settings.cargo && this.settings.cargo.file) || require('path').join(__dirname, '..', 'stores', 'cargo.json') })
+      : null;
 
     if (this.settings.discord.enable) this._wireDiscord();
   }
@@ -224,6 +225,23 @@ class StarCitizenService extends EventEmitter {
       if (req.method === 'GET' && path === `${base}/cargo`) {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
         return send(200, { type: 'Collection', enabled: true, data: this.cargoRouter.activeMissions() });
+      }
+      // Manual board actions: status / pickup / add / remove / notes / purge.
+      if (req.method === 'POST' && path === `${base}/cargo/action`) {
+        if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
+        const d = await body(); const r = this.cargoRouter;
+        try {
+          switch (d.action) {
+            case 'status': r.setStatus(d.id, d.status || null); break;
+            case 'pickup': r.togglePickup(d.id, d.dropKey, d.value); break;
+            case 'notes': r.setNotes(d.id, d.notes); break;
+            case 'add': return send(200, { ok: true, mission: r.addManual(d.data || d) });
+            case 'remove': r.removeManual(d.id); break;
+            case 'purge': r.purge(); break;
+            default: return send(400, { error: 'unknown action' });
+          }
+          return send(200, { ok: true });
+        } catch (e) { return send(400, { error: e.message }); }
       }
 
       // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
