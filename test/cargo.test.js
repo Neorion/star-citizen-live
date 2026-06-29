@@ -40,7 +40,7 @@ test('a bare "<System> System" dropoff is pending until the handler names the st
   const r = new CargoRouter();
   r.ingest(acceptFrom('Orison'));
   r.ingest(objTo(0, 4, 'Aluminum', 'Stanton System', 1));
-  assert.strictEqual(r.route().hubs[0].pending.length, 1);                 // no station yet
+  assert.strictEqual(r.route().hubs[0].legs[0].pending, true);             // no station yet
   r.ingest(handlerDropoff('Wikelo Emporium Selo Station', 'TheCollectorsAsteriod_Stanton2', 'eacd0014-8c17-4950-b0bc-c483ef44a459'));
   const out = r.route();
   assert.strictEqual(out.hubs[0].legs.length, 1);
@@ -66,13 +66,25 @@ test('a fully delivered objective drops out', () => {
   assert.strictEqual(r.route().hubs.length, 0);
 });
 
-test('ending a mission removes its parcels and pickup', () => {
+test('ending a mission removes it entirely', () => {
   const r = new CargoRouter();
   r.ingest(acceptFrom('Fallow Field'));
   r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
   r.observe('irrelevant', { kind: 'mission:end', missionId: MID });
   assert.strictEqual(r.route().hubs.length, 0);
-  assert.strictEqual(r.pickups[MID], undefined);
+  assert.strictEqual(r.missions[MID], undefined);
+});
+
+test('shows an accepted mission from its title before any cargo line (the 7-missions case)', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));                                    // "| from X" (pickup named)
+  r.ingest(`<2026-06-28T18:17:38.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Junior | Stellar Small Haul | to Ruin Station <EM4>[50 Rep]</EM4>: " [16] to queue. New queue size: 2, MissionId: [22222222-2222-2222-2222-222222222222], ObjectiveId: []`);
+  const out = r.route();
+  assert.strictEqual(out.summary.missions, 2);                             // both show, no Deliver line needed
+  const ruin = out.hubs.find((h) => /open pickup/i.test(h.pickup)).legs[0];
+  assert.strictEqual(ruin.dropoff, 'Ruin Station');                        // dropoff from the "| to Y" title
+  assert.strictEqual(ruin.dropBody, 'Pyro');
+  assert.strictEqual(ruin.awaiting, true);                                 // cargo not known yet
 });
 
 test('carries a mission over a new session (crash/exit) until re-confirmed', () => {

@@ -346,26 +346,20 @@ function renderCargoRoute(out){
   const hubs = out.hubs||[];
   if(hubs.length){
     h += hubs.map((hb,i)=>{
-      const legs = (hb.legs||[]).map(l=>`
-        <div class="obj" style="display:flex;gap:8px;align-items:center${l.stale?';opacity:.6':''}">
-          <span style="color:var(--muted)">↳</span>
-          <span class="badge b-warn">${l.scu} ${esc(l.commodity)}</span>
-          <span style="color:var(--muted)">to</span>
-          <span>${esc(l.dropoff)}</span>
-          <span class="badge ${l.stale?'b-raw':'b-good'}" style="font-size:10px">${esc(l.dropBody)}</span>
-        </div>`).join('');
-      const pend = (hb.pending||[]).map(l=>`
-        <div class="obj muted" style="display:flex;gap:8px;align-items:center">
-          <span>↳</span><span class="badge b-raw">${l.scu} ${esc(l.commodity)}</span>
-          <span>to 📍 destination pending</span></div>`).join('');
+      const legs = (hb.legs||[]).map(l=>{
+        const cargo = l.commodity!=null ? `<span class="badge b-warn">${l.scu} ${esc(l.commodity)}</span>` : '<span class="badge b-raw">cargo pending</span>';
+        const dest = l.dropoff ? `<span>${esc(l.dropoff)}</span><span class="badge ${l.stale?'b-raw':'b-good'}" style="font-size:10px">${esc(l.dropBody)}</span>` : '<span class="muted">📍 dropoff pending</span>';
+        return `<div class="obj" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap${l.stale?';opacity:.6':''}">
+          <span style="color:var(--muted)">↳</span>${cargo}<span style="color:var(--muted)">to</span>${dest}</div>`;
+      }).join('');
       return `<div class="mission" style="border-bottom:1px solid #20262f${hb.stale?';opacity:.78':''}">
         <div class="mhead">
           <span class="badge b-acc">📦 ${i+1}</span>
-          <span class="mtitle">Pick up at <b>${esc(hb.pickup)}</b></span>
+          <span class="mtitle">Pick up at <b>${esc(hb.pickup)}</b> <span class="mid">· ${hb.missions} mission${hb.missions===1?'':'s'}</span></span>
           <span class="badge ${hb.pickupBody==='Unknown'?'b-raw':'b-good'}" style="font-size:10px">${esc(hb.pickupBody)}</span>
           ${hb.stale?'<span class="badge b-warn" title="last confirmed a previous session — verify">⏳ carried over</span>':''}
           <span class="time">${hb.collectScu} SCU</span></div>
-        ${legs}${pend}
+        ${legs}
       </div>`;
     }).join('');
   } else {

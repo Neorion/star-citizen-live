@@ -223,7 +223,7 @@ class StarCitizenService extends EventEmitter {
       }
       if (req.method === 'GET' && path === `${base}/cargo`) {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
-        return send(200, { type: 'Collection', enabled: true, data: this.cargoRouter.activeParcels() });
+        return send(200, { type: 'Collection', enabled: true, data: this.cargoRouter.activeMissions() });
       }
 
       // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
