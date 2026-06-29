@@ -102,6 +102,7 @@
   <div class="row" style="margin-top:10px;gap:8px">
     <button class="tab on" id="tab-live">Live feed</button>
     <button class="tab" id="tab-analyze">Analyze</button>
+    <button class="tab" id="tab-cargo" style="display:none">🚚 Cargo</button>
     <span class="sub" id="az-scope" style="color:var(--muted);font-size:12px"></span>
   </div>
   <div class="row" id="live-filter" style="margin-top:10px">
@@ -127,19 +128,6 @@
   <section class="panel full">
     <h2>🎯 Missions <span class="sub" id="mstats">— grouped by mission, objectives nested</span></h2>
     <div class="feed" id="missions"></div>
-  </section>
-
-  <section class="panel full" id="cargo-panel" style="display:none">
-    <h2>🚚 Cargo route
-      <span class="sub">— optimal delivery order for your active hauling missions, grouped by moon/planet</span>
-      <span style="margin-left:auto;display:flex;gap:10px;align-items:center">
-        <label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="cargo-fresh"> hide carried-over</label>
-        <input type="number" id="cargo-scu" placeholder="ship SCU" min="1"
-          style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:84px">
-        <button class="btn" id="cargo-route-btn">⟳ Route</button>
-      </span>
-    </h2>
-    <div id="cargo-body" style="padding:12px 14px"><div class="empty">Accept hauling contracts in-game, then hit Route.</div></div>
   </section>
 
   <section class="panel">
@@ -189,6 +177,23 @@
   <section class="panel full">
     <h2>⚖️ Pilot comparison <span class="sub">— side-by-side over the selected period (ignores the pilot filter)</span></h2>
     <div id="az-cmp" style="padding:12px 14px"></div>
+  </section>
+</main>
+
+<main id="view-cargo" style="display:none">
+  <section class="panel full">
+    <h2>🚚 Cargo route
+      <span class="sub">— your active hauling contracts: pickup → dropoff, grouped by hub &amp; celestial body</span>
+      <span style="margin-left:auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="cargo-auto"> auto-refresh</label>
+        <label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="cargo-fresh"> hide carried-over</label>
+        <span style="font-size:12px;color:var(--muted);display:flex;gap:5px;align-items:center">ship
+          <input type="number" id="cargo-scu" placeholder="SCU" min="1"
+            style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:72px"></span>
+        <button class="btn" id="cargo-route-btn">⟳ Route</button>
+      </span>
+    </h2>
+    <div id="cargo-body" style="padding:12px 14px"><div class="empty">Accept hauling contracts in-game, then hit Route (or turn on auto-refresh).</div></div>
   </section>
 </main>
 
@@ -313,7 +318,7 @@ async function poll(){
     const parts = [d.channel, s.branch, s.changelist].filter(Boolean);
     $('build').textContent = parts.join(' · ');
     $('updated').textContent = 'updated ' + shortTime(d.now);
-    $('cargo-panel').style.display = d.cargoEnabled ? '' : 'none';
+    $('tab-cargo').style.display = d.cargoEnabled ? '' : 'none';
     last = { flagged: d.flagged, recent: d.recent, missions: d.missions || [], kills: d.kills || [] };
     paint();
   }catch(e){
@@ -368,19 +373,23 @@ function renderCargoRoute(out){
   if((out.notes||[]).length) h += '<div style="margin-top:10px">'+out.notes.map(n=>`<div class="obj muted" style="color:var(--warn)">⚠ ${esc(n)}</div>`).join('')+'</div>';
   el.innerHTML = h;
 }
-async function runRoute(){
-  const btn=$('cargo-route-btn'); btn.textContent='…routing';
+async function runRoute(silent){
+  const btn=$('cargo-route-btn'); if(!silent) btn.textContent='…routing';
   try{
     const scu = parseInt($('cargo-scu').value,10);
     const qs = [scu?('scu='+scu):'', $('cargo-fresh').checked?'fresh=1':''].filter(Boolean).join('&');
     const r = await fetch('/services/star-citizen/route'+(qs?('?'+qs):''));
     renderCargoRoute(await r.json());
-  }catch(e){ $('cargo-body').innerHTML='<div class="empty">route request failed</div>'; }
+  }catch(e){ if(!silent) $('cargo-body').innerHTML='<div class="empty">route request failed</div>'; }
   btn.textContent='⟳ Route';
 }
-$('cargo-route-btn').addEventListener('click', runRoute);
+$('cargo-route-btn').addEventListener('click', ()=>runRoute());
+$('cargo-fresh').addEventListener('change', ()=>runRoute());
+$('cargo-auto').addEventListener('change', ()=>{ if($('cargo-auto').checked) runRoute(); });
 
 let timer=setInterval(()=>{ if($('auto').checked) poll(); }, 2000);
+// Cargo auto-refresh: re-route every 3s while the toggle is on and the tab is open.
+let cargoTimer=setInterval(()=>{ if($('cargo-auto').checked && $('view-cargo').style.display!=='none') runRoute(true); }, 3000);
 poll();
 
 (function(){
@@ -573,13 +582,17 @@ poll();
   function show(v){
     g('view-live').style.display=v==='live'?'':'none';
     g('view-analyze').style.display=v==='analyze'?'':'none';
+    g('view-cargo').style.display=v==='cargo'?'':'none';
     g('live-filter').style.display=v==='live'?'':'none';
     g('tab-live').classList.toggle('on',v==='live');
     g('tab-analyze').classList.toggle('on',v==='analyze');
+    g('tab-cargo').classList.toggle('on',v==='cargo');
     if(v==='analyze' && !D) fetchA();
+    if(v==='cargo') runRoute();
   }
   g('tab-live').addEventListener('click',()=>show('live'));
   g('tab-analyze').addEventListener('click',()=>show('analyze'));
+  g('tab-cargo').addEventListener('click',()=>show('cargo'));
   const tog=(key,v)=>{ if(!S[key])S[key]=new Set(); if(S[key].has(v))S[key].delete(v); else S[key].add(v); if(!S[key].size)S[key]=null; };
   g('view-analyze').addEventListener('click',(e)=>{
     const t=e.target.closest('[data-all],[data-multi],[data-clear],[data-reset],[data-oc],[data-ty],[data-fac],[data-pl],[data-ym],[data-allmonths],[data-nomonths]'); if(!t)return;
