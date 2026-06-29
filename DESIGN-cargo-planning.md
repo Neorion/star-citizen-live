@@ -136,6 +136,28 @@ Trade local/private/free against accuracy/ease:
 - **aUEC reward** isn't in the log — OCR *can* read it, which is real planning value
   (profit-per-SCU). A reason the offer-board profile matters.
 
+### Provider config — vendor-agnostic, keys via env only `[DECIDED: Claude now, swappable]`
+A thin **adapter interface** so the engine is swappable without touching callers:
+```
+extractContract(imageBuffer, profile) -> { title, pickup, dropoff, commodity, scu, reward, expiresAt, ... }
+```
+Implementations behind one config: **Claude** (now), **OpenAI**, **local** (Tesseract/VLM), **none**.
+- **Config (env-driven, never hardcoded — same rule as DISCORD_WEBHOOK_URL):**
+  - `SC_OCR_PROVIDER` = `claude` | `openai` | `tesseract` | `none` (default `none`).
+  - `ANTHROPIC_API_KEY` (Claude) / `OPENAI_API_KEY` (OpenAI) — read from env or the
+    gitignored `settings/local.js`; **never committed**.
+  - `SC_OCR_MODEL` (optional override; default a cheap vision model per provider).
+- **Zero-dep win:** both Claude and OpenAI vision are plain HTTPS — callable with Node's
+  built-in `fetch` (already used for Discord). **No SDK / npm dependency** for the cloud
+  providers; only the *local* engines add install weight. So the OCR module stays inside
+  the project's zero-dep footprint unless a user opts into a local engine.
+- **Cloud request shape (both providers):** POST a base64 image block + a "return these
+  fields as JSON" prompt → parse the JSON. Default model = the cheap vision tier (Claude
+  Haiku / GPT-4o-mini) since OCR extraction is light.
+- **Shareable note:** each user supplies **their own** key (cost + security); the install
+  pack should let them paste a key (stored locally) or set the env var, and we recommend
+  setting a **spend limit** on the key in the provider console.
+
 ## 7. Separability & footprint `[DECIDED]`
 
 - All of this stays in the **optional cargo module + flag + Cargo tab**. Delete them →
