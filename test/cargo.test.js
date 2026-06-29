@@ -28,11 +28,12 @@ test('builds a pickup -> dropoff leg with bodies from both ends', () => {
   assert.strictEqual(out.summary.dropoffs, 1);
 });
 
-test('a delivery with no named pickup falls under an "open pickup" hub', () => {
+test('a delivery whose pickup is not in the log is grouped honestly (not "source your own")', () => {
   const r = new CargoRouter();
   r.ingest(objTo(0, 5, 'Quartz', 'Checkmate at the L4 Lagrange of Pyro II', 0));   // no accept-from line
   const out = r.route();
-  assert.match(out.hubs[0].pickup, /open pickup/i);
+  assert.strictEqual(out.hubs[0].pickupKnown, false);
+  assert.doesNotMatch(out.hubs[0].pickup, /source your own/i);
   assert.strictEqual(out.hubs[0].legs[0].dropBody, 'Pyro');
 });
 
@@ -81,7 +82,7 @@ test('shows an accepted mission from its title before any cargo line (the 7-miss
   r.ingest(`<2026-06-28T18:17:38.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Junior | Stellar Small Haul | to Ruin Station <EM4>[50 Rep]</EM4>: " [16] to queue. New queue size: 2, MissionId: [22222222-2222-2222-2222-222222222222], ObjectiveId: []`);
   const out = r.route();
   assert.strictEqual(out.summary.missions, 2);                             // both show, no Deliver line needed
-  const ruin = out.hubs.find((h) => /open pickup/i.test(h.pickup)).legs[0];
+  const ruin = out.hubs.find((h) => !h.pickupKnown).legs[0];
   assert.strictEqual(ruin.dropoff, 'Ruin Station');                        // dropoff from the "| to Y" title
   assert.strictEqual(ruin.dropBody, 'Pyro');
   assert.strictEqual(ruin.awaiting, true);                                 // cargo not known yet

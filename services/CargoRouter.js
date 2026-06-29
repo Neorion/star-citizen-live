@@ -157,8 +157,11 @@ class CargoRouter {
     for (const mi of missions) {
       const stale = staleOf(mi);
       if (stale) carriedOver += 1;
-      const pickup = mi.pickup || 'Open pickup (source your own)';
-      const hub = byHub[pickup] || (byHub[pickup] = { pickup, pickupBody: bodyFromStation(pickup) || 'Unknown', collectScu: 0, legs: [], missions: 0, stale: true });
+      // "from X" contracts name the pickup; "to X" contracts only name the dropoff
+      // (the game assigns a collect point but doesn't write it to the log on 4.8.0).
+      const pickup = mi.pickup || null;
+      const hubKey = pickup || ' nopickup';
+      const hub = byHub[hubKey] || (byHub[hubKey] = { pickup: pickup || 'Pickup not in log', pickupKnown: !!pickup, pickupBody: pickup ? (bodyFromStation(pickup) || 'Unknown') : null, collectScu: 0, legs: [], missions: 0, stale: true });
       hub.missions += 1;
       if (!stale) hub.stale = false;
       // Mission header, mirroring the in-game contract card: rank | type | route.
@@ -185,15 +188,17 @@ class CargoRouter {
     const hubs = Object.values(byHub).map((h) => {
       h.legs.sort((a, b) => (a.pending - b.pending) || (BODY_ORDER[a.dropBody] || 90) - (BODY_ORDER[b.dropBody] || 90) || String(a.dropoff || '').localeCompare(String(b.dropoff || '')));
       return h;
-    }).sort((a, b) => (a.stale - b.stale) || (BODY_ORDER[a.pickupBody] || 90) - (BODY_ORDER[b.pickupBody] || 90) || a.pickup.localeCompare(b.pickup));
+    }).sort((a, b) => (a.stale - b.stale) || (b.pickupKnown - a.pickupKnown) || (BODY_ORDER[a.pickupBody] || 90) - (BODY_ORDER[b.pickupBody] || 90) || a.pickup.localeCompare(b.pickup));
 
     const totalScu = hubs.reduce((s, h) => s + h.collectScu, 0);
     const dropoffs = hubs.reduce((s, h) => s + h.legs.filter((l) => l.dropoff).length, 0);
+    const pickupNotLogged = hubs.filter((h) => !h.pickupKnown).reduce((s, h) => s + h.missions, 0);
 
     const notes = [];
-    if (opts.shipScu) for (const h of hubs) if (h.collectScu > opts.shipScu) notes.push(`Pickup at ${h.pickup} is ${h.collectScu} SCU — exceeds your ${opts.shipScu} SCU hold; split into multiple loads.`);
+    if (opts.shipScu) for (const h of hubs) if (h.collectScu > opts.shipScu) notes.push(`${h.pickupKnown ? 'Pickup at ' + h.pickup : 'This batch'} is ${h.collectScu} SCU — exceeds your ${opts.shipScu} SCU hold; split into multiple loads.`);
     if (carriedOver) notes.push(`${carriedOver} mission(s) carried over from a previous session (a crash/exit logs no end-event) — confirm in your contract manager, or open it in-game to refresh.`);
-    if (awaiting) notes.push(`${awaiting} mission(s) accepted but no cargo line yet — open the contract or pick up the cargo in-game, then hit Route to fill them in.`);
+    if (awaiting) notes.push(`${awaiting} mission(s) accepted but no cargo line yet — pick up the cargo or open the contract in-game, then hit Route to fill them in.`);
+    if (pickupNotLogged) notes.push(`${pickupNotLogged} "deliver to…" contract(s) don't record their pickup in the log on this build — the game assigns a collect point and shows it in-game; here only the dropoff is known.`);
     if (!hubs.length) notes.push('No active cargo missions detected. Accept a hauling contract, then hit Route.');
 
     return {

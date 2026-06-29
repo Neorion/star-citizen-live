@@ -363,13 +363,15 @@ function renderCargoRoute(out){
             ${cargo}<span style="color:var(--muted)">→</span>${dest}</div>
         </div>`;
       }).join('');
+      const hubTitle = hb.pickupKnown
+        ? `Pick up at <b>${esc(hb.pickup)}</b> <span class="badge ${hb.pickupBody==='Unknown'?'b-raw':'b-good'}" style="font-size:10px">${esc(hb.pickupBody)}</span>`
+        : `Deliveries <span class="mid" title="this build doesn't log the pickup for 'deliver to…' contracts — it's shown in-game">· pickup shown in-game (not in log)</span>`;
       return `<div class="mission" style="border-bottom:1px solid #20262f${hb.stale?';opacity:.78':''}">
         <div class="mhead">
           <span class="badge b-acc">📦 ${i+1}</span>
-          <span class="mtitle">Pick up at <b>${esc(hb.pickup)}</b> <span class="mid">· ${hb.missions} mission${hb.missions===1?'':'s'}</span></span>
-          <span class="badge ${hb.pickupBody==='Unknown'?'b-raw':'b-good'}" style="font-size:10px">${esc(hb.pickupBody)}</span>
+          <span class="mtitle">${hubTitle} <span class="mid">· ${hb.missions} mission${hb.missions===1?'':'s'}</span></span>
           ${hb.stale?'<span class="badge b-warn" title="last confirmed a previous session — verify">⏳ carried over</span>':''}
-          <span class="time">${hb.collectScu} SCU</span></div>
+          ${hb.collectScu?`<span class="time">${hb.collectScu} SCU</span>`:''}</div>
         ${legs}
       </div>`;
     }).join('');
