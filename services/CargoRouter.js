@@ -56,7 +56,8 @@ function bodyFromStation (name) {
   if (/^hur-|everus|hurston/.test(n)) return 'Hurston';
   if (/^mic-|tressler|new babbage|microtech/.test(n)) return 'microTech';
   if (/wikelo|collector/.test(n)) return 'Asteroid bases';
-  if (/pyro|ruin station|checkmate|rod's|rat's nest|dudley|patch city|gaslight|orbituary/.test(n)) return 'Pyro';
+  // Pyro: orbital stations + surface outposts (no planet prefix, so matched by name).
+  if (/pyro|ruin station|checkmate|rod'?s end|rat'?s nest|dudley|patch city|gaslight|orbituary|starlight|seer'?s canyon|rustville|hdpc-|shepherd'?s rest|bueno|last landing|ashland|chawla|canard|sacren|refinery ravine|megumi|endgame|terminus|feo |dunboro|prospect depot/.test(n)) return 'Pyro';
   return null;
 }
 // A destination that is just "<System> System" is not a routable station.
