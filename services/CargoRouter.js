@@ -77,9 +77,10 @@ function bodyFromToken (token) {
 }
 class CargoRouter {
   constructor () {
-    this.parcels = {};        // dropKey -> parcel
+    this.parcels = {};         // dropKey -> parcel
     this.stationByGuid = {};   // dropoff GUID -> { station, token, body }
     this.missionActive = {};   // missionId -> true while open
+    this.session = 0;          // increments on each new game session ("Log started on")
   }
 
   _guid (objectiveId) { const m = String(objectiveId).match(GUID_RE); return m ? m[1].toLowerCase() : null; }
@@ -87,6 +88,11 @@ class CargoRouter {
   // Single entry point from the relay. rawLine is the log line; ev is the parsed
   // event (used only to catch mission:end). No coupling beyond this signature.
   observe (rawLine, ev) {
+    // A fresh game session (relaunch after crash / exit-to-menu). We DON'T wipe
+    // carried-over cargo — a crash logs no <EndMission>, so the missions may still
+    // be live. Instead we bump the session counter; the route then flags anything
+    // not re-confirmed THIS session as "carried over, verify" (see route()).
+    if (ev && ev.kind === 'session:start') this.session += 1;
     if (ev && ev.kind === 'mission:end' && ev.missionId) this.endMission(ev.missionId);
     this.ingest(String(rawLine));
   }
@@ -109,7 +115,8 @@ class CargoRouter {
         scuHave: Number(have), scuNeed: Number(need),
         destSystem: dest,
         station,
-        body
+        body,
+        lastSession: this.session   // the session this delivery was last confirmed in
       };
       if (missionId && missionId !== ZERO_GUID) this.missionActive[missionId] = true;
       return 'objective';
@@ -141,26 +148,38 @@ class CargoRouter {
   }
 
   // The "Route" button calls this. Groups active deliveries by station, clusters
-  // stations by celestial body, orders bodies into a circuit. opts.shipScu (SCU)
-  // optionally flags trips that exceed capacity.
+  // stations by celestial body, orders bodies into a circuit.
+  //   opts.shipScu   — flag trips that exceed this capacity.
+  //   opts.freshOnly — drop carried-over (unconfirmed-this-session) deliveries.
   route (opts = {}) {
-    const active = this.activeParcels();
+    // "Carried over": last confirmed in an earlier session. After a crash / exit
+    // to menu the game logs no <EndMission>, so these MIGHT be gone — flag, don't
+    // assume. Confirmed again the moment their objective re-appears this session.
+    const staleOf = (p) => this.session > 0 && p.lastSession < this.session;
+    let active = this.activeParcels();
+    if (opts.freshOnly) active = active.filter((p) => !staleOf(p));
+
     const byStation = {};          // key -> stop
     const unrouted = [];           // parcels with no resolved station
+    let carriedOver = 0;
     for (const p of active) {
-      if (!p.station) { unrouted.push({ commodity: p.commodity, scu: p.scuNeed - p.scuHave, missionId: p.missionId, destSystem: p.destSystem }); continue; }
+      const stale = staleOf(p);
+      if (stale) carriedOver += 1;
+      const remaining = p.scuNeed - p.scuHave;
+      if (!p.station) { unrouted.push({ commodity: p.commodity, scu: remaining, missionId: p.missionId, destSystem: p.destSystem, stale }); continue; }
       const key = p.station;
       const bodyName = (p.body && p.body.name) || 'Unknown';
       const stop = byStation[key] || (byStation[key] = {
         station: p.station, body: bodyName,
         order: BODY_ORDER[bodyName] || 90,
-        parcels: [], totalScu: 0
+        parcels: [], totalScu: 0, stale: true
       });
-      const remaining = p.scuNeed - p.scuHave;
-      stop.parcels.push({ commodity: p.commodity, scu: remaining, missionId: p.missionId });
+      stop.parcels.push({ commodity: p.commodity, scu: remaining, missionId: p.missionId, stale });
       stop.totalScu += remaining;
+      if (!stale) stop.stale = false;   // a stop is fresh if ANY parcel is confirmed this session
     }
-    const stops = Object.values(byStation).sort((a, b) => a.order - b.order || a.station.localeCompare(b.station));
+    const stops = Object.values(byStation).sort((a, b) =>
+      (a.stale - b.stale) || (a.order - b.order) || a.station.localeCompare(b.station));   // confirmed first, then by body
 
     const totalScu = stops.reduce((s, x) => s + x.totalScu, 0) + unrouted.reduce((s, x) => s + x.scu, 0);
     const bodies = [...new Set(stops.map((s) => s.body))];
@@ -169,12 +188,13 @@ class CargoRouter {
 
     const notes = [];
     if (opts.shipScu && totalScu > opts.shipScu) notes.push(`Total ${totalScu} SCU exceeds the ${opts.shipScu} SCU you entered — plan multiple trips.`);
+    if (carriedOver) notes.push(`${carriedOver} delivery(ies) carried over from a previous session (game exit/crash logs no end-event) — confirm they're still in your contract manager, or hit Route after the objectives refresh in-game.`);
     if (unrouted.length) notes.push(`${unrouted.length} delivery(ies) have no named station yet (open delivery / not seen in log) — shown under "destination pending".`);
     if (!stops.length && !unrouted.length) notes.push('No active cargo deliveries detected. Accept a hauling contract, then hit Route.');
 
     return {
       enabled: true,
-      summary: { missions: missions.size, stops: stops.length, bodies: bodies.filter(Boolean).length, totalScu, commodities: commodities.length },
+      summary: { missions: missions.size, stops: stops.length, bodies: bodies.filter(Boolean).length, totalScu, commodities: commodities.length, carriedOver },
       stops, unrouted, notes
     };
   }

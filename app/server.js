@@ -218,7 +218,8 @@ class StarCitizenService extends EventEmitter {
       if (req.method === 'GET' && path === `${base}/route`) {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled (set SC_CARGO_ROUTER=1)' });
         const scu = parseInt(url.searchParams.get('scu'), 10) || null;   // optional ship capacity
-        return send(200, this.cargoRouter.route({ shipScu: scu }));
+        const freshOnly = url.searchParams.get('fresh') === '1';         // drop carried-over deliveries
+        return send(200, this.cargoRouter.route({ shipScu: scu, freshOnly }));
       }
       if (req.method === 'GET' && path === `${base}/cargo`) {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });

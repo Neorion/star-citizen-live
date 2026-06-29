@@ -62,6 +62,22 @@ test('ending a mission removes its parcels', () => {
   assert.strictEqual(r.route().stops.length, 0);
 });
 
+test('carries a mission over a new session (crash/exit) and flags it until re-confirmed', () => {
+  const r = new CargoRouter();
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  assert.strictEqual(r.route().stops[0].stale, false);              // confirmed this session
+  // A relaunch (new "Log started on") — but no <EndMission> fired (crash/exit).
+  r.observe('<...> Log started on Mon Jun 29 00:04:10 2026', { kind: 'session:start' });
+  let out = r.route();
+  assert.strictEqual(out.stops[0].stale, true);                     // now carried over
+  assert.strictEqual(out.summary.carriedOver, 1);
+  assert.ok(out.notes.some((n) => /carried over/.test(n)));
+  assert.strictEqual(r.route({ freshOnly: true }).stops.length, 0); // hidden when fresh-only
+  // The objective re-appears this session -> re-confirmed, no longer stale.
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  assert.strictEqual(r.route().stops[0].stale, false);
+});
+
 test('flags when total cargo exceeds the entered ship capacity', () => {
   const r = new CargoRouter();
   r.ingest(objTo(0, 40, 'Hydrogen', 'CRU-L1 Ambitious Dream Station', 0));

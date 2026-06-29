@@ -132,7 +132,8 @@
   <section class="panel full" id="cargo-panel" style="display:none">
     <h2>🚚 Cargo route
       <span class="sub">— optimal delivery order for your active hauling missions, grouped by moon/planet</span>
-      <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <span style="margin-left:auto;display:flex;gap:10px;align-items:center">
+        <label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="cargo-fresh"> hide carried-over</label>
         <input type="number" id="cargo-scu" placeholder="ship SCU" min="1"
           style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:84px">
         <button class="btn" id="cargo-route-btn">⟳ Route</button>
@@ -341,14 +342,15 @@ function renderCargoRoute(out){
   const s = out.summary || {};
   const kpi = (l,v)=>`<div class="mc" style="padding:8px 12px"><div class="l">${l}</div><div class="v" style="font-size:20px">${v}</div></div>`;
   let h = `<div class="kpis" style="padding:0 0 12px">
-      ${kpi('Stops', s.stops||0)}${kpi('Total SCU', s.totalScu||0)}${kpi('Missions', s.missions||0)}${kpi('Bodies', s.bodies||0)}${kpi('Commodities', s.commodities||0)}</div>`;
+      ${kpi('Stops', s.stops||0)}${kpi('Total SCU', s.totalScu||0)}${kpi('Missions', s.missions||0)}${kpi('Bodies', s.bodies||0)}${s.carriedOver?kpi('Carried over', s.carriedOver):kpi('Commodities', s.commodities||0)}</div>`;
   if((out.stops||[]).length){
     h += out.stops.map((st,i)=>`
-      <div class="mission" style="border-bottom:1px solid #20262f">
+      <div class="mission" style="border-bottom:1px solid #20262f${st.stale?';opacity:.62':''}">
         <div class="mhead">
           <span class="badge b-acc">${i+1}</span>
-          <span class="badge b-good">${esc(st.body)}</span>
+          <span class="badge ${st.stale?'b-raw':'b-good'}">${esc(st.body)}</span>
           <span class="mtitle">${esc(st.station)}</span>
+          ${st.stale?'<span class="badge b-warn" title="last confirmed in a previous session — verify it is still active">⏳ carried over</span>':''}
           <span class="time">${st.totalScu} SCU</span></div>
         <div class="obj">${st.parcels.map(p=>`<span class="badge b-warn" style="margin-right:6px">${p.scu} ${esc(p.commodity)}</span>`).join('')}</div>
       </div>`).join('');
@@ -366,7 +368,8 @@ async function runRoute(){
   const btn=$('cargo-route-btn'); btn.textContent='…routing';
   try{
     const scu = parseInt($('cargo-scu').value,10);
-    const r = await fetch('/services/star-citizen/route'+(scu?('?scu='+scu):''));
+    const qs = [scu?('scu='+scu):'', $('cargo-fresh').checked?'fresh=1':''].filter(Boolean).join('&');
+    const r = await fetch('/services/star-citizen/route'+(qs?('?'+qs):''));
     renderCargoRoute(await r.json());
   }catch(e){ $('cargo-body').innerHTML='<div class="empty">route request failed</div>'; }
   btn.textContent='⟳ Route';
