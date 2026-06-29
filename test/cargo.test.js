@@ -97,6 +97,15 @@ test('carries a mission over a new session (crash/exit) until re-confirmed', () 
   assert.strictEqual(r.route().hubs[0].stale, false);
 });
 
+test('ignores non-hauling contracts (a bounty accept must not show as cargo)', () => {
+  const r = new CargoRouter();
+  const bounty = '<t> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Bounty Assignment: Domenico Pfaffner (HRT) <EM4>[50 Rep]</EM4>: " [5] to queue. New queue size:1, MissionId: [99999999-9999-9999-9999-999999999999], ObjectiveId: []';
+  r.ingest(bounty);
+  assert.strictEqual(r.route().summary.missions, 0);            // bounty not tracked
+  r.ingest(acceptFrom('Fallow Field'));                          // "Stellar Small Haul" -> tracked
+  assert.strictEqual(r.route().summary.missions, 1);
+});
+
 test('log completion greys the mission into Done instead of deleting it', () => {
   const r = new CargoRouter();
   r.ingest(acceptFrom('Fallow Field'));

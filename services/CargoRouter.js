@@ -109,7 +109,12 @@ class CargoRouter {
     // Contract acceptance — names the pickup ("| from X") OR the dropoff ("| to Y").
     if ((m = line.match(ACCEPT_RE))) {
       const title = m[1].trim(), missionId = m[2];
-      if (missionId !== ZERO_GUID) {
+      // "Contract Accepted" also fires for bounties / mercenary / etc. Only track
+      // HAULING contracts — gate on a hauling-ish title, or a mission we already
+      // know is cargo (it logged a Deliver objective). Stops non-cargo contracts
+      // showing up as "accepted but no cargo line".
+      const isHaul = /\b(haul|cargo|freight|deliver)/i.test(title);
+      if (missionId !== ZERO_GUID && (isHaul || this.missions[missionId])) {
         const mi = this._mission(missionId);
         mi.title = title; mi.lastSession = this.session;
         // Reward tiers live in the "<EM4>[50/200/.. Rep]" segment (reputation, not aUEC).
