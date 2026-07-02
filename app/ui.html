@@ -292,6 +292,7 @@
         <label><input type="checkbox" id="ocr-auto"> auto-import</label>
         <button class="hbtn" id="ocr-cal-btn" style="padding:4px 9px" title="draw a crop box over the contract panel for faster/cleaner OCR">🎯 Calibrate</button>
         <span class="mid" id="ocr-cal-state">whole image</span>
+        <button class="hbtn" id="ocr-cloud-btn" style="padding:4px 9px;display:none" title="re-read the current image with Claude (cloud, higher accuracy — sends the image to Anthropic)">☁ Claude read</button>
       </div>
       <div id="ocr-cal" style="display:none;margin-bottom:8px">
         <div class="mid" style="margin-bottom:4px">Drag the box over just the contract panel, then Save. (Load/drop a screenshot first.)</div>
@@ -596,7 +597,19 @@ $('cargo-import-btn').addEventListener('click', async ()=>{
   if(p.style.display!=='none'){
     if(typeof Tesseract==='undefined') ocrStatus('⚠ OCR library did not load (offline / blocked). Try again online, or use ＋ Add.');
     try{ const cfg=await fetch('/services/star-citizen/cargo/config').then(r=>r.json()); ocrConfig=cfg||{}; if(cfg.screensDir) $('ocr-folder').value=cfg.screensDir; $('ocr-cal-state').textContent = cfg.cropRegion?'region set ✓':'whole image'; }catch(e){}
+    try{ const st=await fetch('/services/star-citizen/cargo/ocr-status').then(r=>r.json()); $('ocr-cloud-btn').style.display = st.cloud?'':'none'; }catch(e){}
   }
+});
+// Optional cloud (Claude) re-read of the current image.
+async function toBase64(src){ if(String(src).startsWith('data:')) return src; const b=await fetch(src).then(r=>r.blob()); return await new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(b); }); }
+$('ocr-cloud-btn').addEventListener('click', async ()=>{
+  if(!lastImgSrc){ ocrStatus('drop or choose a screenshot first.'); return; }
+  ocrStatus('☁ reading with Claude…');
+  try{ const img=await toBase64(lastImgSrc); const mime=(img.match(/^data:([^;]+)/)||[])[1]||'image/png';
+    const r=await fetch('/services/star-citizen/cargo/ocr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:img,mime})}).then(x=>x.json());
+    if(r.contract){ ocrStatus('☁ Claude read — check & confirm:'); showOcrPreview(r.contract); }
+    else ocrStatus('Claude returned no contract'+(r.error?': '+esc(r.error):'')); }
+  catch(e){ ocrStatus('Claude OCR failed: '+e.message); }
 });
 // Auto-import poll: every 8s check the watch folder while the toggle is on and the tab is open.
 let ocrTimer=setInterval(()=>{ if($('ocr-auto')&&$('ocr-auto').checked && $('view-cargo').style.display!=='none' && !checking) checkScreens(); }, 8000);

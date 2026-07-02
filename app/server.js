@@ -234,6 +234,22 @@ class StarCitizenService extends EventEmitter {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
         return send(200, { type: 'Collection', enabled: true, data: this.cargoRouter.activeMissions() });
       }
+      // Optional cloud OCR (Claude) — availability probe + the call. Off unless
+      // SC_OCR_PROVIDER=claude and ANTHROPIC_API_KEY are set (env only).
+      if (req.method === 'GET' && path === `${base}/cargo/ocr-status`) {
+        const provider = process.env.SC_OCR_PROVIDER || 'none';
+        return send(200, { cloud: provider === 'claude' && !!process.env.ANTHROPIC_API_KEY, provider });
+      }
+      if (req.method === 'POST' && path === `${base}/cargo/ocr`) {
+        if (!this.cargoRouter) return send(503, { enabled: false });
+        const provider = process.env.SC_OCR_PROVIDER || 'none';
+        const key = process.env.ANTHROPIC_API_KEY;
+        if (provider !== 'claude' || !key) return send(503, { error: 'Cloud OCR not configured — set SC_OCR_PROVIDER=claude and ANTHROPIC_API_KEY (never in code).', provider });
+        const d = await body();
+        try { return send(200, await require('../services/ocrProvider').ocrViaClaude(d.image, d.mime, key, process.env.SC_OCR_MODEL)); }
+        catch (e) { return send(502, { error: e.message }); }
+      }
+
       // Cargo folder-watch: config, list new screenshots, serve one image.
       // The server only LISTS/SERVES files — OCR happens in the browser.
       if (req.method === 'GET' && path === `${base}/cargo/config`) {
