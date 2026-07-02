@@ -154,6 +154,42 @@ test('hand-added candidate appears as a manual OFFER; purge clears manual but ke
   assert.strictEqual(r.route().summary.missions, 1);            // log mission remains
 });
 
+test('snooze hides a mission from the active board into its own section', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  assert.strictEqual(r.route().summary.missions, 1);
+  r.setSnooze(MID, true);
+  const out = r.route();
+  assert.strictEqual(out.hubs.length, 0);
+  assert.strictEqual(out.snoozed.length, 1);
+  r.setSnooze(MID, false);
+  assert.strictEqual(r.route().hubs.length, 1);
+});
+
+test('hideAwaiting drops accepted-but-not-loaded hauls', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));                         // accepted, no cargo line -> awaiting
+  assert.strictEqual(r.route().hubs.length, 1);
+  assert.strictEqual(r.route({ hideAwaiting: true }).hubs.length, 0);
+});
+
+test('pin sorts a hub first; manual order respects setOrder', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));                                          // MID -> Hurston station below
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.ingest(acceptFrom('Sacren\'s Plot', 'BBBBBBBB-bbbb-bbbb-bbbb-bbbbbbbbbbbb'));
+  r.ingest(objTo(0, 5, 'Quartz', 'ArcCorp Area18', 0, 'BBBBBBBB-bbbb-bbbb-bbbb-bbbbbbbbbbbb'));
+  // default optimize: Hurston(1) hub before ArcCorp(3)
+  assert.strictEqual(r.route().hubs[0].pickup, 'Fallow Field');
+  r.setPin('BBBBBBBB-bbbb-bbbb-bbbb-bbbbbbbbbbbb', true);
+  assert.strictEqual(r.route().hubs[0].pickup, "Sacren's Plot");                 // pinned floats up
+  r.setPin('BBBBBBBB-bbbb-bbbb-bbbb-bbbbbbbbbbbb', false);
+  r.setOrder(['BBBBBBBB-bbbb-bbbb-bbbb-bbbbbbbbbbbb', MID]);
+  assert.strictEqual(r.route({ order: 'manual' }).hubs[0].pickup, "Sacren's Plot");  // user order
+  assert.strictEqual(r.route({ order: 'optimize' }).hubs[0].pickup, 'Fallow Field'); // back to body-cluster
+});
+
 test('flags when a hub load exceeds the entered ship capacity', () => {
   const r = new CargoRouter();
   r.ingest(acceptFrom('CRU-L1 Ambitious Dream Station'));

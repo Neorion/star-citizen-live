@@ -220,7 +220,9 @@ class StarCitizenService extends EventEmitter {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled (set SC_CARGO_ROUTER=1)' });
         const scu = parseInt(url.searchParams.get('scu'), 10) || null;   // optional ship capacity
         const freshOnly = url.searchParams.get('fresh') === '1';         // drop carried-over deliveries
-        return send(200, this.cargoRouter.route({ shipScu: scu, freshOnly }));
+        const hideAwaiting = url.searchParams.get('hideawaiting') === '1';
+        const order = url.searchParams.get('order') === 'manual' ? 'manual' : 'optimize';
+        return send(200, this.cargoRouter.route({ shipScu: scu, freshOnly, hideAwaiting, order }));
       }
       if (req.method === 'GET' && path === `${base}/cargo`) {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
@@ -235,6 +237,9 @@ class StarCitizenService extends EventEmitter {
             case 'status': r.setStatus(d.id, d.status || null); break;
             case 'pickup': r.togglePickup(d.id, d.dropKey, d.value); break;
             case 'notes': r.setNotes(d.id, d.notes); break;
+            case 'snooze': r.setSnooze(d.id, d.value); break;
+            case 'pin': r.setPin(d.id, d.value); break;
+            case 'order': r.setOrder(d.ids); break;
             case 'add': return send(200, { ok: true, mission: r.addManual(d.data || d) });
             case 'remove': r.removeManual(d.id); break;
             case 'purge': r.purge(); break;

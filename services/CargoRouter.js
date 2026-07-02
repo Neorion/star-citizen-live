@@ -76,14 +76,14 @@ class CargoRouter {
     // persisted to an optional JSON file so they survive a relay restart. The user
     // is the authority — precedence is manual > log > OCR. ---
     this.file = (arguments[0] && arguments[0].file) || null;
-    this.manual = { overrides: {}, added: {} };   // overrides[id]={status?,pickedUp:{},notes?}; added[id]=mission
+    this.manual = { overrides: {}, added: {}, order: [] };   // overrides[id]={status?,pickedUp:{},notes?,snoozed?,pinned?}; added[id]=mission; order=[missionId]
     this._c = 0;
     this._load();
   }
 
   _load () {
     if (!this.file) return;
-    try { const fs = require('fs'); if (fs.existsSync(this.file)) { const j = JSON.parse(fs.readFileSync(this.file, 'utf8')); this.manual = { overrides: j.overrides || {}, added: j.added || {} }; } } catch (e) { /* ignore a corrupt store */ }
+    try { const fs = require('fs'); if (fs.existsSync(this.file)) { const j = JSON.parse(fs.readFileSync(this.file, 'utf8')); this.manual = { overrides: j.overrides || {}, added: j.added || {}, order: j.order || [] }; } } catch (e) { /* ignore a corrupt store */ }
   }
   _save () {
     if (!this.file) return;
@@ -169,7 +169,10 @@ class CargoRouter {
   _ov (id) { return this.manual.overrides[id] || (this.manual.overrides[id] = {}); }
   setStatus (id, status) { if (status) this._ov(id).status = status; else delete this._ov(id).status; this._save(); }
   togglePickup (id, dropKey, val) { const o = this._ov(id); o.pickedUp = o.pickedUp || {}; o.pickedUp[dropKey] = (val === undefined) ? !o.pickedUp[dropKey] : !!val; this._save(); }
-  setNotes (id, notes) { this._ov(id).notes = String(notes || ''); this._save(); }
+  setNotes (id, notes) { const n = String(notes || ''); if (n) this._ov(id).notes = n; else delete this._ov(id).notes; this._save(); }
+  setSnooze (id, val) { const o = this._ov(id); if (val === undefined ? !o.snoozed : val) o.snoozed = true; else delete o.snoozed; this._save(); }
+  setPin (id, val) { const o = this._ov(id); if (val === undefined ? !o.pinned : val) o.pinned = true; else delete o.pinned; this._save(); }
+  setOrder (ids) { this.manual.order = Array.isArray(ids) ? ids.slice() : []; this._save(); }
   addManual (d = {}) {
     const id = 'm-' + Date.now().toString(36) + '-' + (++this._c);
     const mi = { missionId: id, source: 'manual', status: d.status || 'candidate',
@@ -179,7 +182,7 @@ class CargoRouter {
     this.manual.added[id] = mi; this._save(); return mi;
   }
   removeManual (id) { delete this.manual.added[id]; delete this.manual.overrides[id]; this._save(); }
-  purge () { this.manual = { overrides: {}, added: {} }; this._save(); }
+  purge () { this.manual = { overrides: {}, added: {}, order: [] }; this._save(); }
 
   // ---- status resolution (manual override wins, then log, then derived) ----
   _allMissions () { return Object.values(this.missions).concat(Object.values(this.manual.added)); }
@@ -214,26 +217,39 @@ class CargoRouter {
     let missions = all.filter((mi) => !DONE.includes(this.statusOf(mi)));
     if (opts.freshOnly) missions = missions.filter((mi) => !staleOf(mi));
 
+    const ovOf = (mi) => this.manual.overrides[mi.missionId] || {};
+    const orderIdx = (id) => { const i = (this.manual.order || []).indexOf(id); return i < 0 ? 1e6 : i; };
+    const brief = (mi) => { const parts = String(mi.title || '').split('|').map((x) => x.trim()).filter(Boolean);
+      return { missionId: mi.missionId, source: mi.source || 'log', contractType: parts.length >= 3 ? parts[1] : (mi.contractType || 'Hauling contract'),
+        dropoff: mi.titleDropoff || (Object.values(mi.parcels)[0] && Object.values(mi.parcels)[0].station) || null }; };
+    // Snoozed = hidden from the active board but kept (own section).
+    const snoozed = missions.filter((mi) => ovOf(mi).snoozed).map(brief);
+    missions = missions.filter((mi) => !ovOf(mi).snoozed);
+
     const byHub = {};
-    let carriedOver = 0, awaiting = 0;
+    let carriedOver = 0, awaiting = 0, hiddenAwaiting = 0;
     for (const mi of missions) {
+      const undelivered = Object.values(mi.parcels).filter((p) => p.scuHave < p.scuNeed);
+      if (!undelivered.length) { awaiting += 1; if (opts.hideAwaiting) { hiddenAwaiting += 1; continue; } }
       const stale = staleOf(mi);
       if (stale) carriedOver += 1;
       const candidate = this.statusOf(mi) === 'candidate';
+      const ov = ovOf(mi); const pinned = !!ov.pinned; const oidx = orderIdx(mi.missionId);
       // "from X" contracts name the pickup; "to X" contracts only name the dropoff
       // (the game assigns a collect point but doesn't write it to the log on 4.8.0).
       const pickup = mi.pickup || null;
       const hubKey = pickup || ' nopickup';
-      const hub = byHub[hubKey] || (byHub[hubKey] = { pickup: pickup || 'Pickup not in log', pickupKnown: !!pickup, pickupBody: pickup ? (bodyFromStation(pickup) || 'Unknown') : null, collectScu: 0, legs: [], missions: 0, stale: true });
+      const hub = byHub[hubKey] || (byHub[hubKey] = { pickup: pickup || 'Pickup not in log', pickupKnown: !!pickup, pickupBody: pickup ? (bodyFromStation(pickup) || 'Unknown') : null, collectScu: 0, legs: [], missions: 0, stale: true, pinned: false, order: 1e6 });
       hub.missions += 1;
       if (!stale) hub.stale = false;
+      if (pinned) hub.pinned = true;
+      hub.order = Math.min(hub.order, oidx);
       // Mission header, mirroring the in-game contract card: rank | type | route.
       const parts = String(mi.title || '').split('|').map((x) => x.trim()).filter(Boolean);
       const hdr = { title: mi.title || null, reward: mi.reward || null,
         rank: parts.length >= 3 ? parts[0] : null,
         contractType: parts.length >= 3 ? parts[1] : (mi.contractType || parts[1] || parts[0] || 'Hauling contract'),
-        missionId: mi.missionId, source: mi.source || 'log', stale, candidate };
-      const undelivered = Object.values(mi.parcels).filter((p) => p.scuHave < p.scuNeed);
+        missionId: mi.missionId, source: mi.source || 'log', stale, candidate, pinned, notes: ov.notes || null, order: oidx };
       if (undelivered.length) {
         for (const p of undelivered) {
           const scu = p.scuNeed - p.scuHave;
@@ -244,31 +260,33 @@ class CargoRouter {
         }
       } else {
         // Accepted but no Deliver objective yet — show the title endpoint; cargo TBD.
-        awaiting += 1;
         const dropoff = mi.titleDropoff || null;
         hub.legs.push(Object.assign({}, hdr, { dropKey: 'm0', dropoff, dropBody: dropoff ? (bodyFromStation(dropoff) || 'Unknown') : null, commodity: null, scu: null, pending: !dropoff, awaiting: true, pickedUp: pickedUpOf(mi.missionId, 'm0') }));
       }
     }
-    const hubs = Object.values(byHub).map((h) => {
-      h.legs.sort((a, b) => (a.pickedUp - b.pickedUp) || (a.pending - b.pending) || (BODY_ORDER[a.dropBody] || 90) - (BODY_ORDER[b.dropBody] || 90) || String(a.dropoff || '').localeCompare(String(b.dropoff || '')));
-      return h;
-    }).sort((a, b) => (a.stale - b.stale) || (b.pickupKnown - a.pickupKnown) || (BODY_ORDER[a.pickupBody] || 90) - (BODY_ORDER[b.pickupBody] || 90) || a.pickup.localeCompare(b.pickup));
+    // "My order" = user drag order (pinned first); "Optimize" = body-cluster (default).
+    const manualOrder = opts.order === 'manual';
+    const legCmp = (a, b) => (b.pinned - a.pinned) || (manualOrder ? (a.order - b.order) : 0) || (a.pickedUp - b.pickedUp) || (a.pending - b.pending) || (BODY_ORDER[a.dropBody] || 90) - (BODY_ORDER[b.dropBody] || 90) || String(a.dropoff || '').localeCompare(String(b.dropoff || ''));
+    const hubs = Object.values(byHub).map((h) => { h.legs.sort(legCmp); return h; })
+      .sort((a, b) => (b.pinned - a.pinned) || (manualOrder ? (a.order - b.order) : 0) || (a.stale - b.stale) || (b.pickupKnown - a.pickupKnown) || (BODY_ORDER[a.pickupBody] || 90) - (BODY_ORDER[b.pickupBody] || 90) || a.pickup.localeCompare(b.pickup));
 
     const totalScu = hubs.reduce((s, h) => s + h.collectScu, 0);
     const dropoffs = hubs.reduce((s, h) => s + h.legs.filter((l) => l.dropoff).length, 0);
+    const shownMissions = hubs.reduce((s, h) => s + h.missions, 0);
     const pickupNotLogged = hubs.filter((h) => !h.pickupKnown).reduce((s, h) => s + h.missions, 0);
 
     const notes = [];
     if (opts.shipScu) for (const h of hubs) if (h.collectScu > opts.shipScu) notes.push(`${h.pickupKnown ? 'Pickup at ' + h.pickup : 'This batch'} is ${h.collectScu} SCU — exceeds your ${opts.shipScu} SCU hold; split into multiple loads.`);
     if (carriedOver) notes.push(`${carriedOver} mission(s) carried over from a previous session (a crash/exit logs no end-event) — confirm in your contract manager, or open it in-game to refresh.`);
-    if (awaiting) notes.push(`${awaiting} mission(s) accepted but no cargo line yet — pick up the cargo or open the contract in-game, then hit Route to fill them in.`);
+    if (awaiting && !opts.hideAwaiting) notes.push(`${awaiting} mission(s) accepted but no cargo line yet — loads when you physically pick up that mission's cargo in-game (opening the contract isn't enough).`);
+    if (hiddenAwaiting) notes.push(`${hiddenAwaiting} accepted-but-not-loaded haul(s) hidden.`);
     if (pickupNotLogged) notes.push(`${pickupNotLogged} "deliver to…" contract(s) don't record their pickup in the log on this build — the game assigns a collect point and shows it in-game; here only the dropoff is known.`);
-    if (!hubs.length && !done.length) notes.push('No cargo missions yet. Accept a hauling contract in-game, or add one manually with + Add.');
+    if (!hubs.length && !done.length && !snoozed.length) notes.push('No cargo missions yet. Accept a hauling contract in-game, or add one manually with the + Add button.');
 
     return {
       enabled: true,
-      summary: { missions: missions.length, pickups: hubs.length, dropoffs, totalScu, carriedOver, done: done.length },
-      hubs, done, notes
+      summary: { missions: shownMissions, pickups: hubs.length, dropoffs, totalScu, carriedOver, done: done.length, snoozed: snoozed.length, awaiting, order: manualOrder ? 'manual' : 'optimize' },
+      hubs, done, snoozed, notes
     };
   }
 }

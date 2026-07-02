@@ -255,8 +255,13 @@
     <h2>🚚 Cargo route
       <span class="sub">— your active hauling contracts: pickup → dropoff, grouped by hub &amp; celestial body</span>
       <span style="margin-left:auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <span style="display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden" title="Optimize = group by moon/planet · My order = your drag order">
+          <button class="hbtn on" id="cargo-ord-opt" style="border:0;border-radius:0;padding:4px 9px">Optimize</button>
+          <button class="hbtn" id="cargo-ord-man" style="border:0;border-radius:0;padding:4px 9px;border-left:1px solid var(--line)">My order</button>
+        </span>
         <label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="cargo-auto"> auto-refresh</label>
         <label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="cargo-fresh"> hide carried-over</label>
+        <label style="font-size:12px;color:var(--muted)" title="hide accepted hauls whose cargo you haven't loaded yet"><input type="checkbox" id="cargo-hideaw"> hide awaiting</label>
         <span style="font-size:12px;color:var(--muted);display:flex;gap:5px;align-items:center">ship
           <input type="number" id="cargo-scu" placeholder="SCU" min="1"
             style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:72px"></span>
@@ -450,11 +455,16 @@ function renderCargoRoute(out){
         const cargo = l.commodity!=null ? `<span class="badge b-warn">📦 ${l.scu} ${esc(l.commodity)}</span>` : '<span class="badge b-raw">📦 cargo pending</span>';
         const dest = l.dropoff ? `<b>${esc(l.dropoff)}</b> <span class="badge ${l.stale?'b-raw':'b-good'}" style="font-size:10px">${esc(l.dropBody)}</span>` : '<span class="muted">📍 dropoff pending</span>';
         const rm = l.source==='manual' ? `<button class="micro no" data-act="remove" data-id="${id}" title="remove">🗑</button>` : '';
+        const pin = l.pinned ? '<span title="pinned" style="cursor:pointer" data-act="pin" data-id="'+id+'">📌</span>' : '';
+        const note = l.notes ? `<span class="mid" title="${esc(l.notes)}" style="font-style:italic">📝 ${esc(l.notes).slice(0,40)}</span>` : '';
         return `<div style="padding:8px 0 10px 14px;border-top:1px solid #20262f${l.pickedUp?';opacity:.5':''}${l.stale?';opacity:.6':''}">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <label title="picked up?" style="display:flex"><input type="checkbox" data-act="pickup" data-id="${id}" data-dk="${dk}" ${l.pickedUp?'checked':''}></label>
-            ${src}<span style="font-weight:600">${esc(l.contractType||'Hauling contract')}</span>${cand}${rank}${rep}
+            ${src}${pin}<span style="font-weight:600">${esc(l.contractType||'Hauling contract')}</span>${cand}${rank}${rep}${note}
             <span style="margin-left:auto;display:flex;gap:4px">
+              <button class="micro" data-act="pin" data-id="${id}" title="pin to top">${l.pinned?'📌':'📍'}</button>
+              <button class="micro" data-act="notes" data-id="${id}" data-notes="${esc(l.notes||'')}" title="note">📝</button>
+              <button class="micro" data-act="snooze" data-id="${id}" title="snooze (hide but keep)">💤</button>
               <button class="micro ok" data-act="status" data-id="${id}" data-status="completed" title="mark complete">✓ done</button>
               <button class="micro no" data-act="status" data-id="${id}" data-status="abandoned" title="mark abandoned">✕</button>${rm}</span></div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px;font-size:12.5px;padding-left:24px">
@@ -464,9 +474,10 @@ function renderCargoRoute(out){
       const hubTitle = hb.pickupKnown
         ? `Pick up at <b>${esc(hb.pickup)}</b> <span class="badge ${hb.pickupBody==='Unknown'?'b-raw':'b-good'}" style="font-size:10px">${esc(hb.pickupBody)}</span>`
         : `Deliveries <span class="mid" title="this build doesn't log the pickup for 'deliver to…' contracts — it's shown in-game">· pickup shown in-game (not in log)</span>`;
-      return `<div class="mission" style="border-bottom:1px solid #20262f${hb.stale?';opacity:.78':''}">
+      const firstMid = esc((hb.legs[0]||{}).missionId||'');
+      return `<div class="mission" draggable="true" data-hub-mid="${firstMid}" style="border-bottom:1px solid #20262f${hb.stale?';opacity:.78':''}${hb.pinned?';border-left:2px solid var(--accent)':''}">
         <div class="mhead">
-          <span class="badge b-acc">📦 ${i+1}</span>
+          <span class="badge b-acc" title="${cargoOrder==='manual'?'drag to reorder':'switch to My order to drag'}" style="cursor:${cargoOrder==='manual'?'grab':'default'}">${hb.pinned?'📌':'📦'} ${i+1}</span>
           <span class="mtitle">${hubTitle} <span class="mid">· ${hb.missions} mission${hb.missions===1?'':'s'}</span></span>
           ${hb.stale?'<span class="badge b-warn" title="last confirmed a previous session — verify">⏳ carried over</span>':''}
           ${hb.collectScu?`<span class="time">${hb.collectScu} SCU</span>`:''}</div>
@@ -492,6 +503,17 @@ function renderCargoRoute(out){
           <button class="micro" data-act="status" data-id="${id}" data-status="" title="reactivate">↺</button>${rm}</span></div>`;
     }).join('')+'</div>';
   }
+  if((out.snoozed||[]).length){
+    h += `<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:8px">
+      <div style="font-size:12px;color:var(--muted)">💤 Snoozed (${out.snoozed.length})</div>`;
+    h += out.snoozed.map(d=>{
+      const id=esc(d.missionId);
+      return `<div style="display:flex;gap:8px;align-items:center;padding:5px 0 5px 14px;opacity:.6;font-size:12.5px">
+        ${d.source==='manual'?'✋':'<span style="opacity:.55">📡</span>'}
+        <span>${esc(d.contractType||'mission')}${d.dropoff?' → '+esc(d.dropoff):''}</span>
+        <button class="micro" data-act="unsnooze" data-id="${id}" title="unsnooze" style="margin-left:auto">⏰ wake</button></div>`;
+    }).join('')+'</div>';
+  }
   el.innerHTML = h;
 }
 async function cargoAction(payload){
@@ -503,10 +525,30 @@ $('cargo-body').addEventListener('click', (e)=>{
   const a=t.dataset.act;
   if(a==='status') cargoAction({action:'status', id:t.dataset.id, status:t.dataset.status||null});
   else if(a==='remove') cargoAction({action:'remove', id:t.dataset.id});
+  else if(a==='snooze') cargoAction({action:'snooze', id:t.dataset.id});
+  else if(a==='unsnooze') cargoAction({action:'snooze', id:t.dataset.id, value:false});
+  else if(a==='pin') cargoAction({action:'pin', id:t.dataset.id});
+  else if(a==='notes'){ const n=prompt('Note for this mission:', t.dataset.notes||''); if(n!==null) cargoAction({action:'notes', id:t.dataset.id, notes:n}); }
   else if(a==='purge'){ if(confirm('Clear all your manual marks and hand-added contracts? (log-derived missions stay.)')) cargoAction({action:'purge'}); }
 });
 $('cargo-body').addEventListener('change', (e)=>{
   if(e.target.matches('[data-act="pickup"]')) cargoAction({action:'pickup', id:e.target.dataset.id, dropKey:e.target.dataset.dk, value:e.target.checked});
+});
+// Order toggle (Optimize | My order) + hide-awaiting re-route.
+let cargoOrder='optimize';
+function setOrderMode(m){ cargoOrder=m; $('cargo-ord-opt').classList.toggle('on',m==='optimize'); $('cargo-ord-man').classList.toggle('on',m==='manual'); runRoute(); }
+$('cargo-ord-opt').addEventListener('click', ()=>setOrderMode('optimize'));
+$('cargo-ord-man').addEventListener('click', ()=>setOrderMode('manual'));
+$('cargo-hideaw').addEventListener('change', ()=>runRoute());
+// Drag-reorder (only meaningful in "My order"): reorder hub cards, POST the new mission order.
+let dragId=null;
+$('cargo-body').addEventListener('dragstart', (e)=>{ const c=e.target.closest('[data-hub-mid]'); if(c){ dragId=c.dataset.hubMid; e.dataTransfer.effectAllowed='move'; } });
+$('cargo-body').addEventListener('dragover', (e)=>{ if(dragId) e.preventDefault(); });
+$('cargo-body').addEventListener('drop', (e)=>{
+  const c=e.target.closest('[data-hub-mid]'); if(!c||!dragId||c.dataset.hubMid===dragId) return; e.preventDefault();
+  const ids=[...$('cargo-body').querySelectorAll('[data-hub-mid]')].map(x=>x.dataset.hubMid);
+  const from=ids.indexOf(dragId); ids.splice(from,1); ids.splice(ids.indexOf(c.dataset.hubMid),0,dragId);
+  if(cargoOrder!=='optimize') cargoAction({action:'order', ids}); dragId=null;
 });
 $('cargo-add-btn').addEventListener('click', ()=>{ const a=$('cargo-add'); a.style.display = a.style.display==='none'?'block':'none'; });
 $('ca-save').addEventListener('click', ()=>{
@@ -519,7 +561,7 @@ async function runRoute(silent){
   const btn=$('cargo-route-btn'); if(!silent) btn.textContent='…routing';
   try{
     const scu = parseInt($('cargo-scu').value,10);
-    const qs = [scu?('scu='+scu):'', $('cargo-fresh').checked?'fresh=1':''].filter(Boolean).join('&');
+    const qs = [scu?('scu='+scu):'', $('cargo-fresh').checked?'fresh=1':'', $('cargo-hideaw').checked?'hideawaiting=1':'', cargoOrder==='manual'?'order=manual':''].filter(Boolean).join('&');
     const r = await fetch('/services/star-citizen/route'+(qs?('?'+qs):''));
     renderCargoRoute(await r.json());
   }catch(e){ if(!silent) $('cargo-body').innerHTML='<div class="empty">route request failed</div>'; }
