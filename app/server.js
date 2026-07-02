@@ -201,6 +201,12 @@ class StarCitizenService extends EventEmitter {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(html);
       }
+      // Client-side OCR contract parser (loaded by the Cargo tab; runs in-browser).
+      if (req.method === 'GET' && path === '/ocr-parse.js') {
+        try { const js = this._ocrJs || (this._ocrJs = fs.readFileSync(require('path').join(__dirname, 'ocr-parse.js'), 'utf8'));
+          res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' }); return res.end(js);
+        } catch (_) { return send(404, { error: 'ocr-parse.js missing' }); }
+      }
       // Grouped missions (by MissionId), objectives joined in.
       if (req.method === 'GET' && path === `${base}/missiongroups`) {
         return send(200, { type: 'Collection', data: this.missionGroups });

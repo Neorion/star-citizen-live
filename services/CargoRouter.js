@@ -174,12 +174,23 @@ class CargoRouter {
   setPin (id, val) { const o = this._ov(id); if (val === undefined ? !o.pinned : val) o.pinned = true; else delete o.pinned; this._save(); }
   setOrder (ids) { this.manual.order = Array.isArray(ids) ? ids.slice() : []; this._save(); }
   addManual (d = {}) {
-    const id = 'm-' + Date.now().toString(36) + '-' + (++this._c);
-    const mi = { missionId: id, source: 'manual', status: d.status || 'candidate',
+    const id = d.id || ('m-' + Date.now().toString(36) + '-' + (++this._c));
+    const mi = { missionId: id, source: d.source || 'manual', status: d.status || 'candidate',
       title: d.title || null, pickup: d.pickup || null, titleDropoff: d.dropoff || null,
-      reward: d.reward || null, contractType: d.contractType || d.type || 'Manual', parcels: {}, lastSession: this.session };
-    if (d.dropoff || d.commodity || d.scu) mi.parcels.m0 = { dropKey: 'm0', commodity: d.commodity || null, scuHave: 0, scuNeed: Number(d.scu) || 0, station: d.dropoff || null, body: d.dropoff ? { name: bodyFromStation(d.dropoff) } : null };
+      reward: d.reward || null, contractType: d.contractType || d.type || 'Manual', parcels: {}, lastSession: this.session,
+      identity: this._identity(d) };
+    const mkParcel = (i, commodity, scu, station) => ({ dropKey: 'm' + i, commodity: commodity || null, scuHave: 0, scuNeed: Number(scu) || 0, station: station || null, body: station ? { name: bodyFromStation(station) } : null });
+    if (Array.isArray(d.deliveries) && d.deliveries.length) {   // multi-drop (OCR import)
+      d.deliveries.forEach((dl, i) => { mi.parcels['m' + i] = mkParcel(i, dl.commodity, dl.scu, dl.dropoff || d.dropoff); });
+    } else if (d.dropoff || d.commodity || d.scu) {
+      mi.parcels.m0 = mkParcel(0, d.commodity, d.scu, d.dropoff);
+    }
     this.manual.added[id] = mi; this._save(); return mi;
+  }
+  // Contract identity for dedup (Phase 2): type + primary endpoint + reward, lowercased.
+  _identity (d) {
+    const ep = d.pickup || d.dropoff || (Array.isArray(d.deliveries) && d.deliveries[0] && d.deliveries[0].dropoff) || '';
+    return [String(d.contractType || '').toLowerCase().trim(), String(ep).toLowerCase().trim(), String(d.reward || '').replace(/\D/g, '')].join('|');
   }
   removeManual (id) { delete this.manual.added[id]; delete this.manual.overrides[id]; this._save(); }
   purge () { this.manual = { overrides: {}, added: {}, order: [] }; this._save(); }

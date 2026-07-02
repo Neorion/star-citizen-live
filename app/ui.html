@@ -266,6 +266,7 @@
           <input type="number" id="cargo-scu" placeholder="SCU" min="1"
             style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:72px"></span>
         <button class="btn" id="cargo-add-btn" title="add a contract by hand (planning)">＋ Add</button>
+        <button class="btn" id="cargo-import-btn" title="OCR a contract screenshot (drag/drop or paste an image too)">📷 Import</button>
         <button class="btn" id="cargo-route-btn">⟳ Route</button>
       </span>
     </h2>
@@ -281,10 +282,21 @@
         <span class="mid">added as a planning candidate</span>
       </div>
     </div>
+    <input type="file" id="ocr-file" accept="image/*" style="display:none">
+    <div id="ocr-panel" style="display:none;padding:10px 14px;border-bottom:1px solid var(--line)">
+      <div id="ocr-drop" style="border:1px dashed var(--line);border-radius:8px;padding:14px;text-align:center;color:var(--muted);font-size:12.5px;cursor:pointer">
+        📷 Drag a contract screenshot here, paste (Ctrl+V), or click to choose a file.<br>
+        <span class="mid">Screenshot the mobiGlas <b>contract detail</b> (click the contract open). Runs locally in your browser — nothing is uploaded.</span>
+      </div>
+      <div id="ocr-status" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+      <div id="ocr-preview"></div>
+    </div>
     <div id="cargo-body" style="padding:12px 14px"><div class="empty">Accept hauling contracts in-game, then hit Route (or turn on auto-refresh).</div></div>
   </section>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="/ocr-parse.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let last = { flagged: [], recent: [], missions: [], kills: [] };
@@ -557,6 +569,58 @@ $('ca-save').addEventListener('click', ()=>{
   ['ca-type','ca-pickup','ca-dropoff','ca-commodity','ca-scu'].forEach(id=>$(id).value='');
   $('cargo-add').style.display='none';
 });
+
+// ---- OCR import (Phase 2): browser-side, fully local ----
+function ocrStatus(msg){ $('ocr-status').textContent = msg||''; }
+$('cargo-import-btn').addEventListener('click', ()=>{ const p=$('ocr-panel'); p.style.display = p.style.display==='none'?'block':'none'; if(p.style.display!=='none' && typeof Tesseract==='undefined') ocrStatus('⚠ OCR library did not load (offline / blocked). Try again online, or use ＋ Add.'); });
+$('ocr-drop').addEventListener('click', ()=>$('ocr-file').click());
+$('ocr-file').addEventListener('change', (e)=>{ if(e.target.files[0]) readImage(e.target.files[0]); });
+$('ocr-drop').addEventListener('dragover', (e)=>{ e.preventDefault(); $('ocr-drop').style.borderColor='var(--accent)'; });
+$('ocr-drop').addEventListener('dragleave', ()=>{ $('ocr-drop').style.borderColor='var(--line)'; });
+$('ocr-drop').addEventListener('drop', (e)=>{ e.preventDefault(); $('ocr-drop').style.borderColor='var(--line)'; const f=[...e.dataTransfer.files].find(x=>x.type.startsWith('image/')); if(f) readImage(f); });
+document.addEventListener('paste', (e)=>{ if($('view-cargo').style.display==='none') return; const it=[...(e.clipboardData||{}).items||[]].find(x=>x.type.startsWith('image/')); if(it){ readImage(it.getAsFile()); $('ocr-panel').style.display='block'; } });
+function readImage(file){ const r=new FileReader(); r.onload=()=>runOCR(r.result); r.readAsDataURL(file); }
+async function runOCR(src){
+  if(typeof Tesseract==='undefined'){ ocrStatus('⚠ OCR library unavailable.'); return; }
+  ocrStatus('loading image…'); $('ocr-preview').innerHTML='';
+  const img=new Image(); img.onload=async ()=>{
+    // preprocess on canvas: downscale huge frames, greyscale (local; no upload).
+    const maxW=2800, scale=img.width>maxW?maxW/img.width:1;
+    const cv=document.createElement('canvas'); cv.width=Math.round(img.width*scale); cv.height=Math.round(img.height*scale);
+    const cx=cv.getContext('2d'); cx.drawImage(img,0,0,cv.width,cv.height);
+    try{ const d=cx.getImageData(0,0,cv.width,cv.height); const p=d.data; for(let i=0;i<p.length;i+=4){ const g=(p[i]*0.3+p[i+1]*0.59+p[i+2]*0.11); p[i]=p[i+1]=p[i+2]=g; } cx.putImageData(d,0,0); }catch(_){}
+    ocrStatus('reading text… (a few seconds, all local)');
+    try{
+      const { data } = await Tesseract.recognize(cv, 'eng', { logger:m=>{ if(m.status==='recognizing text') ocrStatus('reading… '+Math.round(m.progress*100)+'%'); } });
+      const c = window.parseContractText(data.text);
+      if(!c.isContract){ ocrStatus('⚠ that image doesn\'t look like a contract screen — screenshot the contract detail view.'); return; }
+      ocrStatus('✓ read at '+c.confidence+' confidence — check &amp; confirm:');
+      showOcrPreview(c);
+    }catch(e){ ocrStatus('OCR failed: '+e.message); }
+  };
+  img.onerror=()=>ocrStatus('could not load that image'); img.src=src;
+}
+function showOcrPreview(c){
+  const fld=(id,label,val)=>`<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)">${label}<input id="${id}" value="${esc(val||'')}" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:4px 7px;font-size:12px;width:150px"></label>`;
+  const legs = (c.deliveries||[]).map((d,i)=>`<div class="mid" style="padding-left:8px">📦 ${d.scu} ${esc(d.commodity)} → ${esc(d.dropoff)}</div>`).join('') || '<div class="mid" style="padding-left:8px">no delivery lines read</div>';
+  $('ocr-preview').innerHTML = `<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:8px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      ${fld('op-type','type',c.contractType)}${fld('op-pickup','pickup',c.pickup)}${fld('op-dropoff','dropoff',c.dropoff)}${fld('op-reward','reward',c.reward)}</div>
+    ${legs}
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+      <button class="btn" id="op-confirm">✓ Add to board</button>
+      <button class="hbtn" id="op-cancel" style="padding:4px 10px">cancel</button>
+      <span class="mid">imported as a planning candidate (📷) — edit any field above first</span></div>
+  </div>`;
+  $('op-confirm').onclick=()=>{
+    const data={ source:'ocr', status:'candidate', contractType:$('op-type').value.trim()||'Hauling contract',
+      pickup:$('op-pickup').value.trim()||null, dropoff:$('op-dropoff').value.trim()||null, reward:$('op-reward').value.trim()||null,
+      deliveries:c.deliveries, title:c.title };
+    cargoAction({action:'add', data});
+    $('ocr-preview').innerHTML=''; ocrStatus('✓ added — drop another, or close.');
+  };
+  $('op-cancel').onclick=()=>{ $('ocr-preview').innerHTML=''; ocrStatus(''); };
+}
 async function runRoute(silent){
   const btn=$('cargo-route-btn'); if(!silent) btn.textContent='…routing';
   try{
