@@ -119,7 +119,7 @@ Pure data + UI, cross-platform, valuable on its own. Lives in the Cargo tab.
   is where the **pickup** detail for "to X" contracts lives.
 - **Decision needed:** support both profiles, or standardize on one to start?
 
-### OCR engine `[OPEN — leaning tiered/local-first]`
+### OCR engine `[DECIDED 2026-06-30: browser-side Tesseract.js default; Claude optional fallback — see §6b bake-off]`
 Trade local/private/free against accuracy/ease:
 | Engine | Local? | Notes |
 |---|---|---|
@@ -158,6 +158,111 @@ Implementations behind one config: **Claude** (now), **OpenAI**, **local** (Tess
   pack should let them paste a key (stored locally) or set the env var, and we recommend
   setting a **spend limit** on the key in the provider console.
 
+## 6b. Phase 2 spec — bake-off evidence, UX walkthrough & clash handling `[DECIDED 2026-06-30]`
+
+> This section is the **implementation spec** for Phase 2. It is written to be
+> self-contained: an implementer should need only this file + the existing cargo
+> module conventions (`services/CargoRouter.js`, `app/ui.html` Cargo tab,
+> `POST …/cargo/action`) + the repo guardrails (`AGENTS.md` §6).
+
+### Bake-off evidence (real data, 2026-06-30)
+Tested on **7 real contract screenshots** (5120×1440 Medal frames, mobiGlas
+ACCEPTED detail screen, Red Wind small hauls). Pipeline: crop to contract panel →
+greyscale → **invert** (SC is light-on-dark; OCR wants dark-on-light) → 2× upscale
+→ contrast → Tesseract (tesseract.js v5), then light domain normalization.
+
+| Field | Result | Notes |
+|---|---|---|
+| Title + from/to endpoint | 7/7 | exact |
+| **Reward (aUEC)** | 7/7 | `172,250` perfect every time — the log never has this |
+| Contractor | 7/7 | "Linshaul/Linhaul" → normalize |
+| **Pickups** (`Collect X from Y`) | 7/7 | incl. multi-source; zero hallucinations (verified vs image) |
+| Deliver lines w/ SCU | 7/7 present, 5/7 clean | `0/10`→`0710` (slash reads as `7`) — deterministic fix, `have/need` format is known |
+| Confidence / speed | 84–86 / ~1.7s per contract | consistent |
+
+**Verdict:** ~95% raw, effectively 100% recoverable with a normalizer + the
+review tray. Local-first holds without losing core ability.
+
+**Bonus findings:** (1) **one ACCEPTED-detail screenshot = the complete mission
+model** — payout, deadline, contractor, pickup(s) *with planet*, dropoff(s),
+per-drop SCU, rep tiers. This closes both the "pickup not in log" and "cargo
+logged only after physical load" gaps in one capture per contract. (2) The screen
+header (`OFFERS` / `ACCEPTED (7/10)`) **auto-classifies** candidate vs active and
+gives a free held-contract count.
+
+**Required normalizer (domain-aware post-processing):**
+- `(\d)7(\d+)` in a `Deliver`/`have-need` context → `$1/$2` (slash misread).
+- `Sb.` → `5b.`; `S00` → `500`; smart-quotes → ASCII.
+- Fuzzy-match commodities/stations against the known vocab (the corpus lists +
+  `bodyFromStation()` names) before accepting a field.
+
+### Architecture (locks in the earlier tiering decision)
+- **OCR runs in the BROWSER** (tesseract.js WASM, vendored or CDN) with **canvas
+  preprocessing** (crop/invert/upscale/threshold). The Node relay **never touches
+  image bytes** — it only (a) lists/serves files from the configured screenshots
+  folder and (b) receives parsed contract JSON. Zero new npm deps server-side;
+  cross-platform (Linux users just point at their capturer's folder).
+- **Claude tier** stays server-side behind `SC_OCR_PROVIDER=claude` +
+  `ANTHROPIC_API_KEY` (env only) as an optional accuracy fallback per §6 provider
+  config. Never required.
+
+### The three invariants (these make it idiot-proof — do not violate)
+1. **One funnel.** Every image — folder-watch or drag-drop/paste — flows through
+   the same parse → classify → dedup → stage/commit pipeline.
+2. **Idempotent imports.** Dedup on contract identity (title + endpoint + reward):
+   re-processing the same contract **merges (fills blanks only, restamps
+   `lastSeen`)** — it can never duplicate, regress a field, or damage the board.
+3. **OCR never changes status.** Imports fill *data*. Status transitions belong to
+   the log lifecycle and the user (precedence stays manual > log > OCR). An import
+   matching a completed/abandoned mission must NOT resurrect it.
+
+### UX walkthrough
+**Setup (once, ~60s):** Cargo tab → ⚙ Capture panel → folder path (pre-filled with
+the Game Bar default `Videos\Captures`) → **Calibrate**: latest screenshot renders
+in-browser, user drags a crop box over the contract panel (saved as a named
+profile; re-drag on resolution change) → **Test** button OCRs it and shows the
+parsed card.
+
+**Automated loop:** user hits `Win+Alt+PrtScn` on a contract detail screen (their
+*only* job) → folder watcher notices (poll, same pattern as the log poller) →
+browser fetches + crops + OCRs (~2s, local) → classifier: non-contract images are
+silently ignored (receipt line, never an error) → `OFFERS`→Candidate /
+`ACCEPTED`→Active → dedup/merge → **receipt toast** ("📷 Imported: Small Haul →
+Orbituary · ¤172,250 — Undo"). Low confidence / missing fields → a **"Needs review
+(N)" tray** with an editable pre-filled card (never a blocking modal, never a
+silent guess).
+
+**Manual path:** drag-drop or Ctrl+V an image anywhere on the Cargo tab — same
+funnel, different door.
+
+### Clash matrix (agreed behaviours)
+| Scenario | Behaviour |
+|---|---|
+| Rapid successive screenshots | Process in capture (mtime) order; idempotent dedup means same-contract shots merge, distinct ones create cards |
+| Abandon in-game after import | Log `EndMission[Abandon]` → ✕ Done; later screenshots do **not** resurrect (invariant 3) |
+| Re-accept same contract later | New log missionId → new card; old stays in Done |
+| Game crash | Existing session/⏳ carried-over logic; **re-screenshotting the ACCEPTED tab re-confirms** (a screenshot is the verification action) |
+| Relay/browser off when screenshot taken | Nothing lost: **the folder is the durable queue** — catch-up scan processes files newer than the persisted last-processed mark |
+| Re-shot after progress (0/9→4/9) | Progress merges forward-only (`max()`); log owns live progress |
+| Old/unrelated shots in folder | Only files newer than "watch started" by default; explicit "Import older…" backfill; non-contracts ignored with a receipt count |
+| OCR import races the log accept | Dedup merges (candidate promotes, keeps OCR payout, gains missionId); stray twin = 🗑 + Undo |
+| Resolution change breaks crop | Classifier finds nothing → gentle "couldn't read — recalibrate?" linking to the drag-box |
+| OCR-only mission abandoned in-game (no id match) | Honest limit: may not auto-flip; covered by ✕ + a stale sweep (not re-seen in N sessions → flagged) |
+
+**User guidance to surface in tips:** screenshot the contract **detail** view (the
+clicked-open panel), not the list — the list imports partial and lands in review.
+
+### Build slices (each shippable + testable alone)
+1. **Import funnel core:** paste/drag-drop → canvas crop (fixed profile) →
+   tesseract.js → normalizer → preview-confirm card → `POST …/cargo/action` add /
+   merge. (No folder watch yet.)
+2. **Dedup/merge + receipts + review tray + Undo.**
+3. **Folder watch:** server lists new files (`GET …/cargo/screens` + serve image),
+   browser OCRs, last-processed mark persisted; catch-up scan; "Check now" button +
+   auto toggle.
+4. **Calibration UI** (drag crop box, profiles) + `OFFERS`/`ACCEPTED` auto-classify.
+5. **Claude fallback tier** (server-side, env key, per §6 provider config).
+
 ## 7. Separability & footprint `[DECIDED]`
 
 - All of this stays in the **optional cargo module + flag + Cargo tab**. Delete them →
@@ -176,8 +281,11 @@ candidates. Not phase 1, but the model (candidates + reward + SCU) is built to s
 
 ## 9. Open questions to close before/while building
 
-1. **Crop profile(s)** — offer board, active-mission, or both first? (§6)
-2. **OCR engine** — confirm tiered local-first; which local engine as default? (§6)
+1. ~~Crop profile(s)~~ **CLOSED (§6b):** the ACCEPTED **detail** screen is primary
+   (it carries the complete model); the offer board is the same funnel via the
+   `OFFERS` header auto-classify. Calibration supports named profiles anyway.
+2. ~~OCR engine~~ **CLOSED (§6b bake-off):** browser-side tesseract.js default;
+   Claude vision optional server-side fallback.
 3. **Selection/knapsack** — in scope eventually, or routing-only? (§8)
 4. Anything else the owner wants in the **status set** or **per-leg actions**? (§5)
 
