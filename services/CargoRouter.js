@@ -88,8 +88,9 @@ class CargoRouter {
 
   // ---- Folder-watch config (Phase 2 slice 3). The server lists/serves files;
   // the BROWSER does the OCR. Config survives purge. ----
-  getConfig () { return this.manual.config || (this.manual.config = { screensDir: null, lastProcessed: 0 }); }
+  getConfig () { return this.manual.config || (this.manual.config = { screensDir: null, lastProcessed: 0, cropRegion: null }); }
   setScreensDir (dir) { this.getConfig().screensDir = dir || null; this._save(); }
+  setCropRegion (r) { this.getConfig().cropRegion = (r && r.w > 0 && r.h > 0) ? { x: +r.x, y: +r.y, w: +r.w, h: +r.h } : null; this._save(); }
   markProcessed (mtime) { const c = this.getConfig(); if (Number(mtime) > (c.lastProcessed || 0)) { c.lastProcessed = Number(mtime); this._save(); } }
   _save () {
     if (!this.file) return;

@@ -48,6 +48,15 @@ test('the slash-misread normalizer only touches Deliver counts', () => {
   assert.strictEqual(normalize('Deliver 0/7 SCU'), 'Deliver 0/7 SCU');   // legit /7 untouched
 });
 
+test('auto-classifies by button: ABANDON -> active, ACCEPT OFFER -> candidate', () => {
+  const accepted = parseContractText('Junior | Small Haul | to Orbituary\nDeliver 0/5 SCU of Silicon to Orbituary.\nABANDON  SHARE  TRACK');
+  assert.strictEqual(accepted.suggestedStatus, 'active');
+  const offer = parseContractText('Junior | Small Haul | from Fallow Field\nDeliver 0/9 SCU of Hydrogen to Rustville.\nACCEPT OFFER  DECLINE');
+  assert.strictEqual(offer.suggestedStatus, 'candidate');
+  const held = parseContractText('OFFERS  ACCEPTED (7/10)  HISTORY\nSmall Haul to Ruin Station\nABANDON');
+  assert.deepStrictEqual(held.held, { accepted: 7, max: 10 });
+});
+
 test('non-contract text is rejected (folder-noise guard)', () => {
   const c = parseContractText('Squadron Battle  Score 12  Kills 3  Deaths 1');
   assert.strictEqual(c.isContract, false);

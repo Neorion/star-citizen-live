@@ -288,6 +288,7 @@ class StarCitizenService extends EventEmitter {
             case 'import': return send(200, Object.assign({ ok: true }, r.importContract(d.data || d)));
             case 'remove': r.removeManual(d.id); break;
             case 'config': r.setScreensDir(d.screensDir); break;
+            case 'crop': r.setCropRegion(d.region); break;
             case 'processed': r.markProcessed(d.mtime); break;
             case 'purge': r.purge(); break;
             default: return send(400, { error: 'unknown action' });

@@ -290,6 +290,18 @@
         <button class="hbtn" id="ocr-folder-save" style="padding:4px 9px">save</button>
         <button class="hbtn" id="ocr-check" style="padding:4px 9px">🔄 Check now</button>
         <label><input type="checkbox" id="ocr-auto"> auto-import</label>
+        <button class="hbtn" id="ocr-cal-btn" style="padding:4px 9px" title="draw a crop box over the contract panel for faster/cleaner OCR">🎯 Calibrate</button>
+        <span class="mid" id="ocr-cal-state">whole image</span>
+      </div>
+      <div id="ocr-cal" style="display:none;margin-bottom:8px">
+        <div class="mid" style="margin-bottom:4px">Drag the box over just the contract panel, then Save. (Load/drop a screenshot first.)</div>
+        <div id="ocr-cal-wrap" style="position:relative;display:inline-block;max-width:100%;border:1px solid var(--line)">
+          <img id="ocr-cal-img" style="display:block;max-width:600px;max-height:340px">
+          <div id="ocr-cal-box" style="position:absolute;border:2px solid var(--accent);background:rgba(59,130,246,.12);cursor:move;left:20%;top:10%;width:40%;height:70%">
+            <div id="ocr-cal-handle" style="position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;background:var(--accent);cursor:nwse-resize;border-radius:2px"></div>
+          </div>
+        </div>
+        <div style="margin-top:6px;display:flex;gap:8px"><button class="btn" id="ocr-cal-save">Save region</button><button class="hbtn" id="ocr-cal-clear" style="padding:4px 9px">use whole image</button></div>
       </div>
       <div id="ocr-drop" style="border:1px dashed var(--line);border-radius:8px;padding:14px;text-align:center;color:var(--muted);font-size:12.5px;cursor:pointer">
         📷 Drag a contract screenshot here, paste (Ctrl+V), or click to choose a file.<br>
@@ -583,7 +595,7 @@ $('cargo-import-btn').addEventListener('click', async ()=>{
   const p=$('ocr-panel'); p.style.display = p.style.display==='none'?'block':'none';
   if(p.style.display!=='none'){
     if(typeof Tesseract==='undefined') ocrStatus('⚠ OCR library did not load (offline / blocked). Try again online, or use ＋ Add.');
-    try{ const cfg=await fetch('/services/star-citizen/cargo/config').then(r=>r.json()); if(cfg.screensDir) $('ocr-folder').value=cfg.screensDir; }catch(e){}
+    try{ const cfg=await fetch('/services/star-citizen/cargo/config').then(r=>r.json()); ocrConfig=cfg||{}; if(cfg.screensDir) $('ocr-folder').value=cfg.screensDir; $('ocr-cal-state').textContent = cfg.cropRegion?'region set ✓':'whole image'; }catch(e){}
   }
 });
 // Auto-import poll: every 8s check the watch folder while the toggle is on and the tab is open.
@@ -596,13 +608,17 @@ $('ocr-drop').addEventListener('drop', (e)=>{ e.preventDefault(); $('ocr-drop').
 document.addEventListener('paste', (e)=>{ if($('view-cargo').style.display==='none') return; const it=[...(e.clipboardData||{}).items||[]].find(x=>x.type.startsWith('image/')); if(it){ readImage(it.getAsFile()); $('ocr-panel').style.display='block'; } });
 function readImage(file){ const r=new FileReader(); r.onload=()=>runOCR(r.result); r.readAsDataURL(file); }
 function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error('image load failed')); i.src=src; }); }
-// Core: image source -> parsed contract (all local; canvas preprocess + tesseract).
+// Core: image source -> parsed contract (all local; optional crop + canvas preprocess + tesseract).
+let ocrConfig={}, lastImgSrc=null;
 async function ocrToContract(src, prog){
   if(typeof Tesseract==='undefined') throw new Error('OCR library unavailable (offline?)');
+  lastImgSrc=src;
   const img=await loadImg(src);
-  const maxW=2800, scale=img.width>maxW?maxW/img.width:1;
-  const cv=document.createElement('canvas'); cv.width=Math.round(img.width*scale); cv.height=Math.round(img.height*scale);
-  const cx=cv.getContext('2d'); cx.drawImage(img,0,0,cv.width,cv.height);
+  let sx=0,sy=0,sw=img.width,sh=img.height; const cr=ocrConfig.cropRegion;
+  if(cr&&cr.w>0&&cr.h>0){ sx=cr.x*img.width; sy=cr.y*img.height; sw=cr.w*img.width; sh=cr.h*img.height; }
+  const maxW=2800, scale=sw>maxW?maxW/sw:1;
+  const cv=document.createElement('canvas'); cv.width=Math.round(sw*scale); cv.height=Math.round(sh*scale);
+  const cx=cv.getContext('2d'); cx.drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height);
   try{ const d=cx.getImageData(0,0,cv.width,cv.height); const p=d.data; for(let i=0;i<p.length;i+=4){ const g=(p[i]*0.3+p[i+1]*0.59+p[i+2]*0.11); p[i]=p[i+1]=p[i+2]=g; } cx.putImageData(d,0,0); }catch(_){}
   const { data } = await Tesseract.recognize(cv,'eng',{ logger:m=>{ if(prog&&m.status==='recognizing text') prog(m.progress); } });
   return window.parseContractText(data.text);
@@ -615,7 +631,7 @@ async function runOCR(src){   // manual path: preview-confirm
     ocrStatus('✓ read at '+c.confidence+' confidence — check & confirm:'); showOcrPreview(c);
   }catch(e){ ocrStatus('OCR failed: '+e.message); }
 }
-function importData(c){ return { source:'ocr', status:'candidate', contractType:c.contractType, pickup:c.pickup, dropoff:c.dropoff, reward:c.reward, deliveries:c.deliveries, title:c.title }; }
+function importData(c){ return { source:'ocr', status:c.suggestedStatus||'candidate', contractType:c.contractType, pickup:c.pickup, dropoff:c.dropoff, reward:c.reward, deliveries:c.deliveries, title:c.title }; }
 // ---- Folder watch: server lists files, browser OCRs each ----
 $('ocr-folder-save').addEventListener('click', async ()=>{ await cargoAction({action:'config', screensDir:$('ocr-folder').value.trim()}); ocrStatus('folder saved.'); });
 $('ocr-check').addEventListener('click', ()=>checkScreens());
@@ -652,6 +668,31 @@ function renderReview(){
   $('ocr-preview').innerHTML='<div class="mid" style="margin:6px 0">🔎 Needs review ('+reviewQueue.length+') — '+esc(c.confidence)+' confidence:</div>';
   showOcrPreview(c, true);
 }
+// ---- Calibration: draw a crop box over the contract panel (fractions saved) ----
+$('ocr-cal-btn').addEventListener('click', ()=>{
+  const cal=$('ocr-cal'); if(cal.style.display!=='none'){ cal.style.display='none'; return; }
+  if(!lastImgSrc){ ocrStatus('drop or choose a screenshot first, then Calibrate.'); return; }
+  cal.style.display='block'; $('ocr-cal-img').src=lastImgSrc;
+  const cr=ocrConfig.cropRegion, box=$('ocr-cal-box');
+  if(cr){ box.style.left=(cr.x*100)+'%'; box.style.top=(cr.y*100)+'%'; box.style.width=(cr.w*100)+'%'; box.style.height=(cr.h*100)+'%'; }
+});
+(function calDrag(){
+  const box=$('ocr-cal-box'), wrap=$('ocr-cal-wrap'), handle=$('ocr-cal-handle');
+  let mode=null, sx, sy, ox, oy, ow, oh;
+  const wr=()=>wrap.getBoundingClientRect();
+  box.addEventListener('mousedown',(e)=>{ if(e.target===handle) return; mode='move'; const r=box.getBoundingClientRect(), w=wr(); sx=e.clientX; sy=e.clientY; ox=r.left-w.left; oy=r.top-w.top; e.preventDefault(); });
+  handle.addEventListener('mousedown',(e)=>{ mode='resize'; const r=box.getBoundingClientRect(); sx=e.clientX; sy=e.clientY; ow=r.width; oh=r.height; e.stopPropagation(); e.preventDefault(); });
+  document.addEventListener('mousemove',(e)=>{ if(!mode) return; const w=wr();
+    if(mode==='move'){ let nx=ox+(e.clientX-sx), ny=oy+(e.clientY-sy); nx=Math.max(0,Math.min(nx,w.width-box.offsetWidth)); ny=Math.max(0,Math.min(ny,w.height-box.offsetHeight)); box.style.left=(nx/w.width*100)+'%'; box.style.top=(ny/w.height*100)+'%'; }
+    else { let nw=ow+(e.clientX-sx), nh=oh+(e.clientY-sy); nw=Math.max(30,Math.min(nw,w.width-box.offsetLeft)); nh=Math.max(30,Math.min(nh,w.height-box.offsetTop)); box.style.width=(nw/w.width*100)+'%'; box.style.height=(nh/w.height*100)+'%'; } });
+  document.addEventListener('mouseup',()=>{ mode=null; });
+})();
+$('ocr-cal-save').addEventListener('click', async ()=>{
+  const w=$('ocr-cal-wrap').getBoundingClientRect(), b=$('ocr-cal-box').getBoundingClientRect();
+  const region={ x:(b.left-w.left)/w.width, y:(b.top-w.top)/w.height, w:b.width/w.width, h:b.height/w.height };
+  await cargoAction({action:'crop', region}); ocrConfig.cropRegion=region; $('ocr-cal-state').textContent='region set ✓'; $('ocr-cal').style.display='none'; ocrStatus('crop region saved — future imports read just that box.');
+});
+$('ocr-cal-clear').addEventListener('click', async ()=>{ await cargoAction({action:'crop', region:null}); ocrConfig.cropRegion=null; $('ocr-cal-state').textContent='whole image'; $('ocr-cal').style.display='none'; ocrStatus('using the whole image.'); });
 function showOcrPreview(c, review){
   const fld=(id,label,val)=>`<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)">${label}<input id="${id}" value="${esc(val||'')}" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:4px 7px;font-size:12px;width:150px"></label>`;
   const legs = (c.deliveries||[]).map((d,i)=>`<div class="mid" style="padding-left:8px">📦 ${d.scu} ${esc(d.commodity)} → ${esc(d.dropoff)}</div>`).join('') || '<div class="mid" style="padding-left:8px">no delivery lines read</div>';
@@ -665,7 +706,7 @@ function showOcrPreview(c, review){
       <span class="mid">imported as a planning candidate (📷) — edit any field above first</span></div>
   </div>`;
   $('op-confirm').onclick=async ()=>{
-    const data={ source:'ocr', status:'candidate', contractType:$('op-type').value.trim()||'Hauling contract',
+    const data={ source:'ocr', status:c.suggestedStatus||'candidate', contractType:$('op-type').value.trim()||'Hauling contract',
       pickup:$('op-pickup').value.trim()||null, dropoff:$('op-dropoff').value.trim()||null, reward:$('op-reward').value.trim()||null,
       deliveries:c.deliveries, title:c.title };
     let res=null; try{ res=await fetch('/services/star-citizen/cargo/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'import',data})}).then(r=>r.json()); }catch(e){}

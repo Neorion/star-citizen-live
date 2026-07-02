@@ -82,6 +82,13 @@ function parseContractText (rawText) {
   if (!pickup && pickups.length) pickup = pickups[0].from;                 // "to X" contracts: pickup from Collect line
   const dropoff = titleDropoff || (deliveries[0] && deliveries[0].dropoff) || null;
 
+  // Auto-classify by screen: an ACCEPTED contract has an ABANDON button; an OFFER
+  // has an ACCEPT button. Reliable — the button word is unambiguous (unlike the
+  // tab labels, which both appear in the text).
+  const suggestedStatus = /\bABANDON\b/i.test(t) ? 'active' : (/ACCEPT\s+OFFER|\bACCEPT\b(?!ED)/i.test(t) ? 'candidate' : null);
+  const heldM = t.match(/ACCEPTED\s*\((\d+)\s*\/\s*(\d+)\)/i);
+  const held = heldM ? { accepted: Number(heldM[1]), max: Number(heldM[2]) } : null;
+
   // Confidence heuristic: did we get the load-bearing fields?
   const got = [contractType, reward, (deliveries.length || pickup), dropoff].filter(Boolean).length;
   const confidence = got >= 4 ? 'high' : got >= 2 ? 'medium' : 'low';
@@ -90,7 +97,7 @@ function parseContractText (rawText) {
     isContract: /Haul/i.test(t) || deliveries.length > 0,
     title: titleLine || null, rank, contractType: contractType || 'Hauling contract',
     pickup: pickup || null, dropoff, reward, contractor,
-    deliveries, pickups, confidence
+    deliveries, pickups, confidence, suggestedStatus, held
   };
 }
 
