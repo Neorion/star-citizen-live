@@ -76,15 +76,21 @@ class CargoRouter {
     // persisted to an optional JSON file so they survive a relay restart. The user
     // is the authority — precedence is manual > log > OCR. ---
     this.file = (arguments[0] && arguments[0].file) || null;
-    this.manual = { overrides: {}, added: {}, order: [] };   // overrides[id]={status?,pickedUp:{},notes?,snoozed?,pinned?}; added[id]=mission; order=[missionId]
+    this.manual = { overrides: {}, added: {}, order: [], config: { screensDir: null, lastProcessed: 0 } };
     this._c = 0;
     this._load();
   }
 
   _load () {
     if (!this.file) return;
-    try { const fs = require('fs'); if (fs.existsSync(this.file)) { const j = JSON.parse(fs.readFileSync(this.file, 'utf8')); this.manual = { overrides: j.overrides || {}, added: j.added || {}, order: j.order || [] }; } } catch (e) { /* ignore a corrupt store */ }
+    try { const fs = require('fs'); if (fs.existsSync(this.file)) { const j = JSON.parse(fs.readFileSync(this.file, 'utf8')); this.manual = { overrides: j.overrides || {}, added: j.added || {}, order: j.order || [], config: j.config || { screensDir: null, lastProcessed: 0 } }; } } catch (e) { /* ignore a corrupt store */ }
   }
+
+  // ---- Folder-watch config (Phase 2 slice 3). The server lists/serves files;
+  // the BROWSER does the OCR. Config survives purge. ----
+  getConfig () { return this.manual.config || (this.manual.config = { screensDir: null, lastProcessed: 0 }); }
+  setScreensDir (dir) { this.getConfig().screensDir = dir || null; this._save(); }
+  markProcessed (mtime) { const c = this.getConfig(); if (Number(mtime) > (c.lastProcessed || 0)) { c.lastProcessed = Number(mtime); this._save(); } }
   _save () {
     if (!this.file) return;
     try { const fs = require('fs'), path = require('path'); fs.mkdirSync(path.dirname(this.file), { recursive: true }); fs.writeFileSync(this.file, JSON.stringify(this.manual)); } catch (e) { /* non-fatal */ }
@@ -217,7 +223,7 @@ class CargoRouter {
     }
     mi.lastSeen = Date.now();
   }
-  purge () { this.manual = { overrides: {}, added: {}, order: [] }; this._save(); }
+  purge () { this.manual = { overrides: {}, added: {}, order: [], config: this.getConfig() }; this._save(); }
 
   // ---- status resolution (manual override wins, then log, then derived) ----
   _allMissions () { return Object.values(this.missions).concat(Object.values(this.manual.added)); }

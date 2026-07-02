@@ -234,6 +234,44 @@ class StarCitizenService extends EventEmitter {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
         return send(200, { type: 'Collection', enabled: true, data: this.cargoRouter.activeMissions() });
       }
+      // Cargo folder-watch: config, list new screenshots, serve one image.
+      // The server only LISTS/SERVES files — OCR happens in the browser.
+      if (req.method === 'GET' && path === `${base}/cargo/config`) {
+        if (!this.cargoRouter) return send(503, { enabled: false });
+        return send(200, this.cargoRouter.getConfig());
+      }
+      if (req.method === 'GET' && path === `${base}/cargo/screens`) {
+        if (!this.cargoRouter) return send(503, { enabled: false });
+        const cfg = this.cargoRouter.getConfig();
+        if (!cfg.screensDir) return send(200, { screensDir: null, files: [] });
+        const all = url.searchParams.get('all') === '1';
+        try {
+          const dir = cfg.screensDir;
+          const files = fs.readdirSync(dir)
+            .filter((n) => /\.(png|jpe?g|webp|bmp)$/i.test(n))
+            .map((n) => { try { const st = fs.statSync(require('path').join(dir, n)); return { name: n, mtime: st.mtimeMs, size: st.size }; } catch (_) { return null; } })
+            .filter(Boolean)
+            .filter((f) => all || f.mtime > (cfg.lastProcessed || 0))
+            .sort((a, b) => a.mtime - b.mtime)
+            .slice(0, 40);
+          return send(200, { screensDir: dir, lastProcessed: cfg.lastProcessed || 0, files });
+        } catch (e) { return send(200, { screensDir: cfg.screensDir, error: e.message, files: [] }); }
+      }
+      const scr = path.match(new RegExp(`^${base}/cargo/screen/(.+)$`));
+      if (scr && req.method === 'GET') {
+        if (!this.cargoRouter) return send(503, { enabled: false });
+        const cfg = this.cargoRouter.getConfig();
+        const name = require('path').basename(decodeURIComponent(scr[1]));   // basename only → no traversal
+        if (!cfg.screensDir || !/\.(png|jpe?g|webp|bmp)$/i.test(name)) return send(404, { error: 'not found' });
+        try {
+          const p = require('path').join(cfg.screensDir, name);
+          const buf = fs.readFileSync(p);
+          const ext = name.split('.').pop().toLowerCase();
+          res.writeHead(200, { 'Content-Type': ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'bmp' ? 'image/bmp' : 'image/jpeg' });
+          return res.end(buf);
+        } catch (e) { return send(404, { error: 'could not read image' }); }
+      }
+
       // Manual board actions: status / pickup / add / remove / notes / purge.
       if (req.method === 'POST' && path === `${base}/cargo/action`) {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
@@ -249,6 +287,8 @@ class StarCitizenService extends EventEmitter {
             case 'add': return send(200, { ok: true, mission: r.addManual(d.data || d) });
             case 'import': return send(200, Object.assign({ ok: true }, r.importContract(d.data || d)));
             case 'remove': r.removeManual(d.id); break;
+            case 'config': r.setScreensDir(d.screensDir); break;
+            case 'processed': r.markProcessed(d.mtime); break;
             case 'purge': r.purge(); break;
             default: return send(400, { error: 'unknown action' });
           }

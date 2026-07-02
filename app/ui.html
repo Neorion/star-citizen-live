@@ -284,6 +284,13 @@
     </div>
     <input type="file" id="ocr-file" accept="image/*" style="display:none">
     <div id="ocr-panel" style="display:none;padding:10px 14px;border-bottom:1px solid var(--line)">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--muted)">
+        📁 watch folder
+        <input id="ocr-folder" placeholder="e.g. C:\Users\you\Videos\Captures" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:280px">
+        <button class="hbtn" id="ocr-folder-save" style="padding:4px 9px">save</button>
+        <button class="hbtn" id="ocr-check" style="padding:4px 9px">🔄 Check now</button>
+        <label><input type="checkbox" id="ocr-auto"> auto-import</label>
+      </div>
       <div id="ocr-drop" style="border:1px dashed var(--line);border-radius:8px;padding:14px;text-align:center;color:var(--muted);font-size:12.5px;cursor:pointer">
         📷 Drag a contract screenshot here, paste (Ctrl+V), or click to choose a file.<br>
         <span class="mid">Screenshot the mobiGlas <b>contract detail</b> (click the contract open). Runs locally in your browser — nothing is uploaded.</span>
@@ -572,7 +579,15 @@ $('ca-save').addEventListener('click', ()=>{
 
 // ---- OCR import (Phase 2): browser-side, fully local ----
 function ocrStatus(msg){ $('ocr-status').textContent = msg||''; }
-$('cargo-import-btn').addEventListener('click', ()=>{ const p=$('ocr-panel'); p.style.display = p.style.display==='none'?'block':'none'; if(p.style.display!=='none' && typeof Tesseract==='undefined') ocrStatus('⚠ OCR library did not load (offline / blocked). Try again online, or use ＋ Add.'); });
+$('cargo-import-btn').addEventListener('click', async ()=>{
+  const p=$('ocr-panel'); p.style.display = p.style.display==='none'?'block':'none';
+  if(p.style.display!=='none'){
+    if(typeof Tesseract==='undefined') ocrStatus('⚠ OCR library did not load (offline / blocked). Try again online, or use ＋ Add.');
+    try{ const cfg=await fetch('/services/star-citizen/cargo/config').then(r=>r.json()); if(cfg.screensDir) $('ocr-folder').value=cfg.screensDir; }catch(e){}
+  }
+});
+// Auto-import poll: every 8s check the watch folder while the toggle is on and the tab is open.
+let ocrTimer=setInterval(()=>{ if($('ocr-auto')&&$('ocr-auto').checked && $('view-cargo').style.display!=='none' && !checking) checkScreens(); }, 8000);
 $('ocr-drop').addEventListener('click', ()=>$('ocr-file').click());
 $('ocr-file').addEventListener('change', (e)=>{ if(e.target.files[0]) readImage(e.target.files[0]); });
 $('ocr-drop').addEventListener('dragover', (e)=>{ e.preventDefault(); $('ocr-drop').style.borderColor='var(--accent)'; });
@@ -580,27 +595,64 @@ $('ocr-drop').addEventListener('dragleave', ()=>{ $('ocr-drop').style.borderColo
 $('ocr-drop').addEventListener('drop', (e)=>{ e.preventDefault(); $('ocr-drop').style.borderColor='var(--line)'; const f=[...e.dataTransfer.files].find(x=>x.type.startsWith('image/')); if(f) readImage(f); });
 document.addEventListener('paste', (e)=>{ if($('view-cargo').style.display==='none') return; const it=[...(e.clipboardData||{}).items||[]].find(x=>x.type.startsWith('image/')); if(it){ readImage(it.getAsFile()); $('ocr-panel').style.display='block'; } });
 function readImage(file){ const r=new FileReader(); r.onload=()=>runOCR(r.result); r.readAsDataURL(file); }
-async function runOCR(src){
-  if(typeof Tesseract==='undefined'){ ocrStatus('⚠ OCR library unavailable.'); return; }
-  ocrStatus('loading image…'); $('ocr-preview').innerHTML='';
-  const img=new Image(); img.onload=async ()=>{
-    // preprocess on canvas: downscale huge frames, greyscale (local; no upload).
-    const maxW=2800, scale=img.width>maxW?maxW/img.width:1;
-    const cv=document.createElement('canvas'); cv.width=Math.round(img.width*scale); cv.height=Math.round(img.height*scale);
-    const cx=cv.getContext('2d'); cx.drawImage(img,0,0,cv.width,cv.height);
-    try{ const d=cx.getImageData(0,0,cv.width,cv.height); const p=d.data; for(let i=0;i<p.length;i+=4){ const g=(p[i]*0.3+p[i+1]*0.59+p[i+2]*0.11); p[i]=p[i+1]=p[i+2]=g; } cx.putImageData(d,0,0); }catch(_){}
-    ocrStatus('reading text… (a few seconds, all local)');
-    try{
-      const { data } = await Tesseract.recognize(cv, 'eng', { logger:m=>{ if(m.status==='recognizing text') ocrStatus('reading… '+Math.round(m.progress*100)+'%'); } });
-      const c = window.parseContractText(data.text);
-      if(!c.isContract){ ocrStatus('⚠ that image doesn\'t look like a contract screen — screenshot the contract detail view.'); return; }
-      ocrStatus('✓ read at '+c.confidence+' confidence — check &amp; confirm:');
-      showOcrPreview(c);
-    }catch(e){ ocrStatus('OCR failed: '+e.message); }
-  };
-  img.onerror=()=>ocrStatus('could not load that image'); img.src=src;
+function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error('image load failed')); i.src=src; }); }
+// Core: image source -> parsed contract (all local; canvas preprocess + tesseract).
+async function ocrToContract(src, prog){
+  if(typeof Tesseract==='undefined') throw new Error('OCR library unavailable (offline?)');
+  const img=await loadImg(src);
+  const maxW=2800, scale=img.width>maxW?maxW/img.width:1;
+  const cv=document.createElement('canvas'); cv.width=Math.round(img.width*scale); cv.height=Math.round(img.height*scale);
+  const cx=cv.getContext('2d'); cx.drawImage(img,0,0,cv.width,cv.height);
+  try{ const d=cx.getImageData(0,0,cv.width,cv.height); const p=d.data; for(let i=0;i<p.length;i+=4){ const g=(p[i]*0.3+p[i+1]*0.59+p[i+2]*0.11); p[i]=p[i+1]=p[i+2]=g; } cx.putImageData(d,0,0); }catch(_){}
+  const { data } = await Tesseract.recognize(cv,'eng',{ logger:m=>{ if(prog&&m.status==='recognizing text') prog(m.progress); } });
+  return window.parseContractText(data.text);
 }
-function showOcrPreview(c){
+async function runOCR(src){   // manual path: preview-confirm
+  ocrStatus('reading text… (a few seconds, all local)'); $('ocr-preview').innerHTML='';
+  try{
+    const c=await ocrToContract(src, pr=>ocrStatus('reading… '+Math.round(pr*100)+'%'));
+    if(!c.isContract){ ocrStatus('⚠ that image doesn\'t look like a contract screen — screenshot the contract detail view.'); return; }
+    ocrStatus('✓ read at '+c.confidence+' confidence — check & confirm:'); showOcrPreview(c);
+  }catch(e){ ocrStatus('OCR failed: '+e.message); }
+}
+function importData(c){ return { source:'ocr', status:'candidate', contractType:c.contractType, pickup:c.pickup, dropoff:c.dropoff, reward:c.reward, deliveries:c.deliveries, title:c.title }; }
+// ---- Folder watch: server lists files, browser OCRs each ----
+$('ocr-folder-save').addEventListener('click', async ()=>{ await cargoAction({action:'config', screensDir:$('ocr-folder').value.trim()}); ocrStatus('folder saved.'); });
+$('ocr-check').addEventListener('click', ()=>checkScreens());
+$('ocr-auto').addEventListener('change', ()=>{ if($('ocr-auto').checked) checkScreens(); });
+let checking=false;
+async function checkScreens(){
+  if(checking) return; checking=true;
+  try{
+    const s=await fetch('/services/star-citizen/route').then(()=>fetch('/services/star-citizen/cargo/screens')).then(r=>r.json());
+    if(s.error){ ocrStatus('folder error: '+s.error); checking=false; return; }
+    const files=s.files||[]; if(!files.length){ ocrStatus('no new screenshots.'); checking=false; return; }
+    let added=0, merged=0, review=0;
+    for(const f of files){
+      ocrStatus('processing '+f.name+' …');
+      try{
+        const c=await ocrToContract('/services/star-citizen/cargo/screen/'+encodeURIComponent(f.name));
+        if(c.isContract && c.confidence==='high'){ const res=await postImport(importData(c)); res&&res.merged?merged++:added++; }
+        else if(c.isContract){ reviewQueue.push(c); review++; }
+      }catch(e){}
+      await cargoAction({action:'processed', mtime:f.mtime});   // advance the mark regardless
+    }
+    runRoute(true);
+    ocrStatus(`✓ ${added} imported, ${merged} merged${review?', '+review+' need review below':''}.`);
+    if(reviewQueue.length) renderReview();
+  }catch(e){ ocrStatus('check failed: '+e.message); }
+  checking=false;
+}
+async function postImport(data){ try{ return await fetch('/services/star-citizen/cargo/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'import',data})}).then(r=>r.json()); }catch(e){ return null; } }
+// Review tray: low/medium-confidence auto-imports await a confirm.
+let reviewQueue=[];
+function renderReview(){
+  if(!reviewQueue.length){ $('ocr-preview').innerHTML=''; return; }
+  const c=reviewQueue[0];
+  $('ocr-preview').innerHTML='<div class="mid" style="margin:6px 0">🔎 Needs review ('+reviewQueue.length+') — '+esc(c.confidence)+' confidence:</div>';
+  showOcrPreview(c, true);
+}
+function showOcrPreview(c, review){
   const fld=(id,label,val)=>`<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)">${label}<input id="${id}" value="${esc(val||'')}" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:4px 7px;font-size:12px;width:150px"></label>`;
   const legs = (c.deliveries||[]).map((d,i)=>`<div class="mid" style="padding-left:8px">📦 ${d.scu} ${esc(d.commodity)} → ${esc(d.dropoff)}</div>`).join('') || '<div class="mid" style="padding-left:8px">no delivery lines read</div>';
   $('ocr-preview').innerHTML = `<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:8px">
@@ -623,8 +675,9 @@ function showOcrPreview(c){
     else if(res&&res.id){ $('ocr-status').innerHTML='📷 Imported <b>'+esc(label)+'</b> as a candidate. <button class="hbtn" id="ocr-undo" style="padding:2px 8px">Undo</button>';
       $('ocr-undo').onclick=()=>{ cargoAction({action:'remove', id:res.id}); ocrStatus('undone.'); }; }
     else ocrStatus('added.');
+    if(review){ reviewQueue.shift(); renderReview(); }
   };
-  $('op-cancel').onclick=()=>{ $('ocr-preview').innerHTML=''; ocrStatus(''); };
+  $('op-cancel').onclick=()=>{ if(review){ reviewQueue.shift(); renderReview(); } else { $('ocr-preview').innerHTML=''; ocrStatus(''); } };
 }
 async function runRoute(silent){
   const btn=$('cargo-route-btn'); if(!silent) btn.textContent='…routing';
