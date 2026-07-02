@@ -31,6 +31,23 @@ milestone in `PROGRESS.md` when picked up.
 predictor is a new consumer of the OCR funnel + a rep-screen profile → own tab. Owner
 go-ahead needed before building (per D-006).
 
+## B-012 — "New game session" button (force the board to re-baseline the log)
+**Added:** 2026-07-02 · owner-requested
+
+**What:** A button on the Cargo/board UI that forces the relay to treat `Game.log`
+as a fresh session — re-read from the current session start, clear carried-over /
+stale flags, and re-sync the board to the current in-game state.
+
+**Why:** after relaunching the game (new session), the board can hold stale
+carried-over missions from the prior session; the owner wants a one-click
+re-baseline instead of restarting the relay.
+
+**Shape (log-only, no OCR):** POST `…/cargo/action {action:'resync'}` (or a service
+route) that: resets the session counter, drops carried-over/awaiting log missions
+not present in the current session, and re-seeds from the live `Game.log` tail.
+Keep manual + OCR imports (candidates) unless the user also chooses to clear them.
+Pairs with the existing session-restart detection (§carried-over). Small, self-contained.
+
 ## B-011 — New value-add tabs from the log (evidence-counted 2026-06-30)
 **Added:** 2026-07-02
 
