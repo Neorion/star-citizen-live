@@ -206,6 +206,20 @@ test('importContract dedups on identity: re-import merges, fills blanks, no dupl
   assert.strictEqual(Object.keys(r.manual.added).length, 2);
 });
 
+test('keeps ALL pickup locations of a multi-pickup haul (not just the first)', () => {
+  const r = new CargoRouter();
+  const mi = r.addManual({ source: 'ocr', contractType: 'Small Haul', dropoff: 'Megumi Refueling', reward: '172,250',
+    pickups: [{ commodity: 'Aluminum', from: 'Fallow Field' }, { commodity: 'Aluminum', from: 'The Golden Riviera' }],
+    deliveries: [{ scu: 5, commodity: 'Aluminum', dropoff: 'Megumi Refueling' }] });
+  assert.deepStrictEqual(r.manual.added[mi.missionId].pickupList, ['Fallow Field', 'The Golden Riviera']);
+  const leg = r.route().hubs.flatMap((h) => h.legs).find((l) => l.missionId === mi.missionId);
+  assert.deepStrictEqual(leg.pickups, ['Fallow Field', 'The Golden Riviera']);   // both shown, neither dropped
+  // a re-import revealing a 3rd pickup unions it in
+  r.importContract({ source: 'ocr', contractType: 'Small Haul', dropoff: 'Megumi Refueling', reward: '172,250',
+    pickups: [{ from: 'Canard View' }], deliveries: [{ scu: 5, commodity: 'Aluminum', dropoff: 'Megumi Refueling' }] });
+  assert.deepStrictEqual(r.manual.added[mi.missionId].pickupList, ['Fallow Field', 'The Golden Riviera', 'Canard View']);
+});
+
 test('flags when a hub load exceeds the entered ship capacity', () => {
   const r = new CargoRouter();
   r.ingest(acceptFrom('CRU-L1 Ambitious Dream Station'));

@@ -182,8 +182,12 @@ class CargoRouter {
   setOrder (ids) { this.manual.order = Array.isArray(ids) ? ids.slice() : []; this._save(); }
   addManual (d = {}) {
     const id = d.id || ('m-' + Date.now().toString(36) + '-' + (++this._c));
+    // A haul can list SEVERAL pickup locations ("collect from any of these") — keep them all.
+    const pickupList = (Array.isArray(d.pickups) && d.pickups.length)
+      ? [...new Set(d.pickups.map((p) => (p && p.from) || p).filter(Boolean))]
+      : (d.pickup ? [d.pickup] : []);
     const mi = { missionId: id, source: d.source || 'manual', status: d.status || 'candidate',
-      title: d.title || null, pickup: d.pickup || null, titleDropoff: d.dropoff || null,
+      title: d.title || null, pickup: d.pickup || pickupList[0] || null, pickupList, titleDropoff: d.dropoff || null,
       reward: d.reward || null, contractType: d.contractType || d.type || 'Manual', parcels: {}, lastSession: this.session,
       identity: this._identity(d) };
     const mkParcel = (i, commodity, scu, station) => ({ dropKey: 'm' + i, commodity: commodity || null, scuHave: 0, scuNeed: Number(scu) || 0, station: station || null, body: station ? { name: bodyFromStation(station) } : null });
@@ -213,6 +217,9 @@ class CargoRouter {
   }
   _mergeInto (mi, d) {
     if (!mi.pickup && d.pickup) mi.pickup = d.pickup;
+    // union the pickup lists (a re-import may reveal pickups the first read missed)
+    const incoming = (Array.isArray(d.pickups) && d.pickups.length) ? d.pickups.map((p) => (p && p.from) || p).filter(Boolean) : (d.pickup ? [d.pickup] : []);
+    if (incoming.length) { mi.pickupList = [...new Set([...(mi.pickupList || (mi.pickup ? [mi.pickup] : [])), ...incoming])]; if (!mi.pickup) mi.pickup = mi.pickupList[0]; }
     if (!mi.reward && d.reward) mi.reward = d.reward;
     if (!mi.titleDropoff && d.dropoff) mi.titleDropoff = d.dropoff;
     if (d.contractType && (!mi.contractType || mi.contractType === 'Manual')) mi.contractType = d.contractType;
@@ -291,7 +298,8 @@ class CargoRouter {
       const hdr = { title: mi.title || null, reward: mi.reward || null,
         rank: parts.length >= 3 ? parts[0] : null,
         contractType: parts.length >= 3 ? parts[1] : (mi.contractType || parts[1] || parts[0] || 'Hauling contract'),
-        missionId: mi.missionId, source: mi.source || 'log', stale, candidate, pinned, notes: ov.notes || null, order: oidx };
+        missionId: mi.missionId, source: mi.source || 'log', stale, candidate, pinned, notes: ov.notes || null, order: oidx,
+        pickups: (mi.pickupList && mi.pickupList.length) ? mi.pickupList : (mi.pickup ? [mi.pickup] : []) };
       if (undelivered.length) {
         for (const p of undelivered) {
           const scu = p.scuNeed - p.scuHave;
