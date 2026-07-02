@@ -612,12 +612,17 @@ function showOcrPreview(c){
       <button class="hbtn" id="op-cancel" style="padding:4px 10px">cancel</button>
       <span class="mid">imported as a planning candidate (📷) — edit any field above first</span></div>
   </div>`;
-  $('op-confirm').onclick=()=>{
+  $('op-confirm').onclick=async ()=>{
     const data={ source:'ocr', status:'candidate', contractType:$('op-type').value.trim()||'Hauling contract',
       pickup:$('op-pickup').value.trim()||null, dropoff:$('op-dropoff').value.trim()||null, reward:$('op-reward').value.trim()||null,
       deliveries:c.deliveries, title:c.title };
-    cargoAction({action:'add', data});
-    $('ocr-preview').innerHTML=''; ocrStatus('✓ added — drop another, or close.');
+    let res=null; try{ res=await fetch('/services/star-citizen/cargo/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'import',data})}).then(r=>r.json()); }catch(e){}
+    runRoute(true); $('ocr-preview').innerHTML='';
+    const label=(data.contractType||'contract')+(data.dropoff?' → '+data.dropoff:'');
+    if(res&&res.merged){ $('ocr-status').innerHTML='📷 Updated <b>'+esc(label)+'</b> — merged into an existing contract (no duplicate).'; }
+    else if(res&&res.id){ $('ocr-status').innerHTML='📷 Imported <b>'+esc(label)+'</b> as a candidate. <button class="hbtn" id="ocr-undo" style="padding:2px 8px">Undo</button>';
+      $('ocr-undo').onclick=()=>{ cargoAction({action:'remove', id:res.id}); ocrStatus('undone.'); }; }
+    else ocrStatus('added.');
   };
   $('op-cancel').onclick=()=>{ $('ocr-preview').innerHTML=''; ocrStatus(''); };
 }

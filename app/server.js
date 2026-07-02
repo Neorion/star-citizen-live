@@ -247,6 +247,7 @@ class StarCitizenService extends EventEmitter {
             case 'pin': r.setPin(d.id, d.value); break;
             case 'order': r.setOrder(d.ids); break;
             case 'add': return send(200, { ok: true, mission: r.addManual(d.data || d) });
+            case 'import': return send(200, Object.assign({ ok: true }, r.importContract(d.data || d)));
             case 'remove': r.removeManual(d.id); break;
             case 'purge': r.purge(); break;
             default: return send(400, { error: 'unknown action' });

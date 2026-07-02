@@ -190,6 +190,22 @@ test('pin sorts a hub first; manual order respects setOrder', () => {
   assert.strictEqual(r.route({ order: 'optimize' }).hubs[0].pickup, 'Fallow Field'); // back to body-cluster
 });
 
+test('importContract dedups on identity: re-import merges, fills blanks, no duplicate', () => {
+  const r = new CargoRouter();
+  const a = r.importContract({ source: 'ocr', contractType: 'Small Haul', dropoff: 'Orbituary', reward: '172,250', deliveries: [{ scu: 14, commodity: 'Silicon', dropoff: 'Orbituary' }] });
+  assert.strictEqual(a.merged, false);
+  // same contract again, now with the pickup filled in — should MERGE, not add
+  const b = r.importContract({ source: 'ocr', contractType: 'Small Haul', dropoff: 'Orbituary', reward: '172,250', pickup: 'Ashland', deliveries: [{ scu: 14, commodity: 'Silicon', dropoff: 'Orbituary' }] });
+  assert.strictEqual(b.merged, true);
+  assert.strictEqual(b.id, a.id);
+  assert.strictEqual(Object.keys(r.manual.added).length, 1);                 // no duplicate
+  assert.strictEqual(r.manual.added[a.id].pickup, 'Ashland');                // blank filled by re-import
+  // a genuinely different contract is NOT merged
+  const c = r.importContract({ source: 'ocr', contractType: 'Small Haul', dropoff: 'Ruin Station', reward: '172,250' });
+  assert.strictEqual(c.merged, false);
+  assert.strictEqual(Object.keys(r.manual.added).length, 2);
+});
+
 test('flags when a hub load exceeds the entered ship capacity', () => {
   const r = new CargoRouter();
   r.ingest(acceptFrom('CRU-L1 Ambitious Dream Station'));

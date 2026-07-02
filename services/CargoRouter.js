@@ -189,10 +189,34 @@ class CargoRouter {
   }
   // Contract identity for dedup (Phase 2): type + primary endpoint + reward, lowercased.
   _identity (d) {
-    const ep = d.pickup || d.dropoff || (Array.isArray(d.deliveries) && d.deliveries[0] && d.deliveries[0].dropoff) || '';
+    // Key on the DROPOFF (stable), not the pickup (OCR fills it later — unstable).
+    const ep = d.dropoff || (Array.isArray(d.deliveries) && d.deliveries[0] && d.deliveries[0].dropoff) || d.pickup || '';
     return [String(d.contractType || '').toLowerCase().trim(), String(ep).toLowerCase().trim(), String(d.reward || '').replace(/\D/g, '')].join('|');
   }
   removeManual (id) { delete this.manual.added[id]; delete this.manual.overrides[id]; this._save(); }
+  // Import with dedup (Phase 2): a re-import of the same contract MERGES (fills
+  // blanks, adds new drops) rather than duplicating — the idempotency invariant.
+  importContract (d = {}) {
+    const idn = this._identity(d);
+    const bare = idn.replace(/\|/g, '').trim();
+    const existing = bare ? Object.values(this.manual.added).find((mi) => mi.identity === idn) : null;
+    if (existing) { this._mergeInto(existing, d); this._save(); return { merged: true, id: existing.missionId }; }
+    const mi = this.addManual(d);
+    return { merged: false, id: mi.missionId };
+  }
+  _mergeInto (mi, d) {
+    if (!mi.pickup && d.pickup) mi.pickup = d.pickup;
+    if (!mi.reward && d.reward) mi.reward = d.reward;
+    if (!mi.titleDropoff && d.dropoff) mi.titleDropoff = d.dropoff;
+    if (d.contractType && (!mi.contractType || mi.contractType === 'Manual')) mi.contractType = d.contractType;
+    if (Array.isArray(d.deliveries)) {                    // add drops we don't already have (forward-only)
+      const have = new Set(Object.values(mi.parcels).map((p) => (p.commodity || '').toLowerCase() + '|' + (p.station || '').toLowerCase()));
+      let n = Object.keys(mi.parcels).length;
+      for (const dl of d.deliveries) { const key = (dl.commodity || '').toLowerCase() + '|' + (dl.dropoff || '').toLowerCase();
+        if (!have.has(key)) { const k = 'm' + (n++); mi.parcels[k] = { dropKey: k, commodity: dl.commodity || null, scuHave: 0, scuNeed: Number(dl.scu) || 0, station: dl.dropoff || null, body: dl.dropoff ? { name: bodyFromStation(dl.dropoff) } : null }; have.add(key); } }
+    }
+    mi.lastSeen = Date.now();
+  }
   purge () { this.manual = { overrides: {}, added: {}, order: [] }; this._save(); }
 
   // ---- status resolution (manual override wins, then log, then derived) ----
