@@ -291,9 +291,18 @@ candidates. Not phase 1, but the model (candidates + reward + SCU) is built to s
 
 ## 10. Build order
 
-1. **Phase 1 — manual board** (statuses, mark/complete/abandon/picked-up, add/edit,
-   reorder + Route/Optimize, refresh modes, folder config, provenance icons). Ships value
-   immediately; cross-platform; no OCR.
-2. **Phase 2 — OCR fill-in** (capture-folder watcher + crop + chosen engine) feeding the
-   same model phase 1 already uses.
-3. **Phase 3 — selection/knapsack** planning (optional).
+1. **Phase 1 — manual board** ✅ SHIPPED (`feature/cargo-router`): statuses, mark
+   complete/abandon, per-leg picked-up, manual add, persistence, provenance icons.
+2. **Phase 1b — polish** ✅ SHIPPED: hide-awaiting, snooze, pin, notes, drag-reorder +
+   Route(my order)/Optimize.
+3. **Phase 2 — OCR fill-in** ✅ SHIPPED (5 slices): browser-side tesseract.js import
+   (paste/drop/folder-watch), domain normalizer (7/7 bake-off high conf), dedup/merge +
+   receipt/undo, review tray, crop calibration, OFFERS/ACCEPTED auto-classify, and an
+   optional Claude cloud fallback (`SC_OCR_PROVIDER=claude`, env key). Server never
+   touches image bytes; zero new npm deps.
+4. **Phase 3 — rep predictor + load selection** — BACKLOG `B-010` (owner go-ahead needed;
+   rep needs a new OCR screen/tab = new scope).
+
+**Env (Phase 2 cloud tier, optional):** `SC_OCR_PROVIDER=claude` · `ANTHROPIC_API_KEY`
+(env only, never committed) · `SC_OCR_MODEL` (default `claude-haiku-4-5`). Whole cargo
+feature stays behind `SC_CARGO_ROUTER=1` and is strippable (module + flag + tab).
