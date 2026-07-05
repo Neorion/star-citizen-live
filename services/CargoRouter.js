@@ -45,11 +45,13 @@ function bodyFromStation (name) {
   const n = String(name).toLowerCase();
   if (/^arc-|area ?18|baijini|riker|arccorp/.test(n)) return 'ArcCorp';
   if (/^cru-|orison|seraphim|ambitious dream|crusader/.test(n)) return 'Crusader';
-  if (/^hur-|everus|hurston/.test(n)) return 'Hurston';
+  // HDPC-* are Hurston Distribution Pickup Centers (e.g. HDPC-Cassillo, HDPC-Farnesway),
+  // verified against a real 4.8.0 "Small Haul" contract ("...on Hurston").
+  if (/^hur-|everus|hurston|hdpc-/.test(n)) return 'Hurston';
   if (/^mic-|tressler|new babbage|microtech/.test(n)) return 'microTech';
   if (/wikelo|collector/.test(n)) return 'Asteroid bases';
   // Pyro: orbital stations + surface outposts (no planet prefix, matched by name).
-  if (/pyro|ruin station|checkmate|rod'?s end|rat'?s nest|dudley|patch city|gaslight|orbituary|starlight|seer'?s canyon|rustville|hdpc-|shepherd'?s rest|bueno|last landing|ashland|chawla|canard|sacren|fallow field|sunset mesa|refinery ravine|megumi|endgame|terminus|feo |dunboro|prospect depot/.test(n)) return 'Pyro';
+  if (/pyro|ruin station|checkmate|rod'?s end|rat'?s nest|dudley|patch city|gaslight|orbituary|starlight|seer'?s canyon|rustville|shepherd'?s rest|bueno|last landing|ashland|chawla|canard|sacren|fallow field|sunset mesa|refinery ravine|megumi|endgame|terminus|feo |dunboro|prospect depot/.test(n)) return 'Pyro';
   return null;
 }
 function bodyFromToken (token) {
@@ -190,9 +192,9 @@ class CargoRouter {
       title: d.title || null, pickup: d.pickup || pickupList[0] || null, pickupList, titleDropoff: d.dropoff || null,
       reward: d.reward || null, contractType: d.contractType || d.type || 'Manual', parcels: {}, lastSession: this.session,
       identity: this._identity(d) };
-    const mkParcel = (i, commodity, scu, station) => ({ dropKey: 'm' + i, commodity: commodity || null, scuHave: 0, scuNeed: Number(scu) || 0, station: station || null, body: station ? { name: bodyFromStation(station) } : null });
+    const mkParcel = (i, commodity, scu, station, body) => ({ dropKey: 'm' + i, commodity: commodity || null, scuHave: 0, scuNeed: Number(scu) || 0, station: station || null, body: station ? { name: body || bodyFromStation(station) } : null });
     if (Array.isArray(d.deliveries) && d.deliveries.length) {   // multi-drop (OCR import)
-      d.deliveries.forEach((dl, i) => { mi.parcels['m' + i] = mkParcel(i, dl.commodity, dl.scu, dl.dropoff || d.dropoff); });
+      d.deliveries.forEach((dl, i) => { mi.parcels['m' + i] = mkParcel(i, dl.commodity, dl.scu, dl.dropoff || d.dropoff, dl.body); });
     } else if (d.dropoff || d.commodity || d.scu) {
       mi.parcels.m0 = mkParcel(0, d.commodity, d.scu, d.dropoff);
     }
@@ -227,7 +229,7 @@ class CargoRouter {
       const have = new Set(Object.values(mi.parcels).map((p) => (p.commodity || '').toLowerCase() + '|' + (p.station || '').toLowerCase()));
       let n = Object.keys(mi.parcels).length;
       for (const dl of d.deliveries) { const key = (dl.commodity || '').toLowerCase() + '|' + (dl.dropoff || '').toLowerCase();
-        if (!have.has(key)) { const k = 'm' + (n++); mi.parcels[k] = { dropKey: k, commodity: dl.commodity || null, scuHave: 0, scuNeed: Number(dl.scu) || 0, station: dl.dropoff || null, body: dl.dropoff ? { name: bodyFromStation(dl.dropoff) } : null }; have.add(key); } }
+        if (!have.has(key)) { const k = 'm' + (n++); mi.parcels[k] = { dropKey: k, commodity: dl.commodity || null, scuHave: 0, scuNeed: Number(dl.scu) || 0, station: dl.dropoff || null, body: dl.dropoff ? { name: dl.body || bodyFromStation(dl.dropoff) } : null }; have.add(key); } }
     }
     mi.lastSeen = Date.now();
   }

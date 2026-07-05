@@ -220,6 +220,27 @@ test('keeps ALL pickup locations of a multi-pickup haul (not just the first)', (
   assert.deepStrictEqual(r.manual.added[mi.missionId].pickupList, ['Fallow Field', 'The Golden Riviera', 'Canard View']);
 });
 
+test('HDPC-* stations are Hurston, not Pyro (log path, bare station name)', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Everus Harbor'));
+  r.ingest(objTo(0, 3, 'Stims', 'HDPC-Cassillo', 0));                     // no "on Hurston" suffix in the log
+  r.ingest(objTo(0, 3, 'Stims', 'HDPC-Farnesway', 1));
+  const legs = r.route().hubs[0].legs;
+  assert.ok(legs.every((l) => l.dropBody === 'Hurston'));                 // was mis-tagged 'Pyro'
+});
+
+test('OCR import: body from the suffix survives name-cleaning (no Unknown regression)', () => {
+  const r = new CargoRouter();
+  const mi = r.addManual({ source: 'ocr', contractType: 'Small Haul', reward: '90,750',
+    pickups: [{ commodity: 'Stims', from: 'Everus Harbor' }],
+    deliveries: [
+      { scu: 2, commodity: 'Stims', dropoff: 'Covalex Distribution Center S1DC06', body: 'Hurston' },
+      { scu: 2, commodity: 'Stims', dropoff: 'Sakura Sun Magnolia Workcenter', body: 'Hurston' }] });
+  const legs = r.route().hubs.flatMap((h) => h.legs).filter((l) => l.missionId === mi.missionId);
+  assert.ok(legs.every((l) => l.dropBody === 'Hurston'));                 // Covalex/Sakura have no prefix -> body comes from OCR suffix
+  assert.strictEqual(r.route().summary.totalScu, 4);
+});
+
 test('flags when a hub load exceeds the entered ship capacity', () => {
   const r = new CargoRouter();
   r.ingest(acceptFrom('CRU-L1 Ambitious Dream Station'));

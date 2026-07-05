@@ -27,9 +27,22 @@ function clean (s) {
     .replace(/[.,;:]+$/, '').trim();
 }
 
-// Strip the "on Pyro 5b" / "above Pyro III" celestial suffix off a station name.
+// Strip the "on Pyro 5b" / "above Pyro III" / "on Hurston" celestial suffix off a
+// station name. Covers both systems and all four Stanton planets (a Hurston/Crusader/
+// ArcCorp/microTech contract keeps its suffix otherwise, dirtying the station name).
+const BODY_SUFFIX = /\s+(on|above|at the)\s+(Pyro|Stanton|Hurston|Crusader|ArcCorp|microTech|L\d).*$/i;
 function stripBody (s) {
-  return clean(String(s || '').replace(/\s+(on|above|at the)\s+(Pyro|Stanton|L\d).*$/i, ''));
+  return clean(String(s || '').replace(BODY_SUFFIX, '')
+    .replace(/\s*\[.*$/, '').replace(/\*+$/, ''));   // drop a trailing "[BP]*" / "[50/100 Rep]" tier tag
+}
+
+// Read the celestial body OUT of that suffix (before it's stripped) so a clean
+// station name doesn't lose its planet. "Stanton"/Lagrange are systems, not bodies.
+function bodyFromSuffix (s) {
+  const m = String(s || '').match(/\s+(?:on|above|at the)\s+([A-Za-z]+)/i);
+  if (!m) return null;
+  const map = { hurston: 'Hurston', crusader: 'Crusader', arccorp: 'ArcCorp', microtech: 'microTech', pyro: 'Pyro' };
+  return map[m[1].toLowerCase()] || null;
 }
 
 const RANKS = /^(Junior|Member|Senior|Trainee|Recruit|Master|Associate)$/i;
@@ -68,7 +81,7 @@ function parseContractText (rawText) {
   // Deliveries — "Deliver 0/9 SCU of Hydrogen to Seer's Canyon on Pyro 5b."
   const deliveries = [];
   for (const m of t.matchAll(/Deliver\s+\d+\/(\d+)\s+SCU of ([A-Za-z][A-Za-z' ]*?) to ([^\n.]+?)(?:\.|\n|$)/gi)) {
-    deliveries.push({ scu: Number(m[1]), commodity: clean(m[2]), dropoff: stripBody(m[3]) });
+    deliveries.push({ scu: Number(m[1]), commodity: clean(m[2]), dropoff: stripBody(m[3]), body: bodyFromSuffix(m[3]) });
   }
 
   // Pickups — "Collect Hydrogen from Fallow Field."
@@ -101,5 +114,5 @@ function parseContractText (rawText) {
   };
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { parseContractText, normalize, stripBody };
+if (typeof module !== 'undefined' && module.exports) module.exports = { parseContractText, normalize, stripBody, bodyFromSuffix };
 if (typeof window !== 'undefined') window.parseContractText = parseContractText;

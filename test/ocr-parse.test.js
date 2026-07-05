@@ -29,7 +29,7 @@ test('parses a "from X" haul: pickup, deliveries, reward (with OCR misreads fixe
   assert.strictEqual(c.reward, '172,250');            // ¤ -> "7" stray digit skipped
   assert.strictEqual(c.pickup, 'Fallow Field');       // from-title, no Reward bleed
   assert.strictEqual(c.deliveries.length, 2);
-  assert.deepStrictEqual(c.deliveries[0], { scu: 9, commodity: 'Hydrogen', dropoff: "Seer's Canyon" });
+  assert.deepStrictEqual(c.deliveries[0], { scu: 9, commodity: 'Hydrogen', dropoff: "Seer's Canyon", body: 'Pyro' });
   assert.strictEqual(c.deliveries[1].scu, 15);        // "0715" slash-misread -> 0/15
   assert.strictEqual(c.confidence, 'high');
 });
@@ -55,6 +55,26 @@ test('auto-classifies by button: ABANDON -> active, ACCEPT OFFER -> candidate', 
   assert.strictEqual(offer.suggestedStatus, 'candidate');
   const held = parseContractText('OFFERS  ACCEPTED (7/10)  HISTORY\nSmall Haul to Ruin Station\nABANDON');
   assert.deepStrictEqual(held.held, { accepted: 7, max: 10 });
+});
+
+test('a Stanton-planet haul: strips the "on Hurston" suffix and reads the body from it', () => {
+  const c = parseContractText(`Member | Small Haul | from Everus Harbor [BP]*
+Reward  90,750
+Contracted By Covalex Independent Contractors
+Deliver 0/2 SCU of Stims to Covalex Distribution Center S1DC06 on Hurston.
+Collect Stims from Everus Harbor.
+Deliver 0/3 SCU of Stims to HDPC-Farnesway on Hurston.
+Collect Stims from Everus Harbor.
+Deliver 0/3 SCU of Stims to HDPC-Cassillo on Hurston.
+Collect Stims from Everus Harbor.
+Deliver 0/2 SCU of Stims to Sakura Sun Magnolia Workcenter on Hurston.
+Collect Stims from Everus Harbor.`);
+  assert.strictEqual(c.deliveries.length, 4);                       // all four, not just the top one
+  assert.strictEqual(c.pickup, 'Everus Harbor');
+  assert.deepStrictEqual(c.deliveries.map((d) => d.scu), [2, 3, 3, 2]);
+  assert.deepStrictEqual(c.deliveries[1], { scu: 3, commodity: 'Stims', dropoff: 'HDPC-Farnesway', body: 'Hurston' });
+  assert.ok(c.deliveries.every((d) => d.body === 'Hurston'));       // body read from the suffix
+  assert.ok(c.deliveries.every((d) => !/ on /i.test(d.dropoff)));   // suffix stripped from every name
 });
 
 test('non-contract text is rejected (folder-noise guard)', () => {
