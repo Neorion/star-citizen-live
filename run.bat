@@ -16,6 +16,8 @@ if errorlevel 1 (
 
 echo Starting Star Citizen Live - dashboard opens at http://localhost:3041/ (close this window to stop).
 echo It auto-detects your Star Citizen install and tails the freshest Game.log (read-only).
+REM Enable the optional cargo route-optimizer (Cargo tab: routing, inline cargo entry, UEX vocab).
+set SC_CARGO_ROUTER=1
 node app\server.js
 
 pause
