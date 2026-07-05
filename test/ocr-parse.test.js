@@ -77,6 +77,22 @@ Collect Stims from Everus Harbor.`);
   assert.ok(c.deliveries.every((d) => !/ on /i.test(d.dropoff)));   // suffix stripped from every name
 });
 
+test('recovers every objective from a mangled WHOLE-IMAGE read (not just the top one)', () => {
+  // Uncalibrated grab of a two-column contract screen: the low-contrast right column
+  // misreads per line ("SCU"->"SGU", "Deliver"->"Deiiver"), which used to drop all but
+  // the first objective. The token-fuzzed regex now recovers all three.
+  const whole = `DETAILS PRIMARY OBJECTIVES
+Greetings, Deliver 0/4 SCU of Silicon to HDPC-Cassillo on Hurston.
+Seems like Everus Harbor above Hurston has some 4 Deliver 0/2 SGU of Silicon to Teasa Spaceport in Lorville.
+a few different spots. Deiiver 0/4 SCU of Silicon to Sakura Sun Magnolia Workcenter on Hurston.`;
+  const c = parseContractText(whole);
+  assert.strictEqual(c.deliveries.length, 3);
+  assert.deepStrictEqual(c.deliveries.map((d) => d.scu), [4, 2, 4]);
+  assert.strictEqual(c.deliveries[1].dropoff, 'Teasa Spaceport');       // "in Lorville" tail stripped
+  assert.strictEqual(c.deliveries[1].body, 'Hurston');                  // Lorville -> Hurston
+  assert.ok(c.deliveries.every((d) => d.commodity === 'Silicon'));
+});
+
 test('non-contract text is rejected (folder-noise guard)', () => {
   const c = parseContractText('Squadron Battle  Score 12  Kills 3  Deaths 1');
   assert.strictEqual(c.isContract, false);

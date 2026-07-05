@@ -30,18 +30,21 @@ function clean (s) {
 // Strip the "on Pyro 5b" / "above Pyro III" / "on Hurston" celestial suffix off a
 // station name. Covers both systems and all four Stanton planets (a Hurston/Crusader/
 // ArcCorp/microTech contract keeps its suffix otherwise, dirtying the station name).
-const BODY_SUFFIX = /\s+(on|above|at the)\s+(Pyro|Stanton|Hurston|Crusader|ArcCorp|microTech|L\d).*$/i;
+// Also strips the "in Lorville" landing-zone tail (Teasa Spaceport in Lorville).
+const BODY_SUFFIX = /\s+(on|above|at the|in)\s+(Pyro|Stanton|Hurston|Crusader|ArcCorp|microTech|Lorville|Orison|New\s?Babbage|Area\s?18|L\d).*$/i;
 function stripBody (s) {
   return clean(String(s || '').replace(BODY_SUFFIX, '')
     .replace(/\s*\[.*$/, '').replace(/\*+$/, ''));   // drop a trailing "[BP]*" / "[50/100 Rep]" tier tag
 }
 
 // Read the celestial body OUT of that suffix (before it's stripped) so a clean
-// station name doesn't lose its planet. "Stanton"/Lagrange are systems, not bodies.
+// station name doesn't lose its planet. "Stanton"/Lagrange are systems, not bodies;
+// landing zones (Lorville/Orison/...) resolve to their planet.
 function bodyFromSuffix (s) {
-  const m = String(s || '').match(/\s+(?:on|above|at the)\s+([A-Za-z]+)/i);
+  const m = String(s || '').match(/\s+(?:on|above|at the|in)\s+([A-Za-z]+)/i);
   if (!m) return null;
-  const map = { hurston: 'Hurston', crusader: 'Crusader', arccorp: 'ArcCorp', microtech: 'microTech', pyro: 'Pyro' };
+  const map = { hurston: 'Hurston', crusader: 'Crusader', arccorp: 'ArcCorp', microtech: 'microTech', pyro: 'Pyro',
+    lorville: 'Hurston', orison: 'Crusader' };
   return map[m[1].toLowerCase()] || null;
 }
 
@@ -79,8 +82,12 @@ function parseContractText (rawText) {
   const contractor = contractorM ? clean(contractorM[1]) : null;
 
   // Deliveries — "Deliver 0/9 SCU of Hydrogen to Seer's Canyon on Pyro 5b."
+  // OCR-tolerant: on a low-contrast whole-screen grab the thin SC font misreads
+  // per line ("Deliver"->"Deiiver", "SCU"->"SGU"/"S0U", "/"->"7"|"|"), which used
+  // to drop every objective but the cleanest one. Fuzz just those fixed tokens —
+  // the "<count>/<need> S.U of <commodity> to <dest>" shape stays strict.
   const deliveries = [];
-  for (const m of t.matchAll(/Deliver\s+\d+\/(\d+)\s+SCU of ([A-Za-z][A-Za-z' ]*?) to ([^\n.]+?)(?:\.|\n|$)/gi)) {
+  for (const m of t.matchAll(/De[il1|]{1,2}ver\s+\d+\s*[/7|]\s*(\d+)\s+S[CGO0][UIL1]\s+of\s+([A-Za-z][A-Za-z' ]*?)\s+to\s+([^\n.]+?)(?:\.|\n|$)/gi)) {
     deliveries.push({ scu: Number(m[1]), commodity: clean(m[2]), dropoff: stripBody(m[3]), body: bodyFromSuffix(m[3]) });
   }
 

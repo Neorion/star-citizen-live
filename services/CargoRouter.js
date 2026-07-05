@@ -47,7 +47,7 @@ function bodyFromStation (name) {
   if (/^cru-|orison|seraphim|ambitious dream|crusader/.test(n)) return 'Crusader';
   // HDPC-* are Hurston Distribution Pickup Centers (e.g. HDPC-Cassillo, HDPC-Farnesway),
   // verified against a real 4.8.0 "Small Haul" contract ("...on Hurston").
-  if (/^hur-|everus|hurston|hdpc-/.test(n)) return 'Hurston';
+  if (/^hur-|everus|hurston|hdpc-|lorville|teasa/.test(n)) return 'Hurston';
   if (/^mic-|tressler|new babbage|microtech/.test(n)) return 'microTech';
   if (/wikelo|collector/.test(n)) return 'Asteroid bases';
   // Pyro: orbital stations + surface outposts (no planet prefix, matched by name).
