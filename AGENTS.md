@@ -142,6 +142,19 @@ Kept during migration; safe to ignore unless explicitly working on migration.
 > ⚠️ `API.md` is **stale** auto-generated JSDoc for the *legacy Fabric* classes.
 > The list above (from `app/server.js`) is the real API.
 
+### Feature work living on branches (NOT yet on `master`)
+A fresh clone lands on `master`, so features still on branches are invisible until
+you fetch them. Check `git branch -r` before assuming something doesn't exist.
+- **Cargo manifest board + contract-screen OCR** → branch **`feature/cargo-router`**.
+  A "🚚 Cargo" dashboard tab that turns accepted hauling contracts into a
+  pickup→dropoff route board, populated two ways: **log-derived** (own extraction in
+  `services/CargoRouter.js`, never touches `app/parser.js`) and **OCR import** of the
+  in-game contract screen (`app/ocr-parse.js`, browser-side tesseract.js;
+  `services/ocrProvider.js` optional cloud fallback). Design: `DESIGN-cargo-router.md`,
+  `DESIGN-cargo-planning.md`. Tests: `test/cargo.test.js`, `test/ocr-parse.test.js`.
+  Separable by design (one module + one flag + one panel). Still WIP — see the branch
+  and `BACKLOG.md` for open phases.
+
 ---
 
 ## 5. Current state — what works vs. what's next
