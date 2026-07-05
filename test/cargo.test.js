@@ -97,6 +97,61 @@ test('carries a mission over a new session (crash/exit) until re-confirmed', () 
   assert.strictEqual(r.route().hubs[0].stale, false);
 });
 
+test('vocab() serves the UEX seed and grows with learned entries', () => {
+  const r = new CargoRouter();
+  const v = r.vocab();
+  assert.ok(v.commodities.length > 100, 'UEX commodity seed present');
+  assert.ok(v.locations.length > 50, 'UEX location seed present');
+  assert.ok(v.locations.every((l) => 'body' in l), 'locations carry a body field');
+  // a brand-new commodity the user types is remembered and marked learned
+  assert.strictEqual(r.learnVocab('commodity', 'Unobtanium'), true);
+  assert.strictEqual(r.learnVocab('commodity', 'Unobtanium'), false);          // idempotent
+  const c = r.vocab().commodities.find((x) => x.name === 'Unobtanium');
+  assert.strictEqual(c.source, 'learned');
+  // an item already in the UEX seed is NOT duplicated into learned
+  const known = r.vocab().commodities.find((x) => x.source === 'uex');
+  assert.strictEqual(r.learnVocab('commodity', known.name), false);
+  // prune a learned typo
+  assert.strictEqual(r.unlearnVocab('commodity', 'Unobtanium'), true);
+  assert.ok(!r.vocab().commodities.some((x) => x.name === 'Unobtanium'));
+});
+
+test('bodyFromStation resolves a real UEX station name exactly (not just regex)', () => {
+  const r = new CargoRouter();
+  // "Port Tressler" is a microTech station in UEX; a name with no regex hub-prefix
+  r.ingest(acceptFrom('Everus Harbor'));
+  r.ingest(objTo(0, 6, 'Titanium', 'Port Tressler', 0));
+  assert.strictEqual(r.route().hubs[0].legs[0].dropBody, 'microTech');
+});
+
+test('inline setParcels adds user cargo to an awaiting mission (badged, counts SCU)', () => {
+  const r = new CargoRouter();
+  // accepted "to X" with no Deliver line -> awaiting, invites inline cargo
+  r.ingest(`<t> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Junior | Stellar Small Haul | to Ruin Station <EM4>[50 Rep]</EM4>: " [16] to queue. MissionId: [${MID}], ObjectiveId: []`);
+  let leg = r.route().hubs.flatMap((h) => h.legs)[0];
+  assert.strictEqual(leg.awaiting, true);
+  assert.strictEqual(leg.canAddCargo, true);
+  r.setParcels(MID, [{ commodity: 'Iron', scu: 12, dropoff: 'Ruin Station' }]);
+  const out = r.route();
+  leg = out.hubs.flatMap((h) => h.legs).find((l) => l.commodity === 'Iron');
+  assert.strictEqual(leg.scu, 12);
+  assert.strictEqual(leg.userLeg, true);                 // honestly flagged as hand-entered
+  assert.strictEqual(out.hubs[0].collectScu, 12);
+  // clearing the user parcels reverts to awaiting
+  r.setParcels(MID, []);
+  assert.strictEqual(r.route().hubs.flatMap((h) => h.legs)[0].awaiting, true);
+});
+
+test('setPickup fills a pickup the log never recorded (deliver-to contracts)', () => {
+  const r = new CargoRouter();
+  r.ingest(objTo(0, 5, 'Quartz', 'Checkmate at the L4 Lagrange of Pyro II', 0));   // no accept-from
+  assert.strictEqual(r.route().hubs[0].pickupKnown, false);
+  r.setPickup(MID, 'Ruin Station');
+  const hub = r.route().hubs[0];
+  assert.strictEqual(hub.pickup, 'Ruin Station');
+  assert.strictEqual(hub.pickupKnown, true);
+});
+
 test('ignores non-hauling contracts (a bounty accept must not show as cargo)', () => {
   const r = new CargoRouter();
   const bounty = '<t> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Bounty Assignment: Domenico Pfaffner (HRT) <EM4>[50 Rep]</EM4>: " [5] to queue. New queue size:1, MissionId: [99999999-9999-9999-9999-999999999999], ObjectiveId: []';
@@ -115,6 +170,31 @@ test('log completion greys the mission into Done instead of deleting it', () => 
   assert.strictEqual(out.hubs.length, 0);                       // off the active board
   assert.strictEqual(out.done.length, 1);                       // but visible in Done
   assert.strictEqual(out.done[0].status, 'completed');
+});
+
+test('clearStale dismisses carried-over hauls into Done in one call (reversible)', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.observe('<...> Log started on Mon Jun 29 00:04:10 2026', { kind: 'session:start' });
+  assert.strictEqual(r.route().summary.carriedOver, 1);           // now stale
+  assert.strictEqual(r.clearStale(), 1);                          // one dismissed
+  const out = r.route();
+  assert.strictEqual(out.hubs.length, 0);                        // off the active board
+  assert.strictEqual(out.summary.carriedOver, 0);
+  assert.strictEqual(out.done[0].status, 'cleared');             // greyed, not deleted
+  assert.strictEqual(r.clearStale(), 0);                         // idempotent (nothing left to clear)
+  r.setStatus(MID, null);                                        // reactivate ↺
+  assert.strictEqual(r.route().hubs.length, 1);
+});
+
+test('clearStale leaves current-session and manual missions untouched', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));                          // current session -> not stale
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.addManual({ contractType: 'Small Haul', dropoff: 'Orbituary', commodity: 'Quartz', scu: 6 });
+  assert.strictEqual(r.clearStale(), 0);                         // nothing carried over yet
+  assert.strictEqual(r.route().summary.missions, 2);            // both still active
 });
 
 test('manual mark complete / reactivate overrides the log (precedence)', () => {

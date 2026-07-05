@@ -234,6 +234,12 @@ class StarCitizenService extends EventEmitter {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
         return send(200, { type: 'Collection', enabled: true, data: this.cargoRouter.activeMissions() });
       }
+      // Vocabulary for the cargo combobox: UEX seed ∪ learned. Served offline from
+      // the committed snapshot (data/uex-reference.json) — never calls the network.
+      if (req.method === 'GET' && path === `${base}/cargo/vocab`) {
+        if (!this.cargoRouter) return send(503, { enabled: false });
+        return send(200, this.cargoRouter.vocab());
+      }
       // Optional cloud OCR (Claude) — availability probe + the call. Off unless
       // SC_OCR_PROVIDER=claude and ANTHROPIC_API_KEY are set (env only).
       if (req.method === 'GET' && path === `${base}/cargo/ocr-status`) {
@@ -298,6 +304,13 @@ class StarCitizenService extends EventEmitter {
             case 'pickup': r.togglePickup(d.id, d.dropKey, d.value); break;
             case 'notes': r.setNotes(d.id, d.notes); break;
             case 'snooze': r.setSnooze(d.id, d.value); break;
+            case 'clear': r.setStatus(d.id, 'cleared'); break;                        // dismiss one carried-over haul
+            case 'clearStale': return send(200, { ok: true, cleared: r.clearStale() }); // dismiss all carried-over
+            case 'parcels': r.setParcels(d.id, d.parcels); break;                     // inline cargo requirements
+            case 'pickup-loc': r.setPickup(d.id, d.pickup); break;                    // user-supplied pickup (not in log)
+            case 'learn': return send(200, { ok: true, added: r.learnVocab(d.kind, d.value) });   // add a new cargo/location type
+            case 'unlearn': return send(200, { ok: true, removed: r.unlearnVocab(d.kind, d.value) }); // prune a typo
+            case 'refreshVocab': return send(200, await this._refreshVocab());        // opt-in live UEX refresh (foundation)
             case 'pin': r.setPin(d.id, d.value); break;
             case 'order': r.setOrder(d.ids); break;
             case 'add': return send(200, { ok: true, mission: r.addManual(d.data || d) });
@@ -644,6 +657,21 @@ class StarCitizenService extends EventEmitter {
       rl.on('close', () => resolve(count));
       rl.on('error', reject);
     });
+  }
+
+  // Foundation for a future LIVE UEX refresh. OFF by default — the relay serves the
+  // committed snapshot offline (D-002). Set SC_UEX_LIVE=1 to allow this to fetch fresh
+  // UEX reference data and swap it into the router in memory (it does NOT rewrite the
+  // committed file — `npm run build-vocab` does that). The seam exists so later
+  // features (prices, routes) can reuse the same client without re-plumbing.
+  async _refreshVocab () {
+    if (!this.cargoRouter) return { ok: false, error: 'cargo router not enabled' };
+    if (!process.env.SC_UEX_LIVE) return { ok: false, live: false, note: 'live UEX refresh disabled; run `npm run build-vocab` to update the committed snapshot (or set SC_UEX_LIVE=1 for in-memory live refresh)' };
+    try {
+      const { fetchReference } = require('../services/uexClient');
+      const counts = this.cargoRouter.setReference(await fetchReference());
+      return { ok: true, live: true, counts };
+    } catch (e) { return { ok: false, live: true, error: e.message }; }
   }
 
   // ---- Discord (optional) ----

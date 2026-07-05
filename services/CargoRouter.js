@@ -35,13 +35,41 @@
  * is a body-clustered heuristic, not a shortest-3D-path solve.
  */
 
+// Terminal statuses — a mission in any of these leaves the active board and drops
+// into the greyed "Done" section (never silently deleted; owner decision, §logEnd).
+// 'cleared' = user/housekeeping dismiss of a carried-over haul, distinct from a real
+// in-game outcome (completed/abandoned/failed) so the label stays honest.
+const TERMINAL = ['completed', 'abandoned', 'failed', 'cleared'];
+
 // Circuit order per body name (drives the stop sequence). Lower = visited first.
 const STANTON = { 1: 'Hurston', 2: 'Crusader', 3: 'ArcCorp', 4: 'microTech' };
 const BODY_ORDER = { Hurston: 1, Crusader: 2, ArcCorp: 3, microTech: 4, 'Asteroid bases': 5, Pyro: 6 };
 
-// Infer the celestial body from a station NAME. SC station names are prefixed by
-// their planet (ARC-L1.., CRU-L1.., HUR-L1.., MIC-L1..) or are well-known hubs.
+// UEX reference (committed data/uex-reference.json, baked by `npm run build-vocab`).
+// Loaded ONCE, offline; an absent file degrades gracefully to the regex-only path
+// below (so tests/installs without the snapshot still work). This is the relay's
+// only knowledge of UEX — it never calls the network (D-002).
+let _ref = null;
+function normName (s) { return String(s).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+function reference () {
+  if (_ref) return _ref;
+  _ref = { commodities: [], locations: [], bodyIndex: new Map() };
+  try {
+    const fs = require('fs'), path = require('path');
+    const j = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'uex-reference.json'), 'utf8'));
+    _ref.commodities = j.commodities || [];
+    _ref.locations = j.locations || [];
+    for (const l of _ref.locations) if (l.name && l.body) _ref.bodyIndex.set(normName(l.name), l.body);
+  } catch (_) { /* no snapshot yet -> regex-only inference, still correct for known hubs */ }
+  return _ref;
+}
+
+// Infer the celestial body from a station NAME. Prefer an EXACT match against the
+// UEX place list (authoritative station->planet); fall back to the prefix/hub regex
+// for the messy cases UEX doesn't carry (HDPC-*, planet-prefixed log names, etc.).
 function bodyFromStation (name) {
+  const uex = reference().bodyIndex.get(normName(name));
+  if (uex) return uex;
   const n = String(name).toLowerCase();
   if (/^arc-|area ?18|baijini|riker|arccorp/.test(n)) return 'ArcCorp';
   if (/^cru-|orison|seraphim|ambitious dream|crusader/.test(n)) return 'Crusader';
@@ -78,14 +106,14 @@ class CargoRouter {
     // persisted to an optional JSON file so they survive a relay restart. The user
     // is the authority — precedence is manual > log > OCR. ---
     this.file = (arguments[0] && arguments[0].file) || null;
-    this.manual = { overrides: {}, added: {}, order: [], config: { screensDir: null, lastProcessed: 0 } };
+    this.manual = { overrides: {}, added: {}, order: [], config: { screensDir: null, lastProcessed: 0 }, vocab: { commodities: [], locations: [] } };
     this._c = 0;
     this._load();
   }
 
   _load () {
     if (!this.file) return;
-    try { const fs = require('fs'); if (fs.existsSync(this.file)) { const j = JSON.parse(fs.readFileSync(this.file, 'utf8')); this.manual = { overrides: j.overrides || {}, added: j.added || {}, order: j.order || [], config: j.config || { screensDir: null, lastProcessed: 0 } }; } } catch (e) { /* ignore a corrupt store */ }
+    try { const fs = require('fs'); if (fs.existsSync(this.file)) { const j = JSON.parse(fs.readFileSync(this.file, 'utf8')); this.manual = { overrides: j.overrides || {}, added: j.added || {}, order: j.order || [], config: j.config || { screensDir: null, lastProcessed: 0 }, vocab: j.vocab || { commodities: [], locations: [] } }; } } catch (e) { /* ignore a corrupt store */ }
   }
 
   // ---- Folder-watch config (Phase 2 slice 3). The server lists/serves files;
@@ -147,6 +175,7 @@ class CargoRouter {
       const mi = this._mission(missionId);
       mi.lastSession = this.session;
       mi.parcels[dropKey] = { dropKey, guid, commodity: commodity.trim(), scuHave: Number(have), scuNeed: Number(need), destSystem: dest, station, body };
+      this.learnVocab('commodity', commodity.trim()); this.learnVocab('location', station);
       return 'objective';
     }
     // Hauling handler — names the specific dropoff station for a dropoff GUID.
@@ -156,6 +185,7 @@ class CargoRouter {
       if (!guid) return null;
       const body = bodyFromToken(token);
       this.stationByGuid[guid] = { station: station.trim(), token, body };
+      this.learnVocab('location', station.trim());
       for (const mi of Object.values(this.missions)) {
         for (const p of Object.values(mi.parcels)) if (p.guid === guid && !p.station) { p.station = station.trim(); p.body = body; }
       }
@@ -182,6 +212,31 @@ class CargoRouter {
   setSnooze (id, val) { const o = this._ov(id); if (val === undefined ? !o.snoozed : val) o.snoozed = true; else delete o.snoozed; this._save(); }
   setPin (id, val) { const o = this._ov(id); if (val === undefined ? !o.pinned : val) o.pinned = true; else delete o.pinned; this._save(); }
   setOrder (ids) { this.manual.order = Array.isArray(ids) ? ids.slice() : []; this._save(); }
+  // User-entered cargo for a mission the game hasn't revealed yet (accepted-but-not-
+  // loaded, or pickup-only "deliver to X"). Stored as an override so it attaches to a
+  // LOG mission without pretending the log produced it — legs render as ✋ user-entered.
+  setParcels (id, parcels) {
+    const o = this._ov(id);
+    if (Array.isArray(parcels) && parcels.length) {
+      o.parcels = parcels.map((p, i) => ({ dropKey: 'u' + i, commodity: String(p.commodity || '').trim() || null,
+        scuHave: 0, scuNeed: Number(p.scu != null ? p.scu : p.scuNeed) || 0, station: String(p.dropoff || p.station || '').trim() || null, user: true }))
+        .filter((p) => p.commodity || p.station || p.scuNeed);
+      for (const p of o.parcels) { this.learnVocab('commodity', p.commodity); this.learnVocab('location', p.station); }
+      if (!o.parcels.length) delete o.parcels;
+    } else delete o.parcels;
+    this._save();
+  }
+  // Pickup the log doesn't record ("deliver to X" contracts on 4.8.0) — user supplies it.
+  setPickup (id, pickup) { const o = this._ov(id); const v = String(pickup || '').trim(); if (v) { o.pickup = v; this.learnVocab('location', v); } else delete o.pickup; this._save(); }
+  // Effective parcels/pickup: log data wins; user-entered overrides fill the gap.
+  _parcels (mi) {
+    if (Object.keys(mi.parcels || {}).length) return mi.parcels;
+    const ov = this.manual.overrides[mi.missionId];
+    if (ov && Array.isArray(ov.parcels) && ov.parcels.length) { const o = {}; for (const p of ov.parcels) o[p.dropKey] = p; return o; }
+    return mi.parcels || {};
+  }
+  _pickupOf (mi) { const ov = this.manual.overrides[mi.missionId]; return (ov && ov.pickup) || mi.pickup || null; }
+  _hasUserCargo (mi) { return !Object.keys(mi.parcels || {}).length && !!(this.manual.overrides[mi.missionId] && this.manual.overrides[mi.missionId].parcels); }
   addManual (d = {}) {
     const id = d.id || ('m-' + Date.now().toString(36) + '-' + (++this._c));
     // A haul can list SEVERAL pickup locations ("collect from any of these") — keep them all.
@@ -198,7 +253,7 @@ class CargoRouter {
     } else if (d.dropoff || d.commodity || d.scu) {
       mi.parcels.m0 = mkParcel(0, d.commodity, d.scu, d.dropoff);
     }
-    this.manual.added[id] = mi; this._save(); return mi;
+    this.manual.added[id] = mi; this._learnFromMission(mi); this._save(); return mi;
   }
   // Contract identity for dedup (Phase 2): type + primary endpoint + reward, lowercased.
   _identity (d) {
@@ -207,6 +262,67 @@ class CargoRouter {
     return [String(d.contractType || '').toLowerCase().trim(), String(ep).toLowerCase().trim(), String(d.reward || '').replace(/\D/g, '')].join('|');
   }
   removeManual (id) { delete this.manual.added[id]; delete this.manual.overrides[id]; this._save(); }
+
+  // ---- Vocabulary (dropdown data) — UEX seed ∪ user/observed learned entries ----
+  // The combobox reads vocab(); anything the log/OCR/user supplies that UEX doesn't
+  // have is remembered here, so the picker self-populates to the player's game build.
+  _vocab () { return this.manual.vocab || (this.manual.vocab = { commodities: [], locations: [] }); }
+  vocab () {
+    const ref = reference();
+    const learned = this._vocab();
+    const seenC = new Set(ref.commodities.map((c) => normName(c.name)));
+    const seenL = new Set(ref.locations.map((l) => normName(l.name)));
+    const commodities = ref.commodities.map((c) => ({ name: c.name, illegal: !!c.illegal, kind: c.kind || null, source: 'uex' }))
+      .concat((learned.commodities || []).filter((c) => !seenC.has(normName(c.name))).map((c) => ({ name: c.name, illegal: false, kind: null, source: 'learned' })));
+    const locations = ref.locations.map((l) => ({ name: l.name, body: l.body || null, system: l.system || null, kind: l.kind || null, source: 'uex' }))
+      .concat((learned.locations || []).filter((l) => !seenL.has(normName(l.name))).map((l) => ({ name: l.name, body: bodyFromStation(l.name) || null, system: null, kind: null, source: 'learned' })));
+    return { source: ref.source || null, generatedAt: ref.generatedAt || null, commodities, locations };
+  }
+  // Remember a value if it's genuinely new (not already in UEX or learned). Returns
+  // true only when something was added (so passive log-learning no-ops after first).
+  learnVocab (kind, value) {
+    const key = kind === 'commodity' ? 'commodities' : kind === 'location' ? 'locations' : null;
+    const name = String(value == null ? '' : value).trim();
+    if (!key || !name || name.length > 80 || isGenericSystem(name)) return false;
+    const ref = reference();
+    const nk = normName(name);
+    const seed = key === 'commodities' ? ref.commodities : ref.locations;
+    if (seed.some((x) => normName(x.name) === nk)) return false;         // already in UEX
+    const v = this._vocab(); const list = v[key] || (v[key] = []);
+    if (list.some((x) => normName(x.name) === nk)) return false;          // already learned
+    if (list.length >= 500) return false;                                // sanity cap
+    list.push({ name }); this._save(); return true;
+  }
+  // Prune a learned entry (typo/OCR junk). UEX seed entries are read-only (can't remove).
+  unlearnVocab (kind, value) {
+    const key = kind === 'commodity' ? 'commodities' : kind === 'location' ? 'locations' : null;
+    if (!key) return false;
+    const v = this._vocab(); const nk = normName(value);
+    const before = (v[key] || []).length;
+    v[key] = (v[key] || []).filter((x) => normName(x.name) !== nk);
+    if (v[key].length !== before) { this._save(); return true; }
+    return false;
+  }
+  // Live refresh seam (foundation; default OFF — the relay is offline-first, D-002).
+  // The server calls this with freshly-fetched UEX data behind an opt-in flag; here
+  // we just swap the in-memory reference + rebuild the body index.
+  setReference (data) {
+    const ref = reference();
+    if (data && Array.isArray(data.commodities)) ref.commodities = data.commodities;
+    if (data && Array.isArray(data.locations)) {
+      ref.locations = data.locations;
+      ref.bodyIndex = new Map();
+      for (const l of ref.locations) if (l.name && l.body) ref.bodyIndex.set(normName(l.name), l.body);
+    }
+    return { commodities: ref.commodities.length, locations: ref.locations.length };
+  }
+  // Learn every commodity/known-station a mission carries (passive vocab growth).
+  _learnFromMission (mi) {
+    if (!mi) return;
+    for (const p of Object.values(mi.parcels || {})) { this.learnVocab('commodity', p.commodity); this.learnVocab('location', p.station); }
+    for (const pk of (mi.pickupList || (mi.pickup ? [mi.pickup] : []))) this.learnVocab('location', pk);
+    this.learnVocab('location', mi.titleDropoff);
+  }
   // Import with dedup (Phase 2): a re-import of the same contract MERGES (fills
   // blanks, adds new drops) rather than duplicating — the idempotency invariant.
   importContract (d = {}) {
@@ -232,8 +348,9 @@ class CargoRouter {
         if (!have.has(key)) { const k = 'm' + (n++); mi.parcels[k] = { dropKey: k, commodity: dl.commodity || null, scuHave: 0, scuNeed: Number(dl.scu) || 0, station: dl.dropoff || null, body: dl.dropoff ? { name: dl.body || bodyFromStation(dl.dropoff) } : null }; have.add(key); } }
     }
     mi.lastSeen = Date.now();
+    this._learnFromMission(mi);
   }
-  purge () { this.manual = { overrides: {}, added: {}, order: [], config: this.getConfig() }; this._save(); }
+  purge () { this.manual = { overrides: {}, added: {}, order: [], config: this.getConfig(), vocab: this._vocab() }; this._save(); }
 
   // ---- status resolution (manual override wins, then log, then derived) ----
   _allMissions () { return Object.values(this.missions).concat(Object.values(this.manual.added)); }
@@ -246,14 +363,31 @@ class CargoRouter {
     return mi.source === 'manual' ? 'candidate' : 'active';
   }
   // Active board missions (not done) — used by /cargo and the router.
-  activeMissions () { return this._allMissions().filter((mi) => !['completed', 'abandoned', 'failed'].includes(this.statusOf(mi))); }
+  activeMissions () { return this._allMissions().filter((mi) => !TERMINAL.includes(this.statusOf(mi))); }
+
+  // A log-derived mission last confirmed in an EARLIER game session — "carried over".
+  // (Manual/OCR entries are user-owned, never auto-flagged stale.)
+  _stale (mi) { return mi.source !== 'manual' && this.session > 0 && mi.lastSession < this.session; }
+
+  // Bulk "Clear carried-over": dismiss every stale log mission still on the active
+  // board. Sets a manual 'cleared' override (reversible via reactivate ↺), which is
+  // why it's an override and not a delete — the log can't re-derive it, so wiping it
+  // would lose the user's decision on relay restart. Returns how many were cleared.
+  clearStale () {
+    let n = 0;
+    for (const mi of Object.values(this.missions)) {
+      if (this._stale(mi) && !TERMINAL.includes(this.statusOf(mi))) { this._ov(mi.missionId).status = 'cleared'; n += 1; }
+    }
+    if (n) this._save();
+    return n;
+  }
 
   // The "Route" button. Groups active missions by pickup hub; orders each hub's
   // dropoffs by celestial body. opts.shipScu flags over-capacity hubs;
   // opts.freshOnly hides carried-over (unconfirmed-this-session) missions.
   route (opts = {}) {
-    const DONE = ['completed', 'abandoned', 'failed'];
-    const staleOf = (mi) => mi.source !== 'manual' && this.session > 0 && mi.lastSession < this.session;
+    const DONE = TERMINAL;
+    const staleOf = (mi) => this._stale(mi);
     const pickedUpOf = (id, dropKey) => { const o = this.manual.overrides[id]; return !!(o && o.pickedUp && o.pickedUp[dropKey]); };
     const all = this._allMissions();
 
@@ -280,15 +414,17 @@ class CargoRouter {
     const byHub = {};
     let carriedOver = 0, awaiting = 0, hiddenAwaiting = 0;
     for (const mi of missions) {
-      const undelivered = Object.values(mi.parcels).filter((p) => p.scuHave < p.scuNeed);
+      const undelivered = Object.values(this._parcels(mi)).filter((p) => p.scuHave < p.scuNeed);
       if (!undelivered.length) { awaiting += 1; if (opts.hideAwaiting) { hiddenAwaiting += 1; continue; } }
       const stale = staleOf(mi);
       if (stale) carriedOver += 1;
       const candidate = this.statusOf(mi) === 'candidate';
+      const userCargo = this._hasUserCargo(mi);
       const ov = ovOf(mi); const pinned = !!ov.pinned; const oidx = orderIdx(mi.missionId);
       // "from X" contracts name the pickup; "to X" contracts only name the dropoff
-      // (the game assigns a collect point but doesn't write it to the log on 4.8.0).
-      const pickup = mi.pickup || null;
+      // (the game assigns a collect point but doesn't write it to the log on 4.8.0 —
+      // the user can supply it, which _pickupOf folds in as an override).
+      const pickup = this._pickupOf(mi);
       const hubKey = pickup || ' nopickup';
       const hub = byHub[hubKey] || (byHub[hubKey] = { pickup: pickup || 'Pickup not in log', pickupKnown: !!pickup, pickupBody: pickup ? (bodyFromStation(pickup) || 'Unknown') : null, collectScu: 0, legs: [], missions: 0, stale: true, pinned: false, order: 1e6 });
       hub.missions += 1;
@@ -300,20 +436,21 @@ class CargoRouter {
       const hdr = { title: mi.title || null, reward: mi.reward || null,
         rank: parts.length >= 3 ? parts[0] : null,
         contractType: parts.length >= 3 ? parts[1] : (mi.contractType || parts[1] || parts[0] || 'Hauling contract'),
-        missionId: mi.missionId, source: mi.source || 'log', stale, candidate, pinned, notes: ov.notes || null, order: oidx,
-        pickups: (mi.pickupList && mi.pickupList.length) ? mi.pickupList : (mi.pickup ? [mi.pickup] : []) };
+        missionId: mi.missionId, source: mi.source || 'log', stale, candidate, pinned, userCargo, notes: ov.notes || null, order: oidx,
+        pickups: (mi.pickupList && mi.pickupList.length) ? mi.pickupList : (pickup ? [pickup] : []) };
       if (undelivered.length) {
         for (const p of undelivered) {
           const scu = p.scuNeed - p.scuHave;
           const pickedUp = pickedUpOf(mi.missionId, p.dropKey);
           if (!pickedUp) hub.collectScu += scu;     // already-collected legs don't count toward what's left to load
           const dropoff = p.station || mi.titleDropoff || null;
-          hub.legs.push(Object.assign({}, hdr, { dropKey: p.dropKey, dropoff, dropBody: dropoff ? ((p.body && p.body.name) || bodyFromStation(dropoff) || 'Unknown') : null, commodity: p.commodity, scu, pending: !dropoff, pickedUp }));
+          hub.legs.push(Object.assign({}, hdr, { dropKey: p.dropKey, dropoff, dropBody: dropoff ? ((p.body && p.body.name) || bodyFromStation(dropoff) || 'Unknown') : null, commodity: p.commodity, scu, pending: !dropoff, pickedUp, userLeg: !!p.user }));
         }
       } else {
         // Accepted but no Deliver objective yet — show the title endpoint; cargo TBD.
+        // `canAddCargo` invites the user to type the requirement in-place (inline editor).
         const dropoff = mi.titleDropoff || null;
-        hub.legs.push(Object.assign({}, hdr, { dropKey: 'm0', dropoff, dropBody: dropoff ? (bodyFromStation(dropoff) || 'Unknown') : null, commodity: null, scu: null, pending: !dropoff, awaiting: true, pickedUp: pickedUpOf(mi.missionId, 'm0') }));
+        hub.legs.push(Object.assign({}, hdr, { dropKey: 'm0', dropoff, dropBody: dropoff ? (bodyFromStation(dropoff) || 'Unknown') : null, commodity: null, scu: null, pending: !dropoff, awaiting: true, canAddCargo: true, pickedUp: pickedUpOf(mi.missionId, 'm0') }));
       }
     }
     // "My order" = user drag order (pinned first); "Optimize" = body-cluster (default).

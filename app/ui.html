@@ -93,6 +93,21 @@
   .micro:hover{border-color:var(--accent)}
   .micro.ok:hover{border-color:var(--good);color:var(--good)}
   .micro.no:hover{border-color:var(--kill);color:var(--kill)}
+  /* ---- custom combobox (cargo vocab picker) ---- */
+  .combo{position:relative;display:inline-block}
+  .combo input{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px}
+  .combo input:focus{outline:none;border-color:var(--accent)}
+  .combo-pop{position:absolute;top:calc(100% + 2px);left:0;min-width:100%;max-height:230px;overflow-y:auto;
+    background:var(--panel2);border:1px solid var(--accent);border-radius:8px;z-index:40;box-shadow:0 8px 24px rgba(0,0,0,.45);padding:3px}
+  .combo-grp{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:5px 8px 2px}
+  .combo-opt{padding:5px 8px;border-radius:5px;font-size:12.5px;cursor:pointer;display:flex;gap:7px;align-items:center;white-space:nowrap}
+  .combo-opt.hi,.combo-opt:hover{background:rgba(59,130,246,.16)}
+  .combo-opt .co-body{margin-left:auto;font-size:10px;color:var(--muted)}
+  .combo-opt .co-ill{color:#f0883e;font-size:10px}
+  .combo-add{color:var(--accent);font-weight:600}
+  .cargo-editor{padding:8px 0 4px 24px;margin-top:5px;border-top:1px dashed var(--line)}
+  .ce-row{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap}
+  .ce-row input.ce-scu{width:64px;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px}
 </style>
 </head>
 <body>
@@ -270,13 +285,13 @@
         <button class="btn" id="cargo-route-btn">⟳ Route</button>
       </span>
     </h2>
-    <div class="tip" style="padding:0 14px 4px">💡 Tick a leg's box as you <b>pick it up</b>; mark a mission <b>✓ done</b> or <b>✕ abandon</b> (your marks override the log). <b>＋ Add</b> a contract by hand to plan before accepting. "to X" contracts only log the dropoff (pickup is shown in-game).</div>
+    <div class="tip" style="padding:0 14px 4px">💡 Tick a leg's box as you <b>pick it up</b>; mark a mission <b>✓ done</b> or <b>✕ abandon</b> (your marks override the log). The game only logs cargo after you physically load it — for an <b>awaiting</b> haul, hit <b>＋ add cargo</b> to type the requirement from your mobiGlas (commodity &amp; location fields autocomplete; type a new one to add it). <b>＋ Add</b> a contract by hand to plan before accepting.</div>
     <div id="cargo-add" style="display:none;padding:8px 14px;border-bottom:1px solid var(--line);display:none">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px">
         <input id="ca-type" placeholder="contract / type" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:150px">
-        <input id="ca-pickup" placeholder="pickup (optional)" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:140px">
-        <input id="ca-dropoff" placeholder="dropoff" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:140px">
-        <input id="ca-commodity" placeholder="commodity" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:120px">
+        <span class="combo"><input id="ca-pickup" placeholder="pickup (optional)" autocomplete="off" style="width:140px"></span>
+        <span class="combo"><input id="ca-dropoff" placeholder="dropoff" autocomplete="off" style="width:140px"></span>
+        <span class="combo"><input id="ca-commodity" placeholder="commodity" autocomplete="off" style="width:120px"></span>
         <input id="ca-scu" type="number" placeholder="SCU" min="0" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:70px">
         <button class="btn" id="ca-save">Add candidate</button>
         <span class="mid">added as a planning candidate</span>
@@ -468,6 +483,76 @@ function setTips(on){ document.body.classList.toggle('tips', on); $('tips-toggle
 $('tips-toggle').addEventListener('change', ()=> setTips($('tips-toggle').checked));
 try{ if(localStorage.getItem('sc-tips')==='1') setTips(true); }catch(e){}
 
+// ---- Cargo vocabulary (UEX seed ∪ learned) + custom combobox ----
+let VOCAB={commodities:[],locations:[]}, vocabLoaded=false;
+async function loadVocab(force){
+  if(vocabLoaded && !force) return VOCAB;
+  try{ VOCAB=await fetch('/services/star-citizen/cargo/vocab').then(r=>r.json()); vocabLoaded=true; }catch(e){}
+  return VOCAB;
+}
+// Add a value the picker didn't have, remember it server-side, then refresh the cache.
+async function learnVocab(kind,value){
+  try{ await cargoPost({action:'learn', kind, value}); }catch(e){}
+  await loadVocab(true);
+}
+// Rank: prefix > word-start > substring. Loose subsequence (fuzzy) matches only fill
+// in when solid matches are sparse — keeps "alum" → Aluminum clean, not noisy.
+function comboFilter(items,q){
+  const s=q.trim().toLowerCase(); if(!s) return items.slice(0,60);
+  const solid=[], fuzzy=[];
+  for(const it of items){ const n=it.name.toLowerCase();
+    if(n.startsWith(s)) solid.push([0,it]);
+    else if(n.includes(' '+s)) solid.push([1,it]);
+    else if(n.includes(s)) solid.push([2,it]);
+    else { let i=0; for(const ch of n){ if(ch===s[i]) i++; if(i===s.length) break; } if(i===s.length) fuzzy.push([3,it]); } }
+  const rank=(a,b)=>a[0]-b[0]||a[1].name.length-b[1].name.length;
+  let list=solid.sort(rank);
+  if(list.length<8) list=list.concat(fuzzy.sort(rank));   // only reach for fuzzy when needed
+  return list.slice(0,60).map(x=>x[1]);
+}
+/* Attach a custom combobox to a text input.
+   opts: { kind:'commodity'|'location', group:fn(item)->label|null, onPick:fn(item), allowAdd:bool } */
+function attachCombo(input, getItems, opts={}){
+  const wrap=input.closest('.combo'); let pop=null, hi=-1, cur=[];
+  const close=()=>{ if(pop){ pop.remove(); pop=null; hi=-1; } };
+  const commit=(name)=>{ input.value=name; if(opts.onPick) opts.onPick(name); close(); };
+  function render(){
+    const items=comboFilter(getItems(), input.value); cur=items;
+    if(!pop){ pop=document.createElement('div'); pop.className='combo-pop'; wrap.appendChild(pop);
+      pop.addEventListener('mousedown',e=>e.preventDefault()); }
+    let h='', lastGrp=null;
+    items.forEach((it,i)=>{ const g=opts.group?opts.group(it):null;
+      if(g&&g!==lastGrp){ h+=`<div class="combo-grp">${esc(g)}</div>`; lastGrp=g; }
+      const body=it.body?`<span class="co-body">${esc(it.body)}</span>`:'';
+      const ill=it.illegal?'<span class="co-ill" title="illegal cargo">⚠</span>':'';
+      h+=`<div class="combo-opt${i===hi?' hi':''}" data-i="${i}">${esc(it.name)} ${ill}${body}</div>`; });
+    const q=input.value.trim();
+    const exact=items.some(it=>it.name.toLowerCase()===q.toLowerCase());
+    if(opts.allowAdd!==false && q && !exact) h+=`<div class="combo-opt combo-add" data-add="1">＋ Add "${esc(q)}"</div>`;
+    pop.innerHTML=h||'<div class="combo-opt" style="color:var(--muted);cursor:default">no match</div>';
+    pop.querySelectorAll('[data-i]').forEach(el=>el.onclick=()=>commit(cur[+el.dataset.i].name));
+    const add=pop.querySelector('[data-add]'); if(add) add.onclick=async()=>{ const v=input.value.trim(); commit(v); if(opts.kind) await learnVocab(opts.kind,v); };
+  }
+  input.addEventListener('focus',render);
+  input.addEventListener('input',()=>{ hi=-1; render(); });
+  input.addEventListener('keydown',e=>{ if(!pop) return;
+    const n=pop.querySelectorAll('.combo-opt[data-i]').length + (pop.querySelector('[data-add]')?1:0);
+    if(e.key==='ArrowDown'){ e.preventDefault(); hi=Math.min(hi+1,n-1); paint(); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); hi=Math.max(hi-1,0); paint(); }
+    else if(e.key==='Enter'){ const add=pop.querySelector('[data-add]'); const opts2=pop.querySelectorAll('.combo-opt[data-i]');
+      if(hi>=0 && hi<opts2.length){ e.preventDefault(); commit(cur[hi].name); }
+      else if(add && hi===opts2.length){ e.preventDefault(); add.click(); } }
+    else if(e.key==='Escape'){ close(); } });
+  input.addEventListener('blur',()=>setTimeout(close,120));
+  function paint(){ if(!pop) return; pop.querySelectorAll('.combo-opt').forEach((el,i)=>el.classList.toggle('hi',i===hi));
+    const el=pop.querySelectorAll('.combo-opt')[hi]; if(el) el.scrollIntoView({block:'nearest'}); }
+}
+const commodityItems=()=>VOCAB.commodities||[];
+const locationItems=()=>VOCAB.locations||[];
+const locationGroup=(it)=>it.body||'Other';
+// small POST helper returning JSON (learn/parcels need the response; cargoAction re-routes)
+async function cargoPost(payload){ return fetch('/services/star-citizen/cargo/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json()); }
+
 function renderCargoRoute(out){
   const el = $('cargo-body');
   if(out && out.enabled===false){ el.innerHTML='<div class="empty">cargo router is disabled (start with SC_CARGO_ROUTER=1)</div>'; return; }
@@ -475,6 +560,8 @@ function renderCargoRoute(out){
   const kpi = (l,v)=>`<div class="mc" style="padding:8px 12px"><div class="l">${l}</div><div class="v" style="font-size:20px">${v}</div></div>`;
   let h = `<div class="kpis" style="padding:0 0 12px">
       ${kpi('Pickups', s.pickups||0)}${kpi('Dropoffs', s.dropoffs||0)}${kpi('Total SCU', s.totalScu||0)}${kpi('Missions', s.missions||0)}${s.carriedOver?kpi('Carried over', s.carriedOver):''}${s.done?kpi('Done', s.done):''}</div>`;
+  // Carried-over hauls whose end-event the relay never saw can be dismissed in one click.
+  if(s.carriedOver) h += `<div style="margin:-4px 0 12px"><button class="micro no" data-act="clearStale" title="dismiss every carried-over haul at once (they move to Done, reversible)">🧹 Clear carried-over (${s.carriedOver})</button></div>`;
   const hubs = out.hubs||[];
   if(hubs.length){
     h += hubs.map((hb,i)=>{
@@ -489,18 +576,24 @@ function renderCargoRoute(out){
         const rm = l.source==='manual' ? `<button class="micro no" data-act="remove" data-id="${id}" title="remove">🗑</button>` : '';
         const pin = l.pinned ? '<span title="pinned" style="cursor:pointer" data-act="pin" data-id="'+id+'">📌</span>' : '';
         const note = l.notes ? `<span class="mid" title="${esc(l.notes)}" style="font-style:italic">📝 ${esc(l.notes).slice(0,40)}</span>` : '';
+        const yours = l.userLeg ? '<span class="badge b-raw" title="cargo you entered by hand" style="font-size:10px;border:1px dashed var(--accent);color:var(--accent)">✎ yours</span>' : '';
+        // One editor per mission: on the awaiting placeholder leg, or the first user leg.
+        const showEditor = !!l.canAddCargo || (l.userLeg && (l.dropKey==='u0'||l.dropKey==='m0'));
+        const addBtn = showEditor ? `<button class="micro" data-act="addcargo" data-id="${id}" title="type the cargo requirement from your mobiGlas">${l.userLeg?'✎ edit cargo':'＋ add cargo'}</button>` : '';
         return `<div style="padding:8px 0 10px 14px;border-top:1px solid #20262f${l.pickedUp?';opacity:.5':''}${l.stale?';opacity:.6':''}">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <label title="picked up?" style="display:flex"><input type="checkbox" data-act="pickup" data-id="${id}" data-dk="${dk}" ${l.pickedUp?'checked':''}></label>
-            ${src}${pin}<span style="font-weight:600">${esc(l.contractType||'Hauling contract')}</span>${cand}${rank}${rep}${note}
+            ${src}${pin}<span style="font-weight:600">${esc(l.contractType||'Hauling contract')}</span>${cand}${rank}${rep}${yours}${note}
             <span style="margin-left:auto;display:flex;gap:4px">
+              ${addBtn}
               <button class="micro" data-act="pin" data-id="${id}" title="pin to top">${l.pinned?'📌':'📍'}</button>
               <button class="micro" data-act="notes" data-id="${id}" data-notes="${esc(l.notes||'')}" title="note">📝</button>
               <button class="micro" data-act="snooze" data-id="${id}" title="snooze (hide but keep)">💤</button>
               <button class="micro ok" data-act="status" data-id="${id}" data-status="completed" title="mark complete">✓ done</button>
-              <button class="micro no" data-act="status" data-id="${id}" data-status="abandoned" title="mark abandoned">✕</button>${rm}</span></div>
+              <button class="micro no" data-act="status" data-id="${id}" data-status="abandoned" title="mark abandoned">✕</button>${l.stale?`<button class="micro no" data-act="clear" data-id="${id}" title="clear — dismiss this carried-over haul (moves to Done, reversible)">🧹</button>`:''}${rm}</span></div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px;font-size:12.5px;padding-left:24px">
-            ${cargo}<span style="color:var(--muted)">→</span>${dest}</div>
+            ${cargo}<span style="color:var(--muted)">→</span>${dest}${l.canAddCargo?` <button class="micro combo-add" data-act="addcargo" data-id="${id}" style="border-style:dashed" title="the game logs cargo only after you physically load it — add it now from your mobiGlas">＋ add cargo requirements</button>`:''}</div>
+          ${showEditor?`<div class="cargo-editor" id="ce-${id}" style="display:none"></div>`:''}
           ${(l.pickups&&l.pickups.length>1)?`<div class="mid" style="padding-left:24px;margin-top:3px">📥 collect from: ${l.pickups.map(esc).join(' · ')}</div>`:''}
         </div>`;
       }).join('');
@@ -548,6 +641,63 @@ function renderCargoRoute(out){
     }).join('')+'</div>';
   }
   el.innerHTML = h;
+  lastRoute = out;
+}
+let lastRoute=null;
+// Build the inline cargo-requirements editor (pickup + repeatable delivery rows), all
+// combobox-driven off the UEX/learned vocab. Replaces the mission's user parcels on save.
+function buildCargoEditor(id){
+  const host=document.getElementById('ce-'+id); if(!host) return;
+  const legs=(lastRoute&&lastRoute.hubs||[]).flatMap(h=>h.legs).filter(l=>l.missionId===id);
+  const userLegs=legs.filter(l=>l.userLeg);
+  const seedDropoff=(legs.find(l=>l.dropoff)||{}).dropoff||'';
+  const hub=(lastRoute&&lastRoute.hubs||[]).find(h=>h.legs.some(l=>l.missionId===id))||{};
+  const seedPickup=hub.pickupKnown?hub.pickup:'';
+  const rows = userLegs.length ? userLegs.map(l=>({commodity:l.commodity||'',scu:l.scu||'',dropoff:l.dropoff||''}))
+                               : [{commodity:'',scu:'',dropoff:seedDropoff}];
+  host.innerHTML='';
+  const wrapInput=(cls,ph,val)=>{ const c=document.createElement('span'); c.className='combo';
+    const i=document.createElement('input'); i.type='text'; i.className=cls; i.placeholder=ph; i.value=val||''; i.autocomplete='off'; c.appendChild(i); return {c,i}; };
+  // pickup line
+  const pick=document.createElement('div'); pick.className='ce-row';
+  pick.innerHTML='<span class="flab" style="min-width:44px">pickup</span>';
+  const pk=wrapInput('ce-pickup','collect at…',seedPickup); pick.appendChild(pk.c);
+  attachCombo(pk.i, locationItems, {kind:'location', group:locationGroup});
+  host.appendChild(pick);
+  const rowsBox=document.createElement('div'); host.appendChild(rowsBox);
+  const addRow=(r={})=>{ const row=document.createElement('div'); row.className='ce-row';
+    row.innerHTML='<span class="flab" style="min-width:44px">deliver</span>';
+    const com=wrapInput('ce-com','commodity',r.commodity); row.appendChild(com.c);
+    const scu=document.createElement('input'); scu.type='number'; scu.min='0'; scu.className='ce-scu'; scu.placeholder='SCU'; scu.value=r.scu||''; row.appendChild(scu);
+    const toSpan=document.createElement('span'); toSpan.textContent='→'; toSpan.style.color='var(--muted)'; row.appendChild(toSpan);
+    const drop=wrapInput('ce-drop','dropoff',r.dropoff); row.appendChild(drop.c);
+    const del=document.createElement('button'); del.className='micro no'; del.textContent='✕'; del.title='remove row'; del.onclick=()=>row.remove(); row.appendChild(del);
+    attachCombo(com.i, commodityItems, {kind:'commodity', group:it=>it.illegal?'⚠ Illegal':'Legal'});
+    attachCombo(drop.i, locationItems, {kind:'location', group:locationGroup});
+    rowsBox.appendChild(row); };
+  rows.forEach(addRow);
+  const foot=document.createElement('div'); foot.className='ce-row'; foot.style.marginTop='2px';
+  foot.innerHTML='<span class="flab" style="min-width:44px"></span>';
+  const more=document.createElement('button'); more.className='micro'; more.textContent='＋ row'; more.onclick=()=>addRow(); foot.appendChild(more);
+  const save=document.createElement('button'); save.className='micro ok'; save.textContent='✓ save'; foot.appendChild(save);
+  const cancel=document.createElement('button'); cancel.className='micro'; cancel.textContent='cancel'; cancel.onclick=()=>{ host.style.display='none'; }; foot.appendChild(cancel);
+  host.appendChild(foot);
+  save.onclick=async()=>{
+    const parcels=[...rowsBox.querySelectorAll('.ce-row')].map(row=>({
+      commodity:(row.querySelector('.ce-com')||{}).value||'',
+      scu:(row.querySelector('.ce-scu')||{}).value||0,
+      dropoff:(row.querySelector('.ce-drop')||{}).value||''
+    })).filter(p=>p.commodity||p.dropoff||p.scu);
+    await cargoPost({action:'parcels', id, parcels});
+    await cargoPost({action:'pickup-loc', id, pickup:pk.i.value||''});
+    runRoute(true);
+  };
+}
+function toggleCargoEditor(id){
+  const host=document.getElementById('ce-'+id); if(!host) return;
+  if(host.style.display!=='none' && host.childElementCount){ host.style.display='none'; return; }
+  host.style.display='block';
+  loadVocab().then(()=>buildCargoEditor(id));
 }
 async function cargoAction(payload){
   try{ await fetch('/services/star-citizen/cargo/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); runRoute(true); }
@@ -558,11 +708,14 @@ $('cargo-body').addEventListener('click', (e)=>{
   const a=t.dataset.act;
   if(a==='status') cargoAction({action:'status', id:t.dataset.id, status:t.dataset.status||null});
   else if(a==='remove') cargoAction({action:'remove', id:t.dataset.id});
+  else if(a==='clear') cargoAction({action:'clear', id:t.dataset.id});
+  else if(a==='clearStale'){ if(confirm('Clear all carried-over hauls? They move to Done (reversible with ↺).')) cargoAction({action:'clearStale'}); }
   else if(a==='snooze') cargoAction({action:'snooze', id:t.dataset.id});
   else if(a==='unsnooze') cargoAction({action:'snooze', id:t.dataset.id, value:false});
   else if(a==='pin') cargoAction({action:'pin', id:t.dataset.id});
   else if(a==='notes'){ const n=prompt('Note for this mission:', t.dataset.notes||''); if(n!==null) cargoAction({action:'notes', id:t.dataset.id, notes:n}); }
   else if(a==='purge'){ if(confirm('Clear all your manual marks and hand-added contracts? (log-derived missions stay.)')) cargoAction({action:'purge'}); }
+  else if(a==='addcargo') toggleCargoEditor(t.dataset.id);
 });
 $('cargo-body').addEventListener('change', (e)=>{
   if(e.target.matches('[data-act="pickup"]')) cargoAction({action:'pickup', id:e.target.dataset.id, dropKey:e.target.dataset.dk, value:e.target.checked});
@@ -583,7 +736,11 @@ $('cargo-body').addEventListener('drop', (e)=>{
   const from=ids.indexOf(dragId); ids.splice(from,1); ids.splice(ids.indexOf(c.dataset.hubMid),0,dragId);
   if(cargoOrder!=='optimize') cargoAction({action:'order', ids}); dragId=null;
 });
-$('cargo-add-btn').addEventListener('click', ()=>{ const a=$('cargo-add'); a.style.display = a.style.display==='none'?'block':'none'; });
+$('cargo-add-btn').addEventListener('click', ()=>{ const a=$('cargo-add'); a.style.display = a.style.display==='none'?'block':'none'; if(a.style.display!=='none') loadVocab(); });
+// Combobox-ify the hand-Add form's location/commodity fields (attach once).
+attachCombo($('ca-pickup'), locationItems, {kind:'location', group:locationGroup});
+attachCombo($('ca-dropoff'), locationItems, {kind:'location', group:locationGroup});
+attachCombo($('ca-commodity'), commodityItems, {kind:'commodity', group:it=>it.illegal?'⚠ Illegal':'Legal'});
 $('ca-save').addEventListener('click', ()=>{
   const data={ contractType:$('ca-type').value.trim()||'Manual', pickup:$('ca-pickup').value.trim()||null, dropoff:$('ca-dropoff').value.trim()||null, commodity:$('ca-commodity').value.trim()||null, scu:parseInt($('ca-scu').value,10)||0, status:'candidate' };
   cargoAction({action:'add', data});
@@ -951,7 +1108,7 @@ poll();
     g('tab-analyze').classList.toggle('on',v==='analyze');
     g('tab-cargo').classList.toggle('on',v==='cargo');
     if(v==='analyze' && !D) fetchA();
-    if(v==='cargo') runRoute();
+    if(v==='cargo'){ runRoute(); loadVocab(); }
   }
   g('tab-live').addEventListener('click',()=>show('live'));
   g('tab-analyze').addEventListener('click',()=>show('analyze'));
