@@ -249,6 +249,7 @@ Discord webhook into a tracked file.**
 | `REFERENCES.md` | Catalog of reusable SC open-source projects + log-format findings. |
 | `BACKLOG.md` | Idea backlog. |
 | `UPSTREAM-RSI-STATE.md` | **Read before planning features.** Where `martindale/star-citizen-live @ feature/rsi` is (2026-08-17 snapshot), what diverged, and the backlog mapping for StarCitizen Live + Verseview. Self-contained for a future model/session. |
+| `PORT-ANALYSIS-rsi.md` | Companion to the above: the RSI fork's design patterns (the conformance target), a community-tool scan (what's already solved), and **level-of-effort estimates per backlog feature** to recode onto those patterns. |
 | `SPIKE-LOG-tier0-boot.md` | The spike that proved Fabric was too heavy. |
 | `MOBILE-SETUP.md` | Mobile/remote access notes. |
 | `START-HERE-claude-code.md` | Beginner walkthrough for running this in Claude Code. |
