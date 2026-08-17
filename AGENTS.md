@@ -9,6 +9,15 @@
 > **Last reviewed against source:** branch `feature/fabric-free-m1` · 2026-06-15.
 > If you change architecture, commands, or state, update **this file** and the
 > reality it describes — not a copy.
+>
+> ⚠️ **This file describes OUR fork's `master`, which last moved 2026-07-05.**
+> The lead developer's branch (`martindale/star-citizen-live @ feature/rsi`) has
+> since diverged into a different product — Electron + Android, Fabric P2P back
+> as the transport, Bitcoin payouts, Federation groups, a 506-line parser. Our
+> work through 2026-06-24 was merged there; nothing after it was.
+> **Read [`UPSTREAM-RSI-STATE.md`](UPSTREAM-RSI-STATE.md) before planning any new
+> feature** — it records the divergence, what upstream now provides for free, and
+> which backlog items (ours and Verseview's) that unblocks. Snapshot: 2026-08-17.
 
 ---
 
@@ -239,6 +248,7 @@ Discord webhook into a tracked file.**
 | `DESIGN-event-convergence.md` | How to merge many players' event streams into one org-wide view (transport-agnostic; for M4 + future Fabric). |
 | `REFERENCES.md` | Catalog of reusable SC open-source projects + log-format findings. |
 | `BACKLOG.md` | Idea backlog. |
+| `UPSTREAM-RSI-STATE.md` | **Read before planning features.** Where `martindale/star-citizen-live @ feature/rsi` is (2026-08-17 snapshot), what diverged, and the backlog mapping for StarCitizen Live + Verseview. Self-contained for a future model/session. |
 | `SPIKE-LOG-tier0-boot.md` | The spike that proved Fabric was too heavy. |
 | `MOBILE-SETUP.md` | Mobile/remote access notes. |
 | `START-HERE-claude-code.md` | Beginner walkthrough for running this in Claude Code. |
