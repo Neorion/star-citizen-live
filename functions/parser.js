@@ -130,6 +130,39 @@ const RULES = [
     fields: (m) => ({ bodyId: m[1] })
   },
   {
+    // --- CURRENT-BUILD ship collision / destruction. The ONE combat-destruction
+    // signal that still fires on live builds: unlike <Vehicle Destruction> (gone
+    // after 4.3.0), <FatalCollision> IS logged today. VERIFIED across 236 real
+    // lines in builds 4.6/4.7/4.8.0 (Apr 2026 corpus; ported from
+    // Neorion/star-citizen-live feature/fatal-collision-parser). Client-involved
+    // + FATAL collisions only; most hit 'UNKNOWN' (terrain/structure). The line
+    // names the crashing vehicle, whether a player flew it (PlayerPilot), what
+    // it hit (a named player/ship, or UNKNOWN), the hit ship's Class, and the
+    // closing velocity (impact severity). NOTE: CIG's typo "occured" is in the
+    // real line.
+    kind: 'vehicle:collision', tag: 'FatalCollision',
+    verified: true,
+    test: /Fatal Collision occured for vehicle (\S+) \[Part:[^\]]*?Zone: ([^,\]]+), PlayerPilot: ([01])\] after hitting entity: (\S+?)(?: \[([^\]]*)\])?\. Hit Pos:.*?Distance: ([-\d.]+)(?:, Relative Vel: x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+))?/,
+    fields: (m) => {
+      const bracket = m[5] || '';
+      const hitId = (bracket.match(/Zone:\s*(\S+)/) || [])[1] || null;
+      const relVel = m[7] != null ? { x: +m[7], y: +m[8], z: +m[9] } : null;
+      return {
+        vehicle: m[1], vehicleName: shipName(m[1]),
+        zone: m[2],
+        playerPiloted: m[3] === '1',
+        hitEntity: m[4] === 'UNKNOWN' ? null : m[4],
+        hitClass: (bracket.match(/Class\(([^)]*)\)/) || [])[1] || null,
+        hitShip: shipName(hitId),
+        hitTerrain: m[4] === 'UNKNOWN',
+        distance: Number(m[6]),
+        relVel,
+        // Magnitude of the relative velocity = closing speed (m/s) -> crash severity.
+        closingSpeed: relVel ? Math.round(Math.sqrt(relVel.x ** 2 + relVel.y ** 2 + relVel.z ** 2)) : null
+      };
+    }
+  },
+  {
     // General HUD notification - zone/jurisdiction/tutorial "what's going on"
     // messages with an all-zero (absent) MissionId. NOT a mission item.
     kind: 'hud:notification', tag: 'SHUDEvent_OnNotification',
