@@ -44,6 +44,7 @@ try {
   };
 }
 const cumulativeHistory = require('../functions/cumulativeHistory');
+const opParticipation = require('../functions/opParticipation');
 const gameLogMissionRegister = require('../functions/gameLogMissionRegister');
 const logCorpus = require('../functions/logCorpus');
 const fsBrowser = require('../functions/fsBrowser');
@@ -331,6 +332,10 @@ class StarCitizenService extends EventEmitter {
     // Peers: Fabric `host:port` addresses (seed hub.fabric.pub + relay.goon.vc).
     // Loaded from the Fabric Store in start(); managed via REST / Peers UI.
     this.peers = [];
+    // Op windows: operator-defined { id, name, start, end, createdBy } records.
+    // Loaded from the Fabric Store in start() (`_loadOps()`); managed via
+    // REST (`GET|POST ${base}/ops`, WS2/T2.3).
+    this.ops = [];
     this.fabricNetwork = null;
     /** In-memory Fabric AMP Message ring buffer (advanced UI; not Game.log). */
     this._fabricMessageLog = createFabricMessageLog({ capacity: 500 });
@@ -2421,6 +2426,7 @@ class StarCitizenService extends EventEmitter {
     this._shareFiles = persisted.shareFiles === true;
     this._applySnapshotSettings(persisted);
     this._applyPresenceSettings(persisted);
+    this._loadOps(); // op-window roster (mirrors this.peers)
   }
 
   /**
@@ -3682,6 +3688,69 @@ class StarCitizenService extends EventEmitter {
   }
 
   /**
+   * Load persisted op-window records into `this.ops`. Mirrors the peers
+   * roster exactly: a single allowlisted `settings` key (`ops`) holding the
+   * full array (see `functions/settingsStore.js`), read via
+   * `settingsStore.loadSettings()`. Safe to call multiple times.
+   * @returns {Array<Object>} The freshly loaded `this.ops`.
+   */
+  _loadOps () {
+    if (!this.registerStore) {
+      this.ops = Array.isArray(this.ops) ? this.ops : [];
+      return this.ops;
+    }
+    const persisted = settingsStore.loadSettings(this.registerStore);
+    this.ops = Array.isArray(persisted.ops)
+      ? persisted.ops.filter((o) => o && typeof o === 'object')
+      : [];
+    return this.ops;
+  }
+
+  /** Persist the op-window roster into the Fabric Store (mirrors `_persistPeers()`). */
+  _persistOps () {
+    if (!this.registerStore || !this.registerStore.persistent) return;
+    settingsStore.putSetting(this.registerStore, 'ops', this.ops);
+  }
+
+  /**
+   * Validate input and build a new op-window record for `this.ops`. Does
+   * NOT push into `this.ops` or persist — callers (the `POST ${base}/ops`
+   * route, WS2/T2.3) push the result and then call `_persistOps()`.
+   * @param {Object} input
+   * @param {string} input.name Non-empty display name (trimmed).
+   * @param {string|number} input.start Parseable start date/timestamp.
+   * @param {string|number} input.end Parseable end date/timestamp; must be after `start`.
+   * @param {string} [input.createdBy] Pubkey of the creating operator, or null.
+   * @returns {{ id: string, name: string, start: string, end: string, createdBy: string|null }}
+   * @throws {Error} with `.status = 400` when validation fails.
+   */
+  _buildOpRecord (input) {
+    const raw = input && typeof input === 'object' ? input : {};
+    const fail = (message) => {
+      const err = new Error(message);
+      err.status = 400;
+      throw err;
+    };
+    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    if (!name) fail('op name is required');
+    const startMs = Date.parse(raw.start);
+    const endMs = Date.parse(raw.end);
+    if (!Number.isFinite(startMs)) fail('op start must be a parseable date');
+    if (!Number.isFinite(endMs)) fail('op end must be a parseable date');
+    if (startMs >= endMs) fail('op start must be before end');
+    const start = new Date(startMs).toISOString();
+    const end = new Date(endMs).toISOString();
+    const createdBy = raw.createdBy ? String(raw.createdBy).trim().toLowerCase() : null;
+    return {
+      id: idFor(['op', name, start, end, createdBy || ''].join('|')),
+      name,
+      start,
+      end,
+      createdBy
+    };
+  }
+
+  /**
    * LevelDB path for the Fabric-backed register Store, or null for memory-only.
    * Priority: registerPath → missions.dir → groups.dir → settingsDir/register
    * (settingsDir is the Hub-style named root, e.g. stores/gooncitizen).
@@ -4084,6 +4153,7 @@ class StarCitizenService extends EventEmitter {
     const quantum = h.quantum || [];
     const incap = h.incap || [];
     const crimestat = h.crimestat || [];
+    const shipUse = h.shipUse || [];
     const ymOf = (s) => (typeof s === 'string' && s.length >= 7) ? s.slice(0, 7) : null;
     const months = new Set();
     missions.forEach((m) => { const y = ymOf(m.ts); if (y) months.add(y); });
@@ -4091,6 +4161,7 @@ class StarCitizenService extends EventEmitter {
     quantum.forEach((q) => { const y = ymOf(q.ts); if (y) months.add(y); });
     incap.forEach((i) => { const y = ymOf(i.ts); if (y) months.add(y); });
     crimestat.forEach((c) => { const y = ymOf(c.ts); if (y) months.add(y); });
+    shipUse.forEach((u) => { const y = ymOf(u.ts); if (y) months.add(y); });
     heatcells.forEach((c) => months.add(c.ym));
     const players = [...new Set([].concat(
       h.players || [],
@@ -4099,7 +4170,8 @@ class StarCitizenService extends EventEmitter {
       deaths.map((d) => d.player),
       quantum.map((q) => q.player),
       incap.map((i) => i.player),
-      crimestat.map((c) => c.player)
+      crimestat.map((c) => c.player),
+      shipUse.map((u) => u.player)
     ))].filter(Boolean);
 
     const corpus = this._corpusStatus();
@@ -4115,6 +4187,7 @@ class StarCitizenService extends EventEmitter {
       quantum: quantum.slice(-20000),
       incap: incap.slice(-20000),
       crimestat: crimestat.slice(-20000),
+      shipUse: shipUse.slice(-20000),
       heatcells,
       counts: cumulativeHistory.cumulativeCounts(h),
       corpus,
@@ -6690,6 +6763,42 @@ class StarCitizenService extends EventEmitter {
             this._persistPeers();
             this._refreshFabric().catch((e) => this.emit('error', e));
             return send(200, { type: 'Peer', data: this._peersWithStatus().find((p) => p.id === peer.id) || peer });
+          }
+        }
+
+        // ---- Ops (event windows) + participation (D-017: read-only over data
+        // already local — no new outbound share, no Fabric publish here). ----
+        if (pathname === `${base}/ops` || pathname === '/ops') {
+          if (req.method === 'GET') return send(200, { type: 'Collection', data: this.ops });
+          if (req.method === 'POST') {
+            const d = await body();
+            try {
+              const op = this._buildOpRecord(d);
+              this.ops.push(op);
+              this._persistOps();
+              return send(200, { type: 'Op', data: op });
+            } catch (e) {
+              return send(400, { error: e.message });
+            }
+          }
+        }
+        let opMatch;
+        if ((opMatch = pathname.match(new RegExp(`^(?:${base})?/ops/([^/]+)/participation$`)))) {
+          if (req.method === 'GET') {
+            const op = this.ops.find((o) => o.id === opMatch[1]);
+            if (!op) return send(404, { error: 'Op not found' });
+            const window = { name: op.name, start: op.start, end: op.end };
+            const rows = opParticipation.participationRows(this._analyticsDataset(), window, {});
+            const data = { op, rows };
+            const formula = url.searchParams.get('formula');
+            if (formula) {
+              try {
+                data.split = opParticipation.splitSuggestion(rows, formula);
+              } catch (e) {
+                return send(400, { error: e.message });
+              }
+            }
+            return send(200, { type: 'Participation', data });
           }
         }
 

@@ -30,6 +30,7 @@ const DocumentExchange = require('./DocumentExchange');
 const LogBrowser = require('./LogBrowser');
 const AppSearch = require('./AppSearch');
 const ShipPicker = require('./ShipPicker');
+const OpParticipation = require('./OpParticipation');
 const activityHeat = require('../functions/activityHeat');
 const missionCharts = require('../functions/missionCharts');
 
@@ -51,6 +52,7 @@ const TABS = [
   ['documents', 'Files'],
   ['groups', 'Groups'],
   ['missions', 'Missions'],
+  ['ops', 'Ops'],
   ['fleet', 'Fleets'],
   ['chat', 'Chat'],
   ['wallet', 'Wallet'],
@@ -2512,6 +2514,9 @@ class Dashboard extends React.Component {
         identityPubkey: this.state.identityPubkey,
         analytics: this.state.analytics
       });
+      case 'ops': return featureEnabled('ops')
+        ? React.createElement(OpParticipation, { identityPubkey: this.state.identityPubkey })
+        : this.renderHome();
       case 'wallet': return this.walletVisible()
         ? React.createElement(Wallet, {
           identityPubkey: this.state.identityPubkey,

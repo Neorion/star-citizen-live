@@ -68,7 +68,8 @@ const ALLOWED_KEYS = [
   'discordAnnounceCombat',
   'discordAnnounceIncaps',
   'discordIdentityLinks',    // [{ discordUserId, pubkey, username, linkedAt, verified }]
-  'discordChatDirections'    // { [channelId]: 'listen' | 'bidirectional' } — missing → bidirectional
+  'discordChatDirections',   // { [channelId]: 'listen' | 'bidirectional' } — missing → bidirectional
+  'ops'                      // [{ id, name, start, end, createdBy }] — operator-defined op windows
 ];
 
 const NICKNAME_MAX = 32;

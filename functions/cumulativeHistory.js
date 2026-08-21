@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const readline = require('readline');
-const { parseLine, missionType, missionFaction } = require('./parser');
+const { parseLine, missionType, missionFaction, shipName } = require('./parser');
 
 function idFor (content) {
   return crypto.createHash('sha256').update(String(content)).digest('hex').slice(0, 32);
@@ -29,6 +29,7 @@ function emptyHistory () {
     quantum: [],
     incap: [],
     crimestat: [],
+    shipUse: [],
     heat: {},
     players: [],
     meta: { files: 0, lines: 0, generatedAt: null, lastFlushAt: null }
@@ -72,6 +73,11 @@ function normalizeHistory (raw) {
     if (!c || !c.ts) continue;
     const id = c.id || idFor(['crimestat', c.player || '', c.ts, c.rating || '', c.delta || ''].join('|'));
     h.crimestat.push(Object.assign({}, c, { id }));
+  }
+  for (const u of raw.shipUse || []) {
+    if (!u || !u.ts) continue;
+    const id = u.id || idFor(['shipUse', u.player || '', u.ts, u.ship || ''].join('|'));
+    h.shipUse.push(Object.assign({}, u, { id }));
   }
   return h;
 }
@@ -123,7 +129,8 @@ function indexHistory (history) {
     sessions: new Set((history.sessions || []).map((s) => s.id).filter(Boolean)),
     quantum: new Set((history.quantum || []).map((q) => q.id).filter(Boolean)),
     incap: new Set((history.incap || []).map((i) => i.id).filter(Boolean)),
-    crimestat: new Set((history.crimestat || []).map((c) => c.id).filter(Boolean))
+    crimestat: new Set((history.crimestat || []).map((c) => c.id).filter(Boolean)),
+    shipUse: new Set((history.shipUse || []).map((u) => u.id).filter(Boolean))
   };
 }
 
@@ -214,6 +221,23 @@ function applyEvent (history, index, ev, ctx = {}) {
         ts: ev.timestamp,
         destination: ev.destination || null,
         vehicle: ev.vehicle || null
+      });
+      ensurePlayer(history, player === 'unknown' ? null : player);
+      changed = true;
+    }
+  }
+
+  if (ev.kind === 'vehicle:control' && ev.action === 'clear') {
+    const player = handle || ev.player || 'unknown';
+    const id = idFor(['shipUse', player, ev.timestamp || '', ev.vehicle || ''].join('|'));
+    if (!index.shipUse.has(id)) {
+      index.shipUse.add(id);
+      history.shipUse = history.shipUse || [];
+      history.shipUse.push({
+        id,
+        player,
+        ts: ev.timestamp,
+        ship: shipName(ev.vehicle) || null
       });
       ensurePlayer(history, player === 'unknown' ? null : player);
       changed = true;
@@ -371,6 +395,7 @@ function cumulativeCounts (history) {
     quantumArrive: quantum.filter((q) => q.phase === 'arrive').length,
     incap: (h.incap || []).length,
     crimestat: (h.crimestat || []).length,
+    shipUse: (h.shipUse || []).length,
     completed: outcomes.Complete,
     abandoned: outcomes.Abandon,
     failed: outcomes.Fail,
@@ -396,6 +421,7 @@ function historyLeaves (history) {
   for (const q of h.quantum) push('quantum', q);
   for (const i of h.incap) push('incap', i);
   for (const c of h.crimestat) push('crimestat', c);
+  for (const u of h.shipUse) push('shipUse', u);
   for (const s of h.sessions) push('session', s);
   leaves.sort((a, b) => String(a.id).localeCompare(String(b.id)));
   return leaves;
