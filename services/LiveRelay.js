@@ -45,6 +45,8 @@ try {
 }
 const cumulativeHistory = require('../functions/cumulativeHistory');
 const opParticipation = require('../functions/opParticipation');
+const sessionHealth = require('../functions/sessionHealth');
+const shipUsage = require('../functions/shipUsage');
 const gameLogMissionRegister = require('../functions/gameLogMissionRegister');
 const logCorpus = require('../functions/logCorpus');
 const fsBrowser = require('../functions/fsBrowser');
@@ -6800,6 +6802,18 @@ class StarCitizenService extends EventEmitter {
             }
             return send(200, { type: 'Participation', data });
           }
+        }
+
+        // ---- Session health (per-build session/disconnect/crash rollup — read-only,
+        // advisory, no Fabric publish, same spirit as the /ops block above). ----
+        if (req.method === 'GET' && (pathname === `${base}/session-health` || pathname === '/session-health')) {
+          return send(200, { type: 'SessionHealth', data: sessionHealth.sessionHealthRollup(this._analyticsDataset()) });
+        }
+
+        // ---- Ship usage (lifetime, all-time rollup — see functions/shipUsage.js;
+        // no op-window scoping, unlike /ops/:id/participation above). ----
+        if (req.method === 'GET' && (pathname === `${base}/ship-usage` || pathname === '/ship-usage')) {
+          return send(200, { type: 'ShipUsage', data: shipUsage.shipUsageRollup(this._analyticsDataset()) });
         }
 
         // ---- Game.log visibility: info, raw browsing, deterministic re-parse ----

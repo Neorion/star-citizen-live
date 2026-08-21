@@ -31,8 +31,10 @@ const LogBrowser = require('./LogBrowser');
 const AppSearch = require('./AppSearch');
 const ShipPicker = require('./ShipPicker');
 const OpParticipation = require('./OpParticipation');
+const SessionHealth = require('./SessionHealth');
 const activityHeat = require('../functions/activityHeat');
 const missionCharts = require('../functions/missionCharts');
+const shipUsage = require('../functions/shipUsage');
 
 const { FEATURES } = require('../constants');
 const { FEED_CATEGORIES, FEED_SOURCES, DEFAULT_FEED_SOURCES, filterLiveFeed } = require('../functions/liveFeed');
@@ -124,7 +126,8 @@ const HOME_VIEWS = [
 // Advanced-only Home views (Settings → Advanced mode).
 const HOME_ADVANCED_VIEWS = [
   ['tree', 'Activity Tree'],
-  ['rules', 'Parser rules']
+  ['rules', 'Parser rules'],
+  ['stability', 'Stability']
 ];
 
 const ADVANCED_MODE_KEY = 'gooncitizen.advancedMode';
@@ -1348,6 +1351,13 @@ class Dashboard extends React.Component {
     return (D && D.crimestat || []).filter((c) => this.mSel(ymOf(c.ts)) && this.pSel(c.player));
   }
 
+  // Ship-usage rows for the current pilot/month filters (lifetime rollup —
+  // see functions/shipUsage.js; no op-window scoping, unlike opParticipation).
+  baseS () {
+    const D = this.state.analytics;
+    return (D && D.shipUse || []).filter((s) => this.mSel(ymOf(s.ts)) && this.pSel(s.player));
+  }
+
   aggMonths (set) {
     const D = this.state.analytics;
     const ms = (D.missions || []).filter((m) => this.pSel(m.player) && set.has(ymOf(m.ts)) && this.tSel(m.type) && this.fSel(facOf(m)));
@@ -1698,9 +1708,13 @@ class Dashboard extends React.Component {
     const destRows = Object.keys(destCounts).map((k) => ({ n: k, c: destCounts[k] }))
       .sort((a, b) => b.c - a.c).slice(0, 12);
 
+    // Lifetime per-pilot ship-usage rollup (inferred/presence-proxy — see
+    // functions/shipUsage.js); scoped by the current pilot/month filters only.
+    const shipRows = shipUsage.shipUsageRollup({ shipUse: this.baseS() });
+
     return {
       D, months, asc, selArr, lo, hi, ss, years, byY, src, kpis,
-      msMain, msBars, msFac, rows, cmpRows, af, ts, fs, destRows
+      msMain, msBars, msFac, rows, cmpRows, af, ts, fs, destRows, shipRows
     };
   }
 
@@ -1978,6 +1992,56 @@ class Dashboard extends React.Component {
               ))
             )
         )
+      ),
+      this.renderShipUsage(m)
+    );
+  }
+
+  renderShipUsage (m) {
+    const { shipRows } = m;
+    const byMember = [];
+    const grpByName = Object.create(null);
+    shipRows.forEach((r) => {
+      let grp = grpByName[r.member];
+      if (!grp) {
+        grp = { member: r.member, ships: [] };
+        grpByName[r.member] = grp;
+        byMember.push(grp);
+      }
+      grp.ships.push(r);
+    });
+    const rowStyle = {
+      display: 'grid',
+      gridTemplateColumns: '1fr 70px 70px 120px',
+      gap: 8,
+      alignItems: 'center',
+      padding: '6px 8px',
+      fontSize: 12.5
+    };
+    return React.createElement('section', { className: 'panel full' },
+      React.createElement('h2', null, '🚀 Ship usage ',
+        React.createElement('span', { className: 'sub' }, '— most-flown ships per pilot · inferred')
+      ),
+      React.createElement('div', { style: { padding: '6px 14px 12px' } },
+        !byMember.length
+          ? React.createElement('div', { className: 'empty' }, 'no ship activity in range yet')
+          : byMember.map((grp) => React.createElement('div', { key: grp.member, style: { marginBottom: 14 } },
+            React.createElement('div', { className: 'l', style: { marginBottom: 4 } }, grp.member),
+            React.createElement('div', { style: Object.assign({ color: 'var(--muted)', fontSize: 11 }, rowStyle) },
+              React.createElement('span', null, 'ship'),
+              React.createElement('span', { style: { textAlign: 'right' } }, 'sessions'),
+              React.createElement('span', { style: { textAlign: 'right' } }, 'minutes'),
+              React.createElement('span', { style: { textAlign: 'right' } }, 'last flown')
+            ),
+            grp.ships.map((s) => React.createElement('div', { style: rowStyle, key: grp.member + '|' + s.ship },
+              React.createElement('span', null, s.ship),
+              React.createElement('span', { style: { textAlign: 'right' } }, s.sessions),
+              React.createElement('span', { style: { textAlign: 'right' } }, s.minutes),
+              React.createElement('span', { style: { textAlign: 'right' } }, shortTime(s.lastFlown))
+            ))
+          )),
+        React.createElement('div', { className: 'd', style: { marginTop: 6 } },
+          'sessions/minutes are an hour-bucket presence proxy, not measured flight time — see the Pilots honesty note above')
       )
     );
   }
@@ -2343,6 +2407,13 @@ class Dashboard extends React.Component {
           React.createElement('h2', null, '🚀 Quantum destinations'),
           React.createElement('div', { className: 'empty' }, 'no QT hops in the filtered period')
         );
+    }
+    if (view === 'stability') {
+      return React.createElement('section', { className: 'panel full' },
+        React.createElement('h2', null, '🩺 Session stability ',
+          React.createElement('span', { className: 'sub' }, '— per-build session/disconnect health (inferred; Advanced mode)')),
+        React.createElement(SessionHealth, null)
+      );
     }
     if (view === 'pilots' && m) return this.renderHomePilots(m);
     if (view === 'tree' && m && this.state.advancedMode) return this.renderHomeTree(m);

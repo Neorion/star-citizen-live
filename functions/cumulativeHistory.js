@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const readline = require('readline');
-const { parseLine, missionType, missionFaction, shipName } = require('./parser');
+const { parseLine, missionType, missionFaction, shipName, parseSessionInfo } = require('./parser');
 
 function idFor (content) {
   return crypto.createHash('sha256').update(String(content)).digest('hex').slice(0, 32);
@@ -290,6 +290,10 @@ function ingestFile (file, history, index, cursors, opts = {}) {
 
     let handle = opts.handle || null;
     let sessionTs = null;
+    let branch = null;
+    let changelist = null;
+    let lastTs = null;
+    let disconnectCount = 0;
     const generators = Object.assign({}, opts.generators || {});
     let changed = false;
     let lines = 0;
@@ -306,6 +310,20 @@ function ingestFile (file, history, index, cursors, opts = {}) {
       if (ev.kind === 'player:login') handle = ev.handle;
       if (ev.kind === 'session:start' && !sessionTs) sessionTs = ev.timestamp;
       if (ev.kind === 'mission:marker' && ev.missionId) generators[ev.missionId] = ev.generator;
+      // Session build/branch header fields appear near the top of a fresh log,
+      // so this guard is near-zero-cost even on multi-hundred-MB files.
+      if (!branch || !changelist) {
+        const sinfo = parseSessionInfo(line);
+        if (sinfo) {
+          if (sinfo.key === 'branch' && !branch) branch = sinfo.value;
+          if (sinfo.key === 'changelist' && !changelist) changelist = sinfo.value;
+        }
+      }
+      if (ev.timestamp) {
+        const t = Date.parse(ev.timestamp);
+        if (!Number.isNaN(t) && (lastTs == null || t > lastTs)) lastTs = t;
+      }
+      if (ev.kind === 'session:disconnect') disconnectCount += 1;
       if (applyEvent(history, index, ev, { handle, generators, countHeat: true })) changed = true;
     });
 
@@ -315,7 +333,19 @@ function ingestFile (file, history, index, cursors, opts = {}) {
         const id = idFor(['session', key, sessionTs || '', player].join('|'));
         if (!index.sessions.has(id)) {
           index.sessions.add(id);
-          history.sessions.push({ id, player, ts: sessionTs });
+          history.sessions.push({
+            id, player, ts: sessionTs,
+            build: changelist || branch || null,
+            branch: branch || null,
+            changelist: changelist || null,
+            endTs: lastTs != null ? new Date(lastTs).toISOString() : null,
+            disconnects: disconnectCount,
+            // INFERRED, not certain: no disconnect line observed before EOF may mean a
+            // crash, OR simply that this file was still being written when captured
+            // (e.g. the live-tailed Game.log at backup time). Callers must treat this
+            // as a heuristic signal, not a confirmed crash.
+            cleanEnd: disconnectCount > 0
+          });
           ensurePlayer(history, handle);
           changed = true;
         }
