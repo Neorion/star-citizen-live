@@ -13,7 +13,10 @@ const FEATURES = {
   // Files tab (advanced UI); runtime settings.documents.enable + Advanced mode.
   // Chat 📎 attach uses the same local catalog (always, not a remote Hub).
   documents: true,
-  library: false
+  library: false,
+  // Cargo tab (WS4/T4.4): log-derived hauling board. Off by default — new
+  // work on someone else's trunk defaults off per BUILD-PLAN-rsi.md.
+  cargo: false
 };
 
 module.exports = {

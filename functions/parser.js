@@ -94,6 +94,53 @@ const RULES = [
     fields: (m) => ({ objectiveId: m[1], text: m[2] })
   },
   {
+    // Cargo/hauling contract ACCEPTED. The title names the pickup ("| from X") or
+    // dropoff ("| to Y") endpoint directly; the reward tier lives in the
+    // "<EM4>[50/200/.. Rep]" segment on the same line. Rule order matters - this
+    // must precede mission:notification below (same tag, more specific match).
+    // VERIFIED in the real corpus + live 4.8.0 logs (ported from
+    // Neorion/star-citizen-live feature/cargo-router, CargoRouter.js ACCEPT_RE;
+    // WS4/T4.0 recon confirmed no upstream equivalent covers this line).
+    kind: 'cargo:accept', tag: 'SHUDEvent_OnNotification',
+    verified: true,
+    test: /Added notification "Contract Accepted:\s*(.+?)\s*(?:<EM\d+>\[([^\]]+)\]|:\s*")[\s\S]*?MissionId:\s*\[(?!00000000-0000-0000-0000-000000000000\])([0-9a-fA-F-]+)\]/,
+    fields: (m) => {
+      const title = m[1].trim();
+      const dir = title.match(/\|\s*(from|to)\s+(.+?)\s*$/i);
+      return {
+        title,
+        missionId: m[3],
+        reward: m[2] ? m[2].trim() : null,
+        pickup: dir && /^from$/i.test(dir[1]) ? dir[2].trim() : null,
+        dropoff: dir && /^to$/i.test(dir[1]) ? dir[2].trim() : null
+      };
+    }
+  },
+  {
+    // Delivery objective - commodity + SCU + dropoff destination + dropoff GUID.
+    // Rule order matters - must precede mission:notification below.
+    // VERIFIED in the real corpus + live 4.8.0 logs (ported from
+    // Neorion/star-citizen-live feature/cargo-router, CargoRouter.js OBJECTIVE_RE).
+    kind: 'cargo:deliver', tag: 'SHUDEvent_OnNotification',
+    verified: true,
+    test: /Deliver (\d+)\/(\d+) SCU of (.+?) to ([^:"]+?):.*?MissionId:\s*\[([0-9a-fA-F-]+)\],\s*ObjectiveId:\s*\[(dropoff_[0-9a-fA-F-]+_\d+)\]/,
+    fields: (m) => ({
+      scuHave: Number(m[1]), scuNeed: Number(m[2]), commodity: m[3].trim(),
+      destination: m[4].trim(), missionId: m[5], dropKey: m[6]
+    })
+  },
+  {
+    // Names the specific dropoff station for a dropoff GUID - the game assigns this
+    // separately from the Deliver-objective notification above (different tag).
+    // VERIFIED in the real corpus + live 4.8.0 logs (ported from
+    // Neorion/star-citizen-live feature/cargo-router, CargoRouter.js DROPOFF_RE).
+    // WS4/T4.0 recon confirmed no upstream equivalent existed for this tag.
+    kind: 'mission:dropoff', tag: 'CreateHaulingObjectiveHandler',
+    verified: true,
+    test: /Dropoff created.*?locationName:\s*(.+?)\s*\[([^\]]+)\].*?objectiveId:\s*(dropoff_[0-9a-fA-F-]+(?:_\d+)*)/,
+    fields: (m) => ({ station: m[1].trim(), token: m[2], objectiveId: m[3] })
+  },
+  {
     // Real mission notification: a NON-zero MissionId (rule order matters - this
     // must precede the general hud:notification rule below).
     kind: 'mission:notification', tag: 'SHUDEvent_OnNotification',

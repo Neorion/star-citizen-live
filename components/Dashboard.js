@@ -30,6 +30,7 @@ const DocumentExchange = require('./DocumentExchange');
 const LogBrowser = require('./LogBrowser');
 const AppSearch = require('./AppSearch');
 const ShipPicker = require('./ShipPicker');
+const Cargo = require('./Cargo');
 const activityHeat = require('../functions/activityHeat');
 const missionCharts = require('../functions/missionCharts');
 
@@ -52,6 +53,7 @@ const TABS = [
   ['groups', 'Groups'],
   ['missions', 'Missions'],
   ['fleet', 'Fleets'],
+  ['cargo', 'Cargo'],
   ['chat', 'Chat'],
   ['wallet', 'Wallet'],
   ['network', 'Network'],
@@ -2527,6 +2529,9 @@ class Dashboard extends React.Component {
         : this.renderHome();
       case 'library': return androidDashboardTabVisible('library') && featureEnabled('library')
         ? React.createElement(Library, null)
+        : this.renderHome();
+      case 'cargo': return featureEnabled('cargo')
+        ? React.createElement(Cargo, null)
         : this.renderHome();
       case 'fleet': return React.createElement(Fleet, {
         identityPubkey: this.state.identityPubkey,

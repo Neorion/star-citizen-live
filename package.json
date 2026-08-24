@@ -36,6 +36,7 @@
     "publish:gooncitizen": "node scripts/playnet-deploy-gooncitizen.js",
     "publish:builds": "node scripts/publish-build-documents.js",
     "refresh:ships": "node scripts/refresh-ship-catalog.js",
+    "build-vocab": "node scripts/build-uex-vocab.js",
     "replay": "node scripts/replay.js",
     "report:install": "rm -rf node_modules && mkdir -p reports && echo \"\\n\" > package-lock.json && echo \"$ npm i --allow-git=all\" > reports/install.log && npm i --allow-git=all >> reports/install.log 2>&1",
     "report:todo": "grep --exclude package.json --exclude-dir=.env --exclude-dir=.git --exclude-dir=_book --exclude-dir=stores --exclude-dir=assets --exclude-dir=node_modules --exclude-dir=reports --exclude-dir=coverage --exclude-dir=docs --exclude-dir=libraries -rEI \"TODO|FIXME\" . | sed 's/\\([^:]*:\\)[ ]*/\\1 /' > reports/TODO.txt",

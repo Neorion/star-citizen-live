@@ -436,6 +436,11 @@ class StarCitizenService extends EventEmitter {
       dir: this.settings.settingsDir ? path.join(this.settings.settingsDir, 'snapshots') : null
     });
 
+    // Cargo board: log-derived hauling-mission accumulator (WS4/T4.4). Zero
+    // config, no persistence — see services/CargoRouter.js.
+    const CargoRouter = require('../services/CargoRouter');
+    this.cargoRouter = new CargoRouter();
+
     // Bearer sessions issued by POST …/auth (Schnorr login challenge)
     // or by client-signed Fabric site login (POST /sessions/…/signatures).
     this._sessions = {};
@@ -4201,6 +4206,28 @@ class StarCitizenService extends EventEmitter {
   get missions () { return this.missionManager ? this.missionManager.missions : []; }
   get status () { return this.state.status; }
 
+  /**
+   * Cargo board (WS4/T4.5) with a read-only "seen in register" cross-link: a
+   * cargo mission's runtime MissionId is also a gamelog-sourced register row's
+   * id (see functions/gameLogMissionRegister.js's registerIdForGameLog — it
+   * uses the SC MissionId directly when trackable). This never writes to the
+   * register, only reads it (D-005: the register stays the source of truth,
+   * this is supporting evidence, not a verdict).
+   * @returns {object} the cargoRouter.route() board, with `inRegister: boolean`
+   *   added to each hub leg and each done entry.
+   */
+  _cargoWithRegisterLinks () {
+    const board = this.cargoRouter.route();
+    const registerIds = new Set(
+      this.missions.filter((r) => r && r.source === 'gamelog' && r.id).map((r) => r.id)
+    );
+    const withLink = (row) => Object.assign({}, row, { inRegister: registerIds.has(row.missionId) });
+    return Object.assign({}, board, {
+      hubs: board.hubs.map((h) => Object.assign({}, h, { legs: h.legs.map(withLink) })),
+      done: board.done.map(withLink)
+    });
+  }
+
   // ---- HTTP ----
 
   /**
@@ -5819,6 +5846,11 @@ class StarCitizenService extends EventEmitter {
       // Combat progress inferred from mission objectives (proxy for kills).
       if (req.method === 'GET' && pathname === `${base}/combat`) {
         return send(200, { type: 'Collection', data: this.combatlog });
+      }
+      // Cargo board: hauling missions routed by pickup hub (WS4/T4.4), inferred
+      // from Game.log telemetry — see functions/cargoRoute.js for field shapes.
+      if (req.method === 'GET' && (pathname === `${base}/cargo` || pathname === '/cargo')) {
+        return send(200, Object.assign({ type: 'Cargo' }, this._cargoWithRegisterLinks()));
       }
       // Analytics: compact merged dataset (backfilled history + live session) for
       // the "Analyze" dashboard tab. The client slices it by month/year + pilot +
@@ -8299,6 +8331,7 @@ class StarCitizenService extends EventEmitter {
     if (ev.timestamp) this._lastLogEventAt = ev.timestamp;
     else this._lastLogEventAt = new Date().toISOString();
     this._updateDetectedShipFromEvent(ev);
+    this.cargoRouter.observe(ev);
 
     // Stamp session build/hardware from header lines (one-shot, additive).
     const sinfo = parseSessionInfo(entry);

@@ -341,3 +341,53 @@ test('parseLine treats empty and unmatched lines as log:raw / log:notice', () =>
   assert.strictEqual(notice.kind, 'log:notice');
   assert.strictEqual(notice.tag, 'UnknownTag');
 });
+
+// --- VERIFIED: cargo/hauling contract lines (real corpus, 4.7-4.8.0; ported
+// from Neorion/star-citizen-live feature/cargo-router, CargoRouter.js) ---
+
+test('detects a cargo contract ACCEPTED with a "from" pickup + reward tier (<cargo:accept>)', () => {
+  const r = parseLine('<2026-06-28T18:17:37.836Z> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Junior | Stellar Small Haul | from Fallow Field <EM4>[50/100 Rep]</EM4>: " [15] to queue. New queue size: 1, MissionId: [1b393a11-629e-4098-8fee-bb3bbc2e5796], ObjectiveId: []');
+  assert.strictEqual(r.kind, 'cargo:accept');
+  assert.strictEqual(r.verified, true);
+  assert.strictEqual(r.missionId, '1b393a11-629e-4098-8fee-bb3bbc2e5796');
+  assert.strictEqual(r.pickup, 'Fallow Field');
+  assert.strictEqual(r.dropoff, null);
+  assert.strictEqual(r.reward, '50/100 Rep');
+  assert.match(r.title, /Stellar Small Haul/);
+});
+
+test('detects a cargo contract ACCEPTED with a "to" dropoff endpoint', () => {
+  const r = parseLine('<2026-06-28T18:17:38.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Junior | Stellar Small Haul | to Ruin Station <EM4>[50 Rep]</EM4>: " [16] to queue. New queue size: 2, MissionId: [22222222-2222-2222-2222-222222222222], ObjectiveId: []');
+  assert.strictEqual(r.kind, 'cargo:accept');
+  assert.strictEqual(r.pickup, null);
+  assert.strictEqual(r.dropoff, 'Ruin Station');
+});
+
+test('a non-hauling "Contract Accepted" (bounty) still parses as cargo:accept — the hauling filter is a downstream concern, not the parser rule', () => {
+  const r = parseLine('<t> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Bounty Assignment: Domenico Pfaffner (HRT) <EM4>[50 Rep]</EM4>: " [5] to queue. New queue size:1, MissionId: [99999999-9999-9999-9999-999999999999], ObjectiveId: []');
+  assert.strictEqual(r.kind, 'cargo:accept');
+  assert.match(r.title, /Bounty Assignment/);
+  assert.strictEqual(r.pickup, null);
+  assert.strictEqual(r.dropoff, null);
+});
+
+test('detects a delivery objective — commodity + SCU + destination + dropoff GUID (<cargo:deliver>)', () => {
+  const r = parseLine('<2026-03-30T21:11:55.111Z> [Notice] <SHUDEvent_OnNotification> Added notification "New Objective: Deliver 0/7 SCU of Iron to HUR-L2 Faithful Dream Station: " [8] to queue. New queue size: 2, MissionId: [1b393a11-629e-4098-8fee-bb3bbc2e5796], ObjectiveId: [dropoff_eacd0014-8c17-4950-b0bc-c483ef44a459_0] [Team_CoreGameplayFeatures][Missions][Comms]');
+  assert.strictEqual(r.kind, 'cargo:deliver');
+  assert.strictEqual(r.verified, true);
+  assert.strictEqual(r.scuHave, 0);
+  assert.strictEqual(r.scuNeed, 7);
+  assert.strictEqual(r.commodity, 'Iron');
+  assert.strictEqual(r.destination, 'HUR-L2 Faithful Dream Station');
+  assert.strictEqual(r.missionId, '1b393a11-629e-4098-8fee-bb3bbc2e5796');
+  assert.strictEqual(r.dropKey, 'dropoff_eacd0014-8c17-4950-b0bc-c483ef44a459_0');
+});
+
+test('detects the dropoff-station handler line naming a dropoff GUID\'s station (<mission:dropoff>)', () => {
+  const r = parseLine('<2025-08-10T17:44:17.754Z> [Notice] <CreateHaulingObjectiveHandler> Dropoff created - [Cient] sourcename: X, missionId: 00000000-0000-0000-0000-000000000000, locationName: Wikelo Emporium Selo Station [TheCollectorsAsteriod_Stanton2], locationHash: 1615454559, objectiveId: dropoff_eacd0014-8c17-4950-b0bc-c483ef44a459_0_0');
+  assert.strictEqual(r.kind, 'mission:dropoff');
+  assert.strictEqual(r.verified, true);
+  assert.strictEqual(r.station, 'Wikelo Emporium Selo Station');
+  assert.strictEqual(r.token, 'TheCollectorsAsteriod_Stanton2');
+  assert.strictEqual(r.objectiveId, 'dropoff_eacd0014-8c17-4950-b0bc-c483ef44a459_0_0');
+});
