@@ -30,6 +30,10 @@ const ALLOWED_KEYS = [
   'openAtLogin',
   'identityAutoLockMinutes', // 0 = off; default 30 (mirrors Hub identity lock prefs)
   'shareLogsGlobal',         // broadcast parsed log events to all connected peers (default false; prefer per-peer shareLogs)
+  'verseviewBeaconUrl',      // Verseview /api/beacon URL (null = beacon feature inert regardless of the toggle below)
+  'verseviewShareBeacon',    // opt-in: POST current quantum-travel destination to Verseview on arrival (default false).
+                             // The Bearer token is NOT here — see functions/verseviewConfig.js's secrets file, same
+                             // treatment as the Discord bot token/webhook (never echoed back via GET /settings).
   'groupChatSeal',           // seal outbound GroupChat with tip-bound AES-GCM (default false)
   'requireSealedGroupChat',  // drop inbound GroupChat without a decryptable seal (default false)
   'httpSharedMode',          // LAN opt-in: bind dashboard HTTP on 0.0.0.0 (default false → 127.0.0.1)
@@ -176,6 +180,11 @@ function putSetting (store, key, value) {
   if (key === 'broadcastPeering') next = next === true;
   if (key === 'httpSharedMode') next = next === true;
   if (key === 'shareLogsGlobal') next = next === true;
+  if (key === 'verseviewBeaconUrl') {
+    if (next === undefined || next === null || next === '') next = null;
+    else next = String(next).trim() || null;
+  }
+  if (key === 'verseviewShareBeacon') next = next === true;
   if (key === 'shareDiscordCatalog') next = next === true;
   if (key === 'sharePlaytimes') next = next === true;
   if (key === 'shareFiles') next = next === true;

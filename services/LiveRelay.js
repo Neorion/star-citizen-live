@@ -45,6 +45,8 @@ try {
 }
 const cumulativeHistory = require('../functions/cumulativeHistory');
 const opParticipation = require('../functions/opParticipation');
+const beaconPost = require('../functions/beaconPost');
+const verseviewConfig = require('../functions/verseviewConfig');
 const gameLogMissionRegister = require('../functions/gameLogMissionRegister');
 const logCorpus = require('../functions/logCorpus');
 const fsBrowser = require('../functions/fsBrowser');
@@ -313,6 +315,16 @@ class StarCitizenService extends EventEmitter {
     this._fabricEnsureInflight = null;
     this._seq = 0;
     this._shareLogsGlobal = false;
+    /** Verseview beacon: opt-in POST of the current quantum destination on arrival (default false). */
+    this._verseviewShareBeacon = false;
+    /** Verseview /api/beacon URL; null = feature inert regardless of the toggle above. */
+    this._verseviewBeaconUrl = null;
+    /** Verseview Bearer token — loaded from the secrets file, never the Fabric Store (see functions/verseviewConfig.js). */
+    this._verseviewBeaconToken = null;
+    /** Most recent quantum:select destination, remembered until quantum:arrive fires. */
+    this._lastQuantumDestination = null;
+    /** Timestamp (ms) of the last beacon POST fired; throttles sends to one per 60s. */
+    this._lastBeaconAt = 0;
     /** Seal outbound GroupChat with tip-bound AES-GCM (default off; plaintext still accepted). */
     this._groupChatSeal = false;
     /** Drop inbound GroupChat that lacks a decryptable seal. */
@@ -2407,6 +2419,12 @@ class StarCitizenService extends EventEmitter {
     }
     // Sharing parsed log events: default OFF (explicit authorize on Peers / Settings).
     this._shareLogsGlobal = persisted.shareLogsGlobal === true;
+    // Verseview beacon: independent opt-in, default OFF (same consent stance as
+    // shareLogsGlobal, deliberately not reusing that flag). Token comes from the
+    // secrets file, never the Fabric Store — see functions/verseviewConfig.js.
+    this._verseviewShareBeacon = persisted.verseviewShareBeacon === true;
+    this._verseviewBeaconUrl = persisted.verseviewBeaconUrl || null;
+    this._verseviewBeaconToken = verseviewConfig.readSecretsFile(this.settings.settingsDir).beaconToken || null;
     this._groupChatSeal = persisted.groupChatSeal === true;
     this._requireSealedGroupChat = persisted.requireSealedGroupChat === true;
     // Dashboard HTTP: loopback by default; LAN requires httpSharedMode (or server mode / env).
@@ -6133,7 +6151,9 @@ class StarCitizenService extends EventEmitter {
               snapshots: this.snapshotManager ? this.snapshotManager.stats() : null,
               bitcoin: hubBitcoinProxy.bitcoinRuntimeForSettings(this.settings),
               documents: hubDocumentExchangeProxy.documentsRuntimeForSettings(this.settings),
-              discord: this._discordRuntime()
+              discord: this._discordRuntime(),
+              // Configuration status only — never the token itself (mirrors discord's pattern).
+              verseview: { beaconTokenConfigured: !!this._verseviewBeaconToken }
             }
           });
         }
@@ -6160,6 +6180,8 @@ class StarCitizenService extends EventEmitter {
             }
             if (sMatch[1] === 'uplinkIntervalMs') { this.settings.uplink.intervalMs = updated.uplinkIntervalMs || 5000; requiresRestart = false; }
             if (sMatch[1] === 'shareLogsGlobal') { this._shareLogsGlobal = updated.shareLogsGlobal === true; requiresRestart = false; }
+            if (sMatch[1] === 'verseviewShareBeacon') { this._verseviewShareBeacon = updated.verseviewShareBeacon === true; requiresRestart = false; }
+            if (sMatch[1] === 'verseviewBeaconUrl') { this._verseviewBeaconUrl = updated.verseviewBeaconUrl || null; requiresRestart = false; }
             if (sMatch[1] === 'groupChatSeal') { this._groupChatSeal = updated.groupChatSeal === true; requiresRestart = false; }
             if (sMatch[1] === 'requireSealedGroupChat') {
               this._requireSealedGroupChat = updated.requireSealedGroupChat === true;
@@ -6301,6 +6323,19 @@ class StarCitizenService extends EventEmitter {
               secrets: summary,
               runtime: { discord: this._discordRuntime() }
             });
+          } catch (e) {
+            return send(400, { error: e.message });
+          }
+        }
+        if (pathname === '/settings/verseview/secrets' && req.method === 'PUT') {
+          if (!editable) return send(400, { error: 'No persistent store configured (settingsDir)' });
+          const d = await body();
+          try {
+            const summary = verseviewConfig.writeSecretsFile(this.settings.settingsDir, {
+              beaconToken: d.beaconToken
+            });
+            this._verseviewBeaconToken = verseviewConfig.readSecretsFile(this.settings.settingsDir).beaconToken || null;
+            return send(200, { success: true, secrets: summary });
           } catch (e) {
             return send(400, { error: e.message });
           }
@@ -8514,6 +8549,16 @@ class StarCitizenService extends EventEmitter {
         this.emit('session:start', this.session);
         break;
       }
+      case 'quantum:select': {
+        // Remember the destination; quantum:arrive carries no destination of
+        // its own, so this is what a later beacon send will report.
+        this._lastQuantumDestination = ev.destination || null;
+        break;
+      }
+      case 'quantum:arrive': {
+        this._maybeBeaconLocation();
+        break;
+      }
       default: break;
     }
 
@@ -8723,6 +8768,41 @@ class StarCitizenService extends EventEmitter {
       this.emit('error', e);
       return null;
     }
+  }
+
+  /**
+   * Opt-in, fire-and-forget POST of the last-selected quantum destination to
+   * Verseview's `/api/beacon`. Gated by `verseviewShareBeacon` (default
+   * false) + a configured URL + a known destination, and throttled to at
+   * most one send per 60s. Never awaited from `handleLogChange` — a slow or
+   * hanging request must not block log processing. A non-2xx response (e.g.
+   * Verseview's "unknown location" for an unrecognized QT waypoint codename)
+   * is an expected outcome and is swallowed silently, not surfaced as an
+   * 'error' event; only a genuine fetch/network failure emits 'error'.
+   * @returns {Promise|undefined} The in-flight fetch chain when a send was
+   *   fired (useful for tests); `undefined` on every no-op path.
+   */
+  _maybeBeaconLocation () {
+    if (this._verseviewShareBeacon !== true) return undefined;
+    if (!this._verseviewBeaconUrl) return undefined;
+    if (!this._lastQuantumDestination) return undefined;
+    const now = Date.now();
+    if (now - this._lastBeaconAt < 60000) return undefined;
+    const payload = beaconPost.beaconPayload(this._lastQuantumDestination);
+    if (!payload) return undefined;
+    if (typeof fetch !== 'function') return undefined;
+    // Stamp before firing (not after the response) so a hanging request can't defeat the throttle.
+    this._lastBeaconAt = now;
+    return fetch(this._verseviewBeaconUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + this._verseviewBeaconToken
+      },
+      body: JSON.stringify(payload)
+    })
+      .then(() => {}) // non-2xx (e.g. "unknown location") is expected — silent no-op
+      .catch((e) => this.emit('error', e));
   }
 
   // ---- Fabric P2P peering (AMP/Message over TCP/NOISE) ----

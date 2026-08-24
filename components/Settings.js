@@ -76,6 +76,10 @@ class Settings extends React.Component {
       snapshotAutoPurge: true,
       snapshotMaxMB: 256,
       shareLogsGlobal: false,
+      verseviewBeaconUrl: '',
+      verseviewShareBeacon: false,
+      verseviewBeaconToken: '',
+      verseviewBeaconTokenConfigured: false,
       fabricAdvertiseHost: '',
       broadcastPeering: false,
       notifyDesktop: true,
@@ -141,6 +145,10 @@ class Settings extends React.Component {
         snapshotAutoPurge: s.snapshotAutoPurge !== false,
         snapshotMaxMB: s.snapshotMaxMB || 256,
         shareLogsGlobal: s.shareLogsGlobal === true || (settingsRes.runtime && settingsRes.runtime.shareLogsGlobal === true),
+        verseviewBeaconUrl: s.verseviewBeaconUrl || '',
+        verseviewShareBeacon: s.verseviewShareBeacon === true,
+        verseviewBeaconToken: '',
+        verseviewBeaconTokenConfigured: !!(settingsRes.runtime && settingsRes.runtime.verseview && settingsRes.runtime.verseview.beaconTokenConfigured),
         httpSharedMode: s.httpSharedMode === true || (settingsRes.runtime && settingsRes.runtime.httpSharedMode === true),
         fabricAdvertiseHost: s.fabricAdvertiseHost || (settingsRes.runtime && settingsRes.runtime.fabricAdvertiseHost) || '',
         broadcastPeering: s.broadcastPeering === true || (settingsRes.runtime && settingsRes.runtime.broadcastPeering === true),
@@ -214,6 +222,29 @@ class Settings extends React.Component {
         discordAppSecret: '',
         discordWebhook: '',
         discordRuntime: (json.runtime && json.runtime.discord) || this.state.discordRuntime
+      });
+      await this.load();
+    } catch (e) {
+      this.setState({ busy: false, error: e.message });
+    }
+  }
+
+  async saveVerseviewToken () {
+    this.setState({ busy: true, error: null, notice: null });
+    try {
+      const body = { beaconToken: String(this.state.verseviewBeaconToken || '').trim() };
+      const res = await fetch('/settings/verseview/secrets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || res.statusText);
+      this.setState({
+        busy: false,
+        notice: 'Verseview token saved (store root only — not in git).',
+        verseviewBeaconToken: '',
+        verseviewBeaconTokenConfigured: !!(json.secrets && json.secrets.beaconTokenConfigured)
       });
       await this.load();
     } catch (e) {
@@ -1161,6 +1192,66 @@ class Settings extends React.Component {
               ),
               React.createElement('div', { className: 'd', style: { marginTop: -4, marginBottom: 10 } },
                 'Default is off. Per-peer “Share logs” on Network → Peers is the usual path for authorizing a network hub.'),
+              React.createElement('h3', { style: { margin: '14px 0 4px', fontSize: 13 } }, 'Verseview beacon'),
+              React.createElement('div', { className: 'd' },
+                'Opt-in only. When you arrive somewhere via quantum travel, this can POST that destination to a companion project, Verseview, so it can track your last-known location. Nothing is sent unless enabled below — independent of "Share logs to global" above.'),
+              this.field('Verseview beacon URL', 'verseviewBeaconUrl', 'https://.../api/beacon'),
+              React.createElement('div', { className: 'st-row', style: { marginTop: -4, marginBottom: 10 } },
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'st-btn ghost',
+                  style: { padding: '3px 10px', fontSize: 11 },
+                  disabled: !this.state.editable || this.state.busy,
+                  onClick: async () => {
+                    this.setState({ busy: true, error: null });
+                    try {
+                      await this.put('verseviewBeaconUrl', String(this.state.verseviewBeaconUrl || '').trim() || null);
+                      this.setState({ busy: false });
+                      await this.load();
+                    } catch (err) {
+                      this.setState({ busy: false, error: err.message });
+                    }
+                  }
+                }, 'Save Verseview URL')
+              ),
+              React.createElement('div', { className: 'st-field' },
+                React.createElement('label', null, 'Verseview token',
+                  this.state.verseviewBeaconTokenConfigured
+                    ? React.createElement('span', { style: { color: 'var(--muted)', fontWeight: 400, fontSize: 11 } }, ' (already configured)')
+                    : null),
+                React.createElement('input', {
+                  type: 'password',
+                  autoComplete: 'off',
+                  placeholder: 'Bearer token issued by your Verseview login',
+                  value: this.state.verseviewBeaconToken,
+                  disabled: !this.state.editable || this.state.busy,
+                  onChange: (e) => this.setState({ verseviewBeaconToken: e.target.value })
+                })
+              ),
+              React.createElement('div', { className: 'st-row', style: { marginTop: -4, marginBottom: 10 } },
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'st-btn ghost',
+                  style: { padding: '3px 10px', fontSize: 11 },
+                  disabled: !this.state.editable || this.state.busy || !String(this.state.verseviewBeaconToken || '').trim(),
+                  onClick: () => this.saveVerseviewToken()
+                }, 'Save Verseview token')
+              ),
+              React.createElement('label', { style: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', marginBottom: 10 } },
+                React.createElement('input', {
+                  type: 'checkbox',
+                  checked: this.state.verseviewShareBeacon,
+                  disabled: !this.state.editable || this.state.busy,
+                  onChange: async (e) => {
+                    const value = e.target.checked;
+                    this.setState({ verseviewShareBeacon: value });
+                    try { await this.put('verseviewShareBeacon', value); } catch (err) { this.setState({ error: err.message }); }
+                  }
+                }),
+                'Share your current location with Verseview when you arrive via quantum travel'
+              ),
+              React.createElement('div', { className: 'd', style: { marginTop: -4, marginBottom: 10 } },
+                'Default is off, and requires both a URL and token above. A destination Verseview doesn\'t recognize (e.g. a raw QT waypoint codename) is a normal, silent no-op on its side, not an error here.'),
               React.createElement('h3', { style: { margin: '14px 0 4px', fontSize: 13 } }, 'Share encoding'),
               React.createElement('div', { className: 'd' },
                 'Groups → Share copies an opaque Fabric message as ',
