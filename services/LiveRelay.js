@@ -121,7 +121,7 @@ function identityLib () {
 // Collections a remote relay may push into via Fabric SCEventBatch (or legacy
 // HTTP POST …/events). 'chatmessages' / mission broadcasts also arrive as
 // dedicated wire types (P2P_CHAT_MESSAGE / MissionBroadcast).
-const INGEST_COLLECTIONS = ['activities', 'players', 'vehicles', 'kills', 'deaths', 'incaps', 'missionlog', 'chatmessages', 'missionbroadcasts'];
+const INGEST_COLLECTIONS = ['activities', 'players', 'vehicles', 'kills', 'deaths', 'incaps', 'missionlog', 'quantum', 'shipuse', 'chatmessages', 'missionbroadcasts'];
 
 // Org Fabric seed peers (host:port). Removable in Peers; empty saved list is kept.
 // Both hubs selectively relay relevant Fabric messages for the network.
@@ -242,7 +242,7 @@ class StarCitizenService extends EventEmitter {
       this.settings.ingest.httpEnable = true;
     }
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, notifications: {}, missionbroadcasts: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, notifications: {}, missionbroadcasts: {}, logs: {}, quantum: {}, shipuse: {}, startedAt: null };
     this.state.missionGroups = {};  // missions grouped by MissionId (built from the log)
     this.state.objectives = {};     // objective details keyed by ObjectiveId
     this.state.combatlog = {};      // combat progress inferred from mission objectives
@@ -4438,9 +4438,17 @@ class StarCitizenService extends EventEmitter {
       this.state[collection][id] = Object.assign({ id, source }, data);
       if (collection === 'kills') this.emit('kill', this.state[collection][id]);
       // Fold peer-sourced gameplay into cumulative analytics (desktop + hosted hub).
-      if (collection === 'deaths' || collection === 'missionlog') {
+      // quantum/shipuse extend the same pattern as deaths/missionlog: a peer's
+      // shared quantum-travel destinations and ship use fold into this node's
+      // own history.quantum/history.shipUse exactly like local events do, so
+      // functions/opParticipation.js and functions/shipUsage.js reflect a
+      // fleet the moment members opt in to sharing (per-peer or global — the
+      // SAME consent gate that already governs deaths/missions, unchanged).
+      if (collection === 'deaths' || collection === 'missionlog' || collection === 'quantum' || collection === 'shipuse') {
         const kind = data.kind || (collection === 'deaths' ? 'player:death' : null);
-        if (kind === 'player:death' || kind === 'mission:end') {
+        const isQuantum = kind === 'quantum:select' || kind === 'quantum:arrive';
+        const isShipUse = kind === 'vehicle:control' && data.action === 'clear';
+        if (kind === 'player:death' || kind === 'mission:end' || isQuantum || isShipUse) {
           this._applyHistoryEvent({
             kind,
             timestamp: data.timestamp,
@@ -4448,7 +4456,10 @@ class StarCitizenService extends EventEmitter {
             bodyId: data.bodyId,
             completionType: data.completionType || data.outcome,
             missionId: data.missionId,
-            generator: data.generator
+            generator: data.generator,
+            destination: data.destination,
+            vehicle: data.vehicle,
+            action: data.action
           }, { countHeat: false, force: true, handle: data.player || null });
           this.emit('history:updated', { via: 'ingest', collection });
         }
@@ -10208,6 +10219,17 @@ class StarCitizenService extends EventEmitter {
       this.on('player:incap', queue('incaps'));
       this.on('vehicle:destroy', queue('vehicles'));
       this.on('mission:event', queue('missionlog'));
+      // Quantum-travel + ship-use aren't emitted as their own named events
+      // (they fold into LOCAL history generically via handleLogChange's
+      // catch-all _applyHistoryEvent call) — hook the generic 'event' stream
+      // (already emitted for every parsed line) and filter to just these two
+      // kinds, so a consenting peer's fleet data can populate
+      // functions/opParticipation.js's ships[]/locations[] and
+      // functions/shipUsage.js the same way deaths/missions already do.
+      this.on('event', (ev) => {
+        if (ev && (ev.kind === 'quantum:select' || ev.kind === 'quantum:arrive')) queue('quantum')(ev);
+        else if (ev && ev.kind === 'vehicle:control' && ev.action === 'clear') queue('shipuse')(ev);
+      });
       this.on('player:join', (p) => {
         if (!this._canShareLogs()) return;
         this._uplinkQueue.push({ collection: 'players', data: { name: p.name, timestamp: p.lastSeen } });
