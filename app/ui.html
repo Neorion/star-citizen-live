@@ -74,6 +74,40 @@
   .mc .d{font-size:11px;color:var(--muted);margin-top:2px}
   .lbr{display:grid;grid-template-columns:1fr 72px 86px 56px;gap:8px;align-items:center;padding:6px 8px;font-size:12.5px;border-radius:6px}
   .lbr.click{cursor:pointer}.lbr.click:hover{background:var(--panel2)}
+  /* --- in-app help --- */
+  .tip{display:none;font-size:11.5px;color:var(--muted);margin:2px 0 0;padding:3px 0}
+  body.tips .tip{display:block}
+  body.tips [title]{cursor:help}
+  #help{display:none;border-bottom:1px solid var(--line);background:var(--panel2);padding:14px 18px}
+  #help.show{display:block}
+  #help h3{margin:0 0 8px;font-size:14px}
+  #help .hgrid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  #help .hcard{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  #help .hcard h4{margin:0 0 5px;font-size:12.5px;color:var(--accent);font-weight:600}
+  #help p,#help li{font-size:12px;color:var(--text);line-height:1.55;margin:3px 0}
+  #help ol,#help ul{margin:4px 0 0;padding-left:18px}
+  #help .muted{color:var(--muted)}
+  .hbtn{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:5px 12px;font-size:13px;cursor:pointer}
+  .hbtn.on{color:var(--accent);border-color:var(--accent)}
+  .micro{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:5px;padding:1px 7px;font-size:12px;cursor:pointer;line-height:1.5}
+  .micro:hover{border-color:var(--accent)}
+  .micro.ok:hover{border-color:var(--good);color:var(--good)}
+  .micro.no:hover{border-color:var(--kill);color:var(--kill)}
+  /* ---- custom combobox (cargo vocab picker) ---- */
+  .combo{position:relative;display:inline-block}
+  .combo input{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px}
+  .combo input:focus{outline:none;border-color:var(--accent)}
+  .combo-pop{position:absolute;top:calc(100% + 2px);left:0;min-width:100%;max-height:230px;overflow-y:auto;
+    background:var(--panel2);border:1px solid var(--accent);border-radius:8px;z-index:40;box-shadow:0 8px 24px rgba(0,0,0,.45);padding:3px}
+  .combo-grp{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:5px 8px 2px}
+  .combo-opt{padding:5px 8px;border-radius:5px;font-size:12.5px;cursor:pointer;display:flex;gap:7px;align-items:center;white-space:nowrap}
+  .combo-opt.hi,.combo-opt:hover{background:rgba(59,130,246,.16)}
+  .combo-opt .co-body{margin-left:auto;font-size:10px;color:var(--muted)}
+  .combo-opt .co-ill{color:#f0883e;font-size:10px}
+  .combo-add{color:var(--accent);font-weight:600}
+  .cargo-editor{padding:8px 0 4px 24px;margin-top:5px;border-top:1px dashed var(--line)}
+  .ce-row{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap}
+  .ce-row input.ce-scu{width:64px;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px}
 </style>
 </head>
 <body>
@@ -102,13 +136,64 @@
   <div class="row" style="margin-top:10px;gap:8px">
     <button class="tab on" id="tab-live">Live feed</button>
     <button class="tab" id="tab-analyze">Analyze</button>
+    <button class="tab" id="tab-cargo" style="display:none">🚚 Cargo</button>
     <span class="sub" id="az-scope" style="color:var(--muted);font-size:12px"></span>
+    <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <label class="hbtn" title="show one-line hints under panels"><input type="checkbox" id="tips-toggle" style="margin-right:5px">💡 Tips</label>
+      <button class="hbtn" id="help-btn" title="quick guide to the dashboard">❓ Help</button>
+    </span>
   </div>
   <div class="row" id="live-filter" style="margin-top:10px">
     <input type="text" id="filter" placeholder="filter lines by keyword(s), comma-separated… e.g. kill, death, ship">
     <label><input type="checkbox" id="hideKnown"> hide already-recognized in candidates</label>
   </div>
 </header>
+
+<div id="help">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <h3 style="margin:0">How to use this dashboard</h3>
+      <span class="muted" style="font-size:11.5px">reads your Star Citizen <code>Game.log</code> — read-only, nothing is sent anywhere</span>
+      <button class="hbtn" id="help-close" style="margin-left:auto;padding:3px 9px">✕ close</button>
+    </div>
+    <div class="hgrid">
+      <div class="hcard">
+        <h4>🚀 Quick start</h4>
+        <ol>
+          <li>Leave this open while you play — it auto-updates every 2s.</li>
+          <li><b>Live feed</b> = what's happening now. <b>Analyze</b> = your history &amp; stats.</li>
+          <li>Run hauling missions? Open the <b>🚚 Cargo</b> tab for an optimized delivery route.</li>
+          <li>Flip <b>💡 Tips</b> (top-right) for hints under each panel.</li>
+        </ol>
+      </div>
+      <div class="hcard">
+        <h4>📡 Live feed</h4>
+        <p><b>Mission &amp; combat activity</b> — objectives, contracts and combat lines as they log.</p>
+        <p><b>Missions</b> — grouped by contract, outcomes shown (✅ complete / ⤺ abandon / ✖ fail).</p>
+        <p><b>Collisions</b> — ship crashes on the current build (who hit what, closing speed).</p>
+        <p class="muted">Type in the filter box to narrow the feed by keyword.</p>
+      </div>
+      <div class="hcard">
+        <h4>🔎 Analyze</h4>
+        <p>Your activity over time — heatmap, mission outcomes, types, factions, pilot stats.</p>
+        <p>Every chip/slice <b>cross-filters</b> all panels. Use the period range to scope months.</p>
+        <p class="muted">Spans backloaded history (<code>npm run backfill</code>) plus the live session.</p>
+      </div>
+      <div class="hcard">
+        <h4>🚚 Cargo route</h4>
+        <p>Active hauling contracts grouped by <b>pickup → dropoff</b>, ordered by moon/planet.</p>
+        <p><b>⟳ Route</b> recomputes; <b>auto-refresh</b> updates it as you pick up cargo.</p>
+        <p>Enter your ship <b>SCU</b> for capacity warnings. <b>⏳ carried over</b> = seen a previous session; verify it's still active.</p>
+      </div>
+      <div class="hcard">
+        <h4>💡 Good to know (honesty)</h4>
+        <ul>
+          <li><b>Kills</b> aren't logged on current builds (only ≤4.3.0) — the panel stays empty live.</li>
+          <li><b>Combat</b> is an <i>inferred</i> proxy from mission objectives, not exact kills.</li>
+          <li>Everything is <b>self-reported</b> from your own machine's log.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
 
 <main id="view-live">
   <section class="panel full">
@@ -121,6 +206,7 @@
 
   <section class="panel full">
     <h2>💀 Kills <span class="sub">— kills involving the running player (yours + your deaths). Third-party kills are not logged.</span></h2>
+    <div class="tip" style="padding:0 14px">💡 This stays empty on current game builds — CIG stopped logging kills after 4.3.0. It only fills on older (≤4.3.0) logs.</div>
     <div class="feed" id="kills"></div>
   </section>
 
@@ -179,6 +265,73 @@
   </section>
 </main>
 
+<main id="view-cargo" style="display:none">
+  <section class="panel full">
+    <h2>🚚 Cargo route
+      <span class="sub">— your active hauling contracts: pickup → dropoff, grouped by hub &amp; celestial body</span>
+      <span style="margin-left:auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <span style="display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden" title="Optimize = group by moon/planet · My order = your drag order">
+          <button class="hbtn on" id="cargo-ord-opt" style="border:0;border-radius:0;padding:4px 9px">Optimize</button>
+          <button class="hbtn" id="cargo-ord-man" style="border:0;border-radius:0;padding:4px 9px;border-left:1px solid var(--line)">My order</button>
+        </span>
+        <label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="cargo-auto"> auto-refresh</label>
+        <label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="cargo-fresh"> hide carried-over</label>
+        <label style="font-size:12px;color:var(--muted)" title="hide accepted hauls whose cargo you haven't loaded yet"><input type="checkbox" id="cargo-hideaw"> hide awaiting</label>
+        <span style="font-size:12px;color:var(--muted);display:flex;gap:5px;align-items:center">ship
+          <input type="number" id="cargo-scu" placeholder="SCU" min="1"
+            style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:72px"></span>
+        <button class="btn" id="cargo-add-btn" title="add a contract by hand (planning)">＋ Add</button>
+        <button class="btn" id="cargo-import-btn" title="OCR a contract screenshot (drag/drop or paste an image too)">📷 Import</button>
+        <button class="btn" id="cargo-route-btn">⟳ Route</button>
+      </span>
+    </h2>
+    <div class="tip" style="padding:0 14px 4px">💡 Tick a leg's box as you <b>pick it up</b>; mark a mission <b>✓ done</b> or <b>✕ abandon</b> (your marks override the log). The game only logs cargo after you physically load it — for an <b>awaiting</b> haul, hit <b>＋ add cargo</b> to type the requirement from your mobiGlas (commodity &amp; location fields autocomplete; type a new one to add it). <b>＋ Add</b> a contract by hand to plan before accepting.</div>
+    <div id="cargo-add" style="display:none;padding:8px 14px;border-bottom:1px solid var(--line);display:none">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px">
+        <input id="ca-type" placeholder="contract / type" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:150px">
+        <span class="combo"><input id="ca-pickup" placeholder="pickup (optional)" autocomplete="off" style="width:140px"></span>
+        <span class="combo"><input id="ca-dropoff" placeholder="dropoff" autocomplete="off" style="width:140px"></span>
+        <span class="combo"><input id="ca-commodity" placeholder="commodity" autocomplete="off" style="width:120px"></span>
+        <input id="ca-scu" type="number" placeholder="SCU" min="0" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;width:70px">
+        <button class="btn" id="ca-save">Add candidate</button>
+        <span class="mid">added as a planning candidate</span>
+      </div>
+    </div>
+    <input type="file" id="ocr-file" accept="image/*" style="display:none">
+    <div id="ocr-panel" style="display:none;padding:10px 14px;border-bottom:1px solid var(--line)">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--muted)">
+        📁 watch folder
+        <input id="ocr-folder" placeholder="e.g. C:\Users\you\Videos\Captures" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:280px">
+        <button class="hbtn" id="ocr-folder-save" style="padding:4px 9px">save</button>
+        <button class="hbtn" id="ocr-check" style="padding:4px 9px">🔄 Check now</button>
+        <label><input type="checkbox" id="ocr-auto"> auto-import</label>
+        <button class="hbtn" id="ocr-cal-btn" style="padding:4px 9px" title="draw a crop box over the contract panel for faster/cleaner OCR">🎯 Calibrate</button>
+        <span class="mid" id="ocr-cal-state">whole image</span>
+        <button class="hbtn" id="ocr-cloud-btn" style="padding:4px 9px;display:none" title="re-read the current image with Claude (cloud, higher accuracy — sends the image to Anthropic)">☁ Claude read</button>
+      </div>
+      <div id="ocr-cal" style="display:none;margin-bottom:8px">
+        <div class="mid" style="margin-bottom:4px">Drag the box over just the contract panel, then Save. (Load/drop a screenshot first.)</div>
+        <div id="ocr-cal-wrap" style="position:relative;display:inline-block;max-width:100%;border:1px solid var(--line)">
+          <img id="ocr-cal-img" style="display:block;max-width:600px;max-height:340px">
+          <div id="ocr-cal-box" style="position:absolute;border:2px solid var(--accent);background:rgba(59,130,246,.12);cursor:move;left:20%;top:10%;width:40%;height:70%">
+            <div id="ocr-cal-handle" style="position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;background:var(--accent);cursor:nwse-resize;border-radius:2px"></div>
+          </div>
+        </div>
+        <div style="margin-top:6px;display:flex;gap:8px"><button class="btn" id="ocr-cal-save">Save region</button><button class="hbtn" id="ocr-cal-clear" style="padding:4px 9px">use whole image</button></div>
+      </div>
+      <div id="ocr-drop" style="border:1px dashed var(--line);border-radius:8px;padding:14px;text-align:center;color:var(--muted);font-size:12.5px;cursor:pointer">
+        📷 Drag a contract screenshot here, paste (Ctrl+V), or click to choose a file.<br>
+        <span class="mid">Screenshot the mobiGlas <b>contract detail</b> (click the contract open). Runs locally in your browser — nothing is uploaded.</span>
+      </div>
+      <div id="ocr-status" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+      <div id="ocr-preview"></div>
+    </div>
+    <div id="cargo-body" style="padding:12px 14px"><div class="empty">Accept hauling contracts in-game, then hit Route (or turn on auto-refresh).</div></div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="/ocr-parse.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let last = { flagged: [], recent: [], missions: [], kills: [] };
@@ -300,6 +453,7 @@ async function poll(){
     const parts = [d.channel, s.branch, s.changelist].filter(Boolean);
     $('build').textContent = parts.join(' · ');
     $('updated').textContent = 'updated ' + shortTime(d.now);
+    $('tab-cargo').style.display = d.cargoEnabled ? '' : 'none';
     last = { flagged: d.flagged, recent: d.recent, missions: d.missions || [], kills: d.kills || [] };
     paint();
   }catch(e){
@@ -322,7 +476,440 @@ $('copyAll').addEventListener('click', ()=>{
 });
 ['filter','hideKnown'].forEach(id=>$(id).addEventListener('input',paint));
 
+// In-app help: a toggleable guide + persistent inline tips.
+$('help-btn').addEventListener('click', ()=>{ const h=$('help'); h.classList.toggle('show'); $('help-btn').classList.toggle('on', h.classList.contains('show')); });
+$('help-close').addEventListener('click', ()=>{ $('help').classList.remove('show'); $('help-btn').classList.remove('on'); });
+function setTips(on){ document.body.classList.toggle('tips', on); $('tips-toggle').checked = on; try{ localStorage.setItem('sc-tips', on?'1':'0'); }catch(e){} }
+$('tips-toggle').addEventListener('change', ()=> setTips($('tips-toggle').checked));
+try{ if(localStorage.getItem('sc-tips')==='1') setTips(true); }catch(e){}
+
+// ---- Cargo vocabulary (UEX seed ∪ learned) + custom combobox ----
+let VOCAB={commodities:[],locations:[]}, vocabLoaded=false;
+async function loadVocab(force){
+  if(vocabLoaded && !force) return VOCAB;
+  try{ VOCAB=await fetch('/services/star-citizen/cargo/vocab').then(r=>r.json()); vocabLoaded=true; }catch(e){}
+  return VOCAB;
+}
+// Add a value the picker didn't have, remember it server-side, then refresh the cache.
+async function learnVocab(kind,value){
+  try{ await cargoPost({action:'learn', kind, value}); }catch(e){}
+  await loadVocab(true);
+}
+// Rank: prefix > word-start > substring. Loose subsequence (fuzzy) matches only fill
+// in when solid matches are sparse — keeps "alum" → Aluminum clean, not noisy.
+function comboFilter(items,q){
+  const s=q.trim().toLowerCase(); if(!s) return items.slice(0,60);
+  const solid=[], fuzzy=[];
+  for(const it of items){ const n=it.name.toLowerCase();
+    if(n.startsWith(s)) solid.push([0,it]);
+    else if(n.includes(' '+s)) solid.push([1,it]);
+    else if(n.includes(s)) solid.push([2,it]);
+    else { let i=0; for(const ch of n){ if(ch===s[i]) i++; if(i===s.length) break; } if(i===s.length) fuzzy.push([3,it]); } }
+  const rank=(a,b)=>a[0]-b[0]||a[1].name.length-b[1].name.length;
+  let list=solid.sort(rank);
+  if(list.length<8) list=list.concat(fuzzy.sort(rank));   // only reach for fuzzy when needed
+  return list.slice(0,60).map(x=>x[1]);
+}
+/* Attach a custom combobox to a text input.
+   opts: { kind:'commodity'|'location', group:fn(item)->label|null, onPick:fn(item), allowAdd:bool } */
+function attachCombo(input, getItems, opts={}){
+  const wrap=input.closest('.combo'); let pop=null, hi=-1, cur=[];
+  const close=()=>{ if(pop){ pop.remove(); pop=null; hi=-1; } };
+  const commit=(name)=>{ input.value=name; if(opts.onPick) opts.onPick(name); close(); };
+  function render(){
+    const items=comboFilter(getItems(), input.value); cur=items;
+    if(!pop){ pop=document.createElement('div'); pop.className='combo-pop'; wrap.appendChild(pop);
+      pop.addEventListener('mousedown',e=>e.preventDefault()); }
+    let h='', lastGrp=null;
+    items.forEach((it,i)=>{ const g=opts.group?opts.group(it):null;
+      if(g&&g!==lastGrp){ h+=`<div class="combo-grp">${esc(g)}</div>`; lastGrp=g; }
+      const body=it.body?`<span class="co-body">${esc(it.body)}</span>`:'';
+      const ill=it.illegal?'<span class="co-ill" title="illegal cargo">⚠</span>':'';
+      h+=`<div class="combo-opt${i===hi?' hi':''}" data-i="${i}">${esc(it.name)} ${ill}${body}</div>`; });
+    const q=input.value.trim();
+    const exact=items.some(it=>it.name.toLowerCase()===q.toLowerCase());
+    if(opts.allowAdd!==false && q && !exact) h+=`<div class="combo-opt combo-add" data-add="1">＋ Add "${esc(q)}"</div>`;
+    pop.innerHTML=h||'<div class="combo-opt" style="color:var(--muted);cursor:default">no match</div>';
+    pop.querySelectorAll('[data-i]').forEach(el=>el.onclick=()=>commit(cur[+el.dataset.i].name));
+    const add=pop.querySelector('[data-add]'); if(add) add.onclick=async()=>{ const v=input.value.trim(); commit(v); if(opts.kind) await learnVocab(opts.kind,v); };
+  }
+  input.addEventListener('focus',render);
+  input.addEventListener('input',()=>{ hi=-1; render(); });
+  input.addEventListener('keydown',e=>{ if(!pop) return;
+    const n=pop.querySelectorAll('.combo-opt[data-i]').length + (pop.querySelector('[data-add]')?1:0);
+    if(e.key==='ArrowDown'){ e.preventDefault(); hi=Math.min(hi+1,n-1); paint(); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); hi=Math.max(hi-1,0); paint(); }
+    else if(e.key==='Enter'){ const add=pop.querySelector('[data-add]'); const opts2=pop.querySelectorAll('.combo-opt[data-i]');
+      if(hi>=0 && hi<opts2.length){ e.preventDefault(); commit(cur[hi].name); }
+      else if(add && hi===opts2.length){ e.preventDefault(); add.click(); } }
+    else if(e.key==='Escape'){ close(); } });
+  input.addEventListener('blur',()=>setTimeout(close,120));
+  function paint(){ if(!pop) return; pop.querySelectorAll('.combo-opt').forEach((el,i)=>el.classList.toggle('hi',i===hi));
+    const el=pop.querySelectorAll('.combo-opt')[hi]; if(el) el.scrollIntoView({block:'nearest'}); }
+}
+const commodityItems=()=>VOCAB.commodities||[];
+const locationItems=()=>VOCAB.locations||[];
+const locationGroup=(it)=>it.body||'Other';
+// small POST helper returning JSON (learn/parcels need the response; cargoAction re-routes)
+async function cargoPost(payload){ return fetch('/services/star-citizen/cargo/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json()); }
+
+function renderCargoRoute(out){
+  const el = $('cargo-body');
+  if(out && out.enabled===false){ el.innerHTML='<div class="empty">cargo router is disabled (start with SC_CARGO_ROUTER=1)</div>'; return; }
+  const s = out.summary || {};
+  const kpi = (l,v)=>`<div class="mc" style="padding:8px 12px"><div class="l">${l}</div><div class="v" style="font-size:20px">${v}</div></div>`;
+  let h = `<div class="kpis" style="padding:0 0 12px">
+      ${kpi('Pickups', s.pickups||0)}${kpi('Dropoffs', s.dropoffs||0)}${kpi('Total SCU', s.totalScu||0)}${kpi('Missions', s.missions||0)}${s.carriedOver?kpi('Carried over', s.carriedOver):''}${s.done?kpi('Done', s.done):''}</div>`;
+  // Carried-over hauls whose end-event the relay never saw can be dismissed in one click.
+  if(s.carriedOver) h += `<div style="margin:-4px 0 12px"><button class="micro no" data-act="clearStale" title="dismiss every carried-over haul at once (they move to Done, reversible)">🧹 Clear carried-over (${s.carriedOver})</button></div>`;
+  const hubs = out.hubs||[];
+  if(hubs.length){
+    h += hubs.map((hb,i)=>{
+      const legs = (hb.legs||[]).map(l=>{
+        const id=esc(l.missionId), dk=esc(l.dropKey||'m0');
+        const src = l.source==='manual' ? '<span title="added by you">✋</span>' : '<span title="from your Game.log" style="opacity:.55">📡</span>';
+        const cand = l.candidate ? '<span class="badge b-raw" style="font-size:10px;border:1px dashed var(--muted)" title="planning candidate — not accepted yet">OFFER</span>' : '';
+        const rank = l.rank ? `<span class="badge b-raw" style="font-size:10px">${esc(l.rank)}</span>` : '';
+        const rep = l.reward ? `<span class="badge b-acc" style="font-size:10px" title="reputation reward tiers">🏅 ${esc(l.reward)}</span>` : '';
+        const cargo = l.commodity!=null ? `<span class="badge b-warn">📦 ${l.scu} ${esc(l.commodity)}</span>` : '<span class="badge b-raw">📦 cargo pending</span>';
+        const dest = l.dropoff ? `<b>${esc(l.dropoff)}</b> <span class="badge ${l.stale?'b-raw':'b-good'}" style="font-size:10px">${esc(l.dropBody)}</span>` : '<span class="muted">📍 dropoff pending</span>';
+        const rm = l.source==='manual' ? `<button class="micro no" data-act="remove" data-id="${id}" title="remove">🗑</button>` : '';
+        const pin = l.pinned ? '<span title="pinned" style="cursor:pointer" data-act="pin" data-id="'+id+'">📌</span>' : '';
+        const note = l.notes ? `<span class="mid" title="${esc(l.notes)}" style="font-style:italic">📝 ${esc(l.notes).slice(0,40)}</span>` : '';
+        const yours = l.userLeg ? '<span class="badge b-raw" title="cargo you entered by hand" style="font-size:10px;border:1px dashed var(--accent);color:var(--accent)">✎ yours</span>' : '';
+        // One editor per mission: on the awaiting placeholder leg, or the first user leg.
+        const showEditor = !!l.canAddCargo || (l.userLeg && (l.dropKey==='u0'||l.dropKey==='m0'));
+        const addBtn = showEditor ? `<button class="micro" data-act="addcargo" data-id="${id}" title="type the cargo requirement from your mobiGlas">${l.userLeg?'✎ edit cargo':'＋ add cargo'}</button>` : '';
+        return `<div style="padding:8px 0 10px 14px;border-top:1px solid #20262f${l.pickedUp?';opacity:.5':''}${l.stale?';opacity:.6':''}">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <label title="picked up?" style="display:flex"><input type="checkbox" data-act="pickup" data-id="${id}" data-dk="${dk}" ${l.pickedUp?'checked':''}></label>
+            ${src}${pin}<span style="font-weight:600">${esc(l.contractType||'Hauling contract')}</span>${cand}${rank}${rep}${yours}${note}
+            <span style="margin-left:auto;display:flex;gap:4px">
+              ${addBtn}
+              <button class="micro" data-act="pin" data-id="${id}" title="pin to top">${l.pinned?'📌':'📍'}</button>
+              <button class="micro" data-act="notes" data-id="${id}" data-notes="${esc(l.notes||'')}" title="note">📝</button>
+              <button class="micro" data-act="snooze" data-id="${id}" title="snooze (hide but keep)">💤</button>
+              <button class="micro ok" data-act="status" data-id="${id}" data-status="completed" title="mark complete">✓ done</button>
+              <button class="micro no" data-act="status" data-id="${id}" data-status="abandoned" title="mark abandoned">✕</button>${l.stale?`<button class="micro no" data-act="clear" data-id="${id}" title="clear — dismiss this carried-over haul (moves to Done, reversible)">🧹</button>`:''}${rm}</span></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px;font-size:12.5px;padding-left:24px">
+            ${cargo}<span style="color:var(--muted)">→</span>${dest}${l.canAddCargo?` <button class="micro combo-add" data-act="addcargo" data-id="${id}" style="border-style:dashed" title="the game logs cargo only after you physically load it — add it now from your mobiGlas">＋ add cargo requirements</button>`:''}</div>
+          ${showEditor?`<div class="cargo-editor" id="ce-${id}" style="display:none"></div>`:''}
+          ${(l.pickups&&l.pickups.length>1)?`<div class="mid" style="padding-left:24px;margin-top:3px">📥 collect from: ${l.pickups.map(esc).join(' · ')}</div>`:''}
+        </div>`;
+      }).join('');
+      const hubTitle = hb.pickupKnown
+        ? `Pick up at <b>${esc(hb.pickup)}</b> <span class="badge ${hb.pickupBody==='Unknown'?'b-raw':'b-good'}" style="font-size:10px">${esc(hb.pickupBody)}</span>`
+        : `Deliveries <span class="mid" title="this build doesn't log the pickup for 'deliver to…' contracts — it's shown in-game">· pickup shown in-game (not in log)</span>`;
+      const firstMid = esc((hb.legs[0]||{}).missionId||'');
+      return `<div class="mission" draggable="true" data-hub-mid="${firstMid}" style="border-bottom:1px solid #20262f${hb.stale?';opacity:.78':''}${hb.pinned?';border-left:2px solid var(--accent)':''}">
+        <div class="mhead">
+          <span class="badge b-acc" title="${cargoOrder==='manual'?'drag to reorder':'switch to My order to drag'}" style="cursor:${cargoOrder==='manual'?'grab':'default'}">${hb.pinned?'📌':'📦'} ${i+1}</span>
+          <span class="mtitle">${hubTitle} <span class="mid">· ${hb.missions} mission${hb.missions===1?'':'s'}</span></span>
+          ${hb.stale?'<span class="badge b-warn" title="last confirmed a previous session — verify">⏳ carried over</span>':''}
+          ${hb.collectScu?`<span class="time">${hb.collectScu} SCU</span>`:''}</div>
+        ${legs}
+      </div>`;
+    }).join('');
+  } else {
+    h += '<div class="empty">no routable deliveries — accept hauling contracts, then hit Route</div>';
+  }
+  if((out.notes||[]).length) h += '<div style="margin-top:10px">'+out.notes.map(n=>`<div class="obj muted" style="color:var(--warn)">⚠ ${esc(n)}</div>`).join('')+'</div>';
+  if((out.done||[]).length){
+    h += `<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:8px">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)">✅ Done (${out.done.length})
+        <button class="micro no" data-act="purge" title="clear all manual marks + added contracts" style="margin-left:auto">🧹 purge board</button></div>`;
+    h += out.done.map(d=>{
+      const id=esc(d.missionId);
+      const rm = d.source==='manual'?`<button class="micro no" data-act="remove" data-id="${id}">🗑</button>`:'';
+      return `<div style="display:flex;gap:8px;align-items:center;padding:5px 0 5px 14px;opacity:.6;font-size:12.5px">
+        ${d.source==='manual'?'✋':'<span style="opacity:.55">📡</span>'}
+        <span style="text-decoration:line-through">${esc(d.contractType||'mission')}${d.dropoff?' → '+esc(d.dropoff):''}</span>
+        <span class="badge ${d.status==='completed'?'b-good':'b-raw'}" style="font-size:10px">${esc(d.status)}</span>
+        <span style="margin-left:auto;display:flex;gap:4px">
+          <button class="micro" data-act="status" data-id="${id}" data-status="" title="reactivate">↺</button>${rm}</span></div>`;
+    }).join('')+'</div>';
+  }
+  if((out.snoozed||[]).length){
+    h += `<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:8px">
+      <div style="font-size:12px;color:var(--muted)">💤 Snoozed (${out.snoozed.length})</div>`;
+    h += out.snoozed.map(d=>{
+      const id=esc(d.missionId);
+      return `<div style="display:flex;gap:8px;align-items:center;padding:5px 0 5px 14px;opacity:.6;font-size:12.5px">
+        ${d.source==='manual'?'✋':'<span style="opacity:.55">📡</span>'}
+        <span>${esc(d.contractType||'mission')}${d.dropoff?' → '+esc(d.dropoff):''}</span>
+        <button class="micro" data-act="unsnooze" data-id="${id}" title="unsnooze" style="margin-left:auto">⏰ wake</button></div>`;
+    }).join('')+'</div>';
+  }
+  el.innerHTML = h;
+  lastRoute = out;
+}
+let lastRoute=null;
+// Build the inline cargo-requirements editor (pickup + repeatable delivery rows), all
+// combobox-driven off the UEX/learned vocab. Replaces the mission's user parcels on save.
+function buildCargoEditor(id){
+  const host=document.getElementById('ce-'+id); if(!host) return;
+  const legs=(lastRoute&&lastRoute.hubs||[]).flatMap(h=>h.legs).filter(l=>l.missionId===id);
+  const userLegs=legs.filter(l=>l.userLeg);
+  const seedDropoff=(legs.find(l=>l.dropoff)||{}).dropoff||'';
+  const hub=(lastRoute&&lastRoute.hubs||[]).find(h=>h.legs.some(l=>l.missionId===id))||{};
+  const seedPickup=hub.pickupKnown?hub.pickup:'';
+  const rows = userLegs.length ? userLegs.map(l=>({commodity:l.commodity||'',scu:l.scu||'',dropoff:l.dropoff||''}))
+                               : [{commodity:'',scu:'',dropoff:seedDropoff}];
+  host.innerHTML='';
+  const wrapInput=(cls,ph,val)=>{ const c=document.createElement('span'); c.className='combo';
+    const i=document.createElement('input'); i.type='text'; i.className=cls; i.placeholder=ph; i.value=val||''; i.autocomplete='off'; c.appendChild(i); return {c,i}; };
+  // pickup line
+  const pick=document.createElement('div'); pick.className='ce-row';
+  pick.innerHTML='<span class="flab" style="min-width:44px">pickup</span>';
+  const pk=wrapInput('ce-pickup','collect at…',seedPickup); pick.appendChild(pk.c);
+  attachCombo(pk.i, locationItems, {kind:'location', group:locationGroup});
+  host.appendChild(pick);
+  const rowsBox=document.createElement('div'); host.appendChild(rowsBox);
+  const addRow=(r={})=>{ const row=document.createElement('div'); row.className='ce-row';
+    row.innerHTML='<span class="flab" style="min-width:44px">deliver</span>';
+    const com=wrapInput('ce-com','commodity',r.commodity); row.appendChild(com.c);
+    const scu=document.createElement('input'); scu.type='number'; scu.min='0'; scu.className='ce-scu'; scu.placeholder='SCU'; scu.value=r.scu||''; row.appendChild(scu);
+    const toSpan=document.createElement('span'); toSpan.textContent='→'; toSpan.style.color='var(--muted)'; row.appendChild(toSpan);
+    const drop=wrapInput('ce-drop','dropoff',r.dropoff); row.appendChild(drop.c);
+    const del=document.createElement('button'); del.className='micro no'; del.textContent='✕'; del.title='remove row'; del.onclick=()=>row.remove(); row.appendChild(del);
+    attachCombo(com.i, commodityItems, {kind:'commodity', group:it=>it.illegal?'⚠ Illegal':'Legal'});
+    attachCombo(drop.i, locationItems, {kind:'location', group:locationGroup});
+    rowsBox.appendChild(row); };
+  rows.forEach(addRow);
+  const foot=document.createElement('div'); foot.className='ce-row'; foot.style.marginTop='2px';
+  foot.innerHTML='<span class="flab" style="min-width:44px"></span>';
+  const more=document.createElement('button'); more.className='micro'; more.textContent='＋ row'; more.onclick=()=>addRow(); foot.appendChild(more);
+  const save=document.createElement('button'); save.className='micro ok'; save.textContent='✓ save'; foot.appendChild(save);
+  const cancel=document.createElement('button'); cancel.className='micro'; cancel.textContent='cancel'; cancel.onclick=()=>{ host.style.display='none'; }; foot.appendChild(cancel);
+  host.appendChild(foot);
+  save.onclick=async()=>{
+    const parcels=[...rowsBox.querySelectorAll('.ce-row')].map(row=>({
+      commodity:(row.querySelector('.ce-com')||{}).value||'',
+      scu:(row.querySelector('.ce-scu')||{}).value||0,
+      dropoff:(row.querySelector('.ce-drop')||{}).value||''
+    })).filter(p=>p.commodity||p.dropoff||p.scu);
+    await cargoPost({action:'parcels', id, parcels});
+    await cargoPost({action:'pickup-loc', id, pickup:pk.i.value||''});
+    runRoute(true);
+  };
+}
+function toggleCargoEditor(id){
+  const host=document.getElementById('ce-'+id); if(!host) return;
+  if(host.style.display!=='none' && host.childElementCount){ host.style.display='none'; return; }
+  host.style.display='block';
+  loadVocab().then(()=>buildCargoEditor(id));
+}
+async function cargoAction(payload){
+  try{ await fetch('/services/star-citizen/cargo/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); runRoute(true); }
+  catch(e){}
+}
+$('cargo-body').addEventListener('click', (e)=>{
+  const t=e.target.closest('[data-act]'); if(!t) return;
+  const a=t.dataset.act;
+  if(a==='status') cargoAction({action:'status', id:t.dataset.id, status:t.dataset.status||null});
+  else if(a==='remove') cargoAction({action:'remove', id:t.dataset.id});
+  else if(a==='clear') cargoAction({action:'clear', id:t.dataset.id});
+  else if(a==='clearStale'){ if(confirm('Clear all carried-over hauls? They move to Done (reversible with ↺).')) cargoAction({action:'clearStale'}); }
+  else if(a==='snooze') cargoAction({action:'snooze', id:t.dataset.id});
+  else if(a==='unsnooze') cargoAction({action:'snooze', id:t.dataset.id, value:false});
+  else if(a==='pin') cargoAction({action:'pin', id:t.dataset.id});
+  else if(a==='notes'){ const n=prompt('Note for this mission:', t.dataset.notes||''); if(n!==null) cargoAction({action:'notes', id:t.dataset.id, notes:n}); }
+  else if(a==='purge'){ if(confirm('Clear all your manual marks and hand-added contracts? (log-derived missions stay.)')) cargoAction({action:'purge'}); }
+  else if(a==='addcargo') toggleCargoEditor(t.dataset.id);
+});
+$('cargo-body').addEventListener('change', (e)=>{
+  if(e.target.matches('[data-act="pickup"]')) cargoAction({action:'pickup', id:e.target.dataset.id, dropKey:e.target.dataset.dk, value:e.target.checked});
+});
+// Order toggle (Optimize | My order) + hide-awaiting re-route.
+let cargoOrder='optimize';
+function setOrderMode(m){ cargoOrder=m; $('cargo-ord-opt').classList.toggle('on',m==='optimize'); $('cargo-ord-man').classList.toggle('on',m==='manual'); runRoute(); }
+$('cargo-ord-opt').addEventListener('click', ()=>setOrderMode('optimize'));
+$('cargo-ord-man').addEventListener('click', ()=>setOrderMode('manual'));
+$('cargo-hideaw').addEventListener('change', ()=>runRoute());
+// Drag-reorder (only meaningful in "My order"): reorder hub cards, POST the new mission order.
+let dragId=null;
+$('cargo-body').addEventListener('dragstart', (e)=>{ const c=e.target.closest('[data-hub-mid]'); if(c){ dragId=c.dataset.hubMid; e.dataTransfer.effectAllowed='move'; } });
+$('cargo-body').addEventListener('dragover', (e)=>{ if(dragId) e.preventDefault(); });
+$('cargo-body').addEventListener('drop', (e)=>{
+  const c=e.target.closest('[data-hub-mid]'); if(!c||!dragId||c.dataset.hubMid===dragId) return; e.preventDefault();
+  const ids=[...$('cargo-body').querySelectorAll('[data-hub-mid]')].map(x=>x.dataset.hubMid);
+  const from=ids.indexOf(dragId); ids.splice(from,1); ids.splice(ids.indexOf(c.dataset.hubMid),0,dragId);
+  if(cargoOrder!=='optimize') cargoAction({action:'order', ids}); dragId=null;
+});
+$('cargo-add-btn').addEventListener('click', ()=>{ const a=$('cargo-add'); a.style.display = a.style.display==='none'?'block':'none'; if(a.style.display!=='none') loadVocab(); });
+// Combobox-ify the hand-Add form's location/commodity fields (attach once).
+attachCombo($('ca-pickup'), locationItems, {kind:'location', group:locationGroup});
+attachCombo($('ca-dropoff'), locationItems, {kind:'location', group:locationGroup});
+attachCombo($('ca-commodity'), commodityItems, {kind:'commodity', group:it=>it.illegal?'⚠ Illegal':'Legal'});
+$('ca-save').addEventListener('click', ()=>{
+  const data={ contractType:$('ca-type').value.trim()||'Manual', pickup:$('ca-pickup').value.trim()||null, dropoff:$('ca-dropoff').value.trim()||null, commodity:$('ca-commodity').value.trim()||null, scu:parseInt($('ca-scu').value,10)||0, status:'candidate' };
+  cargoAction({action:'add', data});
+  ['ca-type','ca-pickup','ca-dropoff','ca-commodity','ca-scu'].forEach(id=>$(id).value='');
+  $('cargo-add').style.display='none';
+});
+
+// ---- OCR import (Phase 2): browser-side, fully local ----
+function ocrStatus(msg){ $('ocr-status').textContent = msg||''; }
+$('cargo-import-btn').addEventListener('click', async ()=>{
+  const p=$('ocr-panel'); p.style.display = p.style.display==='none'?'block':'none';
+  if(p.style.display!=='none'){
+    if(typeof Tesseract==='undefined') ocrStatus('⚠ OCR library did not load (offline / blocked). Try again online, or use ＋ Add.');
+    try{ const cfg=await fetch('/services/star-citizen/cargo/config').then(r=>r.json()); ocrConfig=cfg||{}; if(cfg.screensDir) $('ocr-folder').value=cfg.screensDir; $('ocr-cal-state').textContent = cfg.cropRegion?'region set ✓':'whole image'; }catch(e){}
+    try{ const st=await fetch('/services/star-citizen/cargo/ocr-status').then(r=>r.json()); $('ocr-cloud-btn').style.display = st.cloud?'':'none'; }catch(e){}
+  }
+});
+// Optional cloud (Claude) re-read of the current image.
+async function toBase64(src){ if(String(src).startsWith('data:')) return src; const b=await fetch(src).then(r=>r.blob()); return await new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(b); }); }
+$('ocr-cloud-btn').addEventListener('click', async ()=>{
+  if(!lastImgSrc){ ocrStatus('drop or choose a screenshot first.'); return; }
+  ocrStatus('☁ reading with Claude…');
+  try{ const img=await toBase64(lastImgSrc); const mime=(img.match(/^data:([^;]+)/)||[])[1]||'image/png';
+    const r=await fetch('/services/star-citizen/cargo/ocr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:img,mime})}).then(x=>x.json());
+    if(r.contract){ ocrStatus('☁ Claude read — check & confirm:'); showOcrPreview(r.contract); }
+    else ocrStatus('Claude returned no contract'+(r.error?': '+esc(r.error):'')); }
+  catch(e){ ocrStatus('Claude OCR failed: '+e.message); }
+});
+// Auto-import poll: every 8s check the watch folder while the toggle is on and the tab is open.
+let ocrTimer=setInterval(()=>{ if($('ocr-auto')&&$('ocr-auto').checked && $('view-cargo').style.display!=='none' && !checking) checkScreens(); }, 8000);
+$('ocr-drop').addEventListener('click', ()=>$('ocr-file').click());
+$('ocr-file').addEventListener('change', (e)=>{ if(e.target.files[0]) readImage(e.target.files[0]); });
+$('ocr-drop').addEventListener('dragover', (e)=>{ e.preventDefault(); $('ocr-drop').style.borderColor='var(--accent)'; });
+$('ocr-drop').addEventListener('dragleave', ()=>{ $('ocr-drop').style.borderColor='var(--line)'; });
+$('ocr-drop').addEventListener('drop', (e)=>{ e.preventDefault(); $('ocr-drop').style.borderColor='var(--line)'; const f=[...e.dataTransfer.files].find(x=>x.type.startsWith('image/')); if(f) readImage(f); });
+document.addEventListener('paste', (e)=>{ if($('view-cargo').style.display==='none') return; const it=[...(e.clipboardData||{}).items||[]].find(x=>x.type.startsWith('image/')); if(it){ readImage(it.getAsFile()); $('ocr-panel').style.display='block'; } });
+function readImage(file){ const r=new FileReader(); r.onload=()=>runOCR(r.result); r.readAsDataURL(file); }
+function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error('image load failed')); i.src=src; }); }
+// Core: image source -> parsed contract (all local; optional crop + canvas preprocess + tesseract).
+let ocrConfig={}, lastImgSrc=null;
+async function ocrToContract(src, prog){
+  if(typeof Tesseract==='undefined') throw new Error('OCR library unavailable (offline?)');
+  lastImgSrc=src;
+  const img=await loadImg(src);
+  let sx=0,sy=0,sw=img.width,sh=img.height; const cr=ocrConfig.cropRegion;
+  if(cr&&cr.w>0&&cr.h>0){ sx=cr.x*img.width; sy=cr.y*img.height; sw=cr.w*img.width; sh=cr.h*img.height; }
+  const maxW=2800, scale=sw>maxW?maxW/sw:1;
+  const cv=document.createElement('canvas'); cv.width=Math.round(sw*scale); cv.height=Math.round(sh*scale);
+  const cx=cv.getContext('2d'); cx.drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height);
+  try{ const d=cx.getImageData(0,0,cv.width,cv.height); const p=d.data; for(let i=0;i<p.length;i+=4){ const g=(p[i]*0.3+p[i+1]*0.59+p[i+2]*0.11); p[i]=p[i+1]=p[i+2]=g; } cx.putImageData(d,0,0); }catch(_){}
+  const { data } = await Tesseract.recognize(cv,'eng',{ logger:m=>{ if(prog&&m.status==='recognizing text') prog(m.progress); } });
+  return window.parseContractText(data.text);
+}
+async function runOCR(src){   // manual path: preview-confirm
+  ocrStatus('reading text… (a few seconds, all local)'); $('ocr-preview').innerHTML='';
+  try{
+    const c=await ocrToContract(src, pr=>ocrStatus('reading… '+Math.round(pr*100)+'%'));
+    if(!c.isContract){ ocrStatus('⚠ that image doesn\'t look like a contract screen — screenshot the contract detail view.'); return; }
+    ocrStatus('✓ read at '+c.confidence+' confidence — check & confirm:'); showOcrPreview(c);
+  }catch(e){ ocrStatus('OCR failed: '+e.message); }
+}
+function importData(c){ return { source:'ocr', status:c.suggestedStatus||'candidate', contractType:c.contractType, pickup:c.pickup, pickups:c.pickups, dropoff:c.dropoff, reward:c.reward, deliveries:c.deliveries, title:c.title }; }
+// ---- Folder watch: server lists files, browser OCRs each ----
+$('ocr-folder-save').addEventListener('click', async ()=>{ await cargoAction({action:'config', screensDir:$('ocr-folder').value.trim()}); ocrStatus('folder saved.'); });
+$('ocr-check').addEventListener('click', ()=>checkScreens());
+$('ocr-auto').addEventListener('change', ()=>{ if($('ocr-auto').checked) checkScreens(); });
+let checking=false;
+async function checkScreens(){
+  if(checking) return; checking=true;
+  try{
+    const s=await fetch('/services/star-citizen/route').then(()=>fetch('/services/star-citizen/cargo/screens')).then(r=>r.json());
+    if(s.error){ ocrStatus('folder error: '+s.error); checking=false; return; }
+    const files=s.files||[]; if(!files.length){ ocrStatus('no new screenshots.'); checking=false; return; }
+    let added=0, merged=0, review=0;
+    for(const f of files){
+      ocrStatus('processing '+f.name+' …');
+      try{
+        const c=await ocrToContract('/services/star-citizen/cargo/screen/'+encodeURIComponent(f.name));
+        if(c.isContract && c.confidence==='high'){ const res=await postImport(importData(c)); res&&res.merged?merged++:added++; }
+        else if(c.isContract){ reviewQueue.push(c); review++; }
+      }catch(e){}
+      await cargoAction({action:'processed', mtime:f.mtime});   // advance the mark regardless
+    }
+    runRoute(true);
+    ocrStatus(`✓ ${added} imported, ${merged} merged${review?', '+review+' need review below':''}.`);
+    if(reviewQueue.length) renderReview();
+  }catch(e){ ocrStatus('check failed: '+e.message); }
+  checking=false;
+}
+async function postImport(data){ try{ return await fetch('/services/star-citizen/cargo/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'import',data})}).then(r=>r.json()); }catch(e){ return null; } }
+// Review tray: low/medium-confidence auto-imports await a confirm.
+let reviewQueue=[];
+function renderReview(){
+  if(!reviewQueue.length){ $('ocr-preview').innerHTML=''; return; }
+  const c=reviewQueue[0];
+  $('ocr-preview').innerHTML='<div class="mid" style="margin:6px 0">🔎 Needs review ('+reviewQueue.length+') — '+esc(c.confidence)+' confidence:</div>';
+  showOcrPreview(c, true);
+}
+// ---- Calibration: draw a crop box over the contract panel (fractions saved) ----
+$('ocr-cal-btn').addEventListener('click', ()=>{
+  const cal=$('ocr-cal'); if(cal.style.display!=='none'){ cal.style.display='none'; return; }
+  if(!lastImgSrc){ ocrStatus('drop or choose a screenshot first, then Calibrate.'); return; }
+  cal.style.display='block'; $('ocr-cal-img').src=lastImgSrc;
+  const cr=ocrConfig.cropRegion, box=$('ocr-cal-box');
+  if(cr){ box.style.left=(cr.x*100)+'%'; box.style.top=(cr.y*100)+'%'; box.style.width=(cr.w*100)+'%'; box.style.height=(cr.h*100)+'%'; }
+});
+(function calDrag(){
+  const box=$('ocr-cal-box'), wrap=$('ocr-cal-wrap'), handle=$('ocr-cal-handle');
+  let mode=null, sx, sy, ox, oy, ow, oh;
+  const wr=()=>wrap.getBoundingClientRect();
+  box.addEventListener('mousedown',(e)=>{ if(e.target===handle) return; mode='move'; const r=box.getBoundingClientRect(), w=wr(); sx=e.clientX; sy=e.clientY; ox=r.left-w.left; oy=r.top-w.top; e.preventDefault(); });
+  handle.addEventListener('mousedown',(e)=>{ mode='resize'; const r=box.getBoundingClientRect(); sx=e.clientX; sy=e.clientY; ow=r.width; oh=r.height; e.stopPropagation(); e.preventDefault(); });
+  document.addEventListener('mousemove',(e)=>{ if(!mode) return; const w=wr();
+    if(mode==='move'){ let nx=ox+(e.clientX-sx), ny=oy+(e.clientY-sy); nx=Math.max(0,Math.min(nx,w.width-box.offsetWidth)); ny=Math.max(0,Math.min(ny,w.height-box.offsetHeight)); box.style.left=(nx/w.width*100)+'%'; box.style.top=(ny/w.height*100)+'%'; }
+    else { let nw=ow+(e.clientX-sx), nh=oh+(e.clientY-sy); nw=Math.max(30,Math.min(nw,w.width-box.offsetLeft)); nh=Math.max(30,Math.min(nh,w.height-box.offsetTop)); box.style.width=(nw/w.width*100)+'%'; box.style.height=(nh/w.height*100)+'%'; } });
+  document.addEventListener('mouseup',()=>{ mode=null; });
+})();
+$('ocr-cal-save').addEventListener('click', async ()=>{
+  const w=$('ocr-cal-wrap').getBoundingClientRect(), b=$('ocr-cal-box').getBoundingClientRect();
+  const region={ x:(b.left-w.left)/w.width, y:(b.top-w.top)/w.height, w:b.width/w.width, h:b.height/w.height };
+  await cargoAction({action:'crop', region}); ocrConfig.cropRegion=region; $('ocr-cal-state').textContent='region set ✓'; $('ocr-cal').style.display='none'; ocrStatus('crop region saved — future imports read just that box.');
+});
+$('ocr-cal-clear').addEventListener('click', async ()=>{ await cargoAction({action:'crop', region:null}); ocrConfig.cropRegion=null; $('ocr-cal-state').textContent='whole image'; $('ocr-cal').style.display='none'; ocrStatus('using the whole image.'); });
+function showOcrPreview(c, review){
+  const fld=(id,label,val)=>`<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)">${label}<input id="${id}" value="${esc(val||'')}" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:4px 7px;font-size:12px;width:150px"></label>`;
+  const legs = (c.deliveries||[]).map((d,i)=>`<div class="mid" style="padding-left:8px">📦 ${d.scu} ${esc(d.commodity)} → ${esc(d.dropoff)}</div>`).join('') || '<div class="mid" style="padding-left:8px">no delivery lines read</div>';
+  const pk = (c.pickups||[]).map(p=>p.from||p).filter(Boolean);
+  const pkLine = pk.length ? `<div class="mid" style="padding-left:8px">📥 collect from: ${pk.map(esc).join(' · ')}</div>` : '';
+  $('ocr-preview').innerHTML = `<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:8px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      ${fld('op-type','type',c.contractType)}${fld('op-pickup','pickup',c.pickup)}${fld('op-dropoff','dropoff',c.dropoff)}${fld('op-reward','reward',c.reward)}</div>
+    ${pkLine}${legs}
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+      <button class="btn" id="op-confirm">✓ Add to board</button>
+      <button class="hbtn" id="op-cancel" style="padding:4px 10px">cancel</button>
+      <span class="mid">imported as a planning candidate (📷) — edit any field above first</span></div>
+  </div>`;
+  $('op-confirm').onclick=async ()=>{
+    const data={ source:'ocr', status:c.suggestedStatus||'candidate', contractType:$('op-type').value.trim()||'Hauling contract',
+      pickup:$('op-pickup').value.trim()||null, pickups:c.pickups, dropoff:$('op-dropoff').value.trim()||null, reward:$('op-reward').value.trim()||null,
+      deliveries:c.deliveries, title:c.title };
+    let res=null; try{ res=await fetch('/services/star-citizen/cargo/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'import',data})}).then(r=>r.json()); }catch(e){}
+    runRoute(true); $('ocr-preview').innerHTML='';
+    const label=(data.contractType||'contract')+(data.dropoff?' → '+data.dropoff:'');
+    if(res&&res.merged){ $('ocr-status').innerHTML='📷 Updated <b>'+esc(label)+'</b> — merged into an existing contract (no duplicate).'; }
+    else if(res&&res.id){ $('ocr-status').innerHTML='📷 Imported <b>'+esc(label)+'</b> as a candidate. <button class="hbtn" id="ocr-undo" style="padding:2px 8px">Undo</button>';
+      $('ocr-undo').onclick=()=>{ cargoAction({action:'remove', id:res.id}); ocrStatus('undone.'); }; }
+    else ocrStatus('added.');
+    if(review){ reviewQueue.shift(); renderReview(); }
+  };
+  $('op-cancel').onclick=()=>{ if(review){ reviewQueue.shift(); renderReview(); } else { $('ocr-preview').innerHTML=''; ocrStatus(''); } };
+}
+async function runRoute(silent){
+  const btn=$('cargo-route-btn'); if(!silent) btn.textContent='…routing';
+  try{
+    const scu = parseInt($('cargo-scu').value,10);
+    const qs = [scu?('scu='+scu):'', $('cargo-fresh').checked?'fresh=1':'', $('cargo-hideaw').checked?'hideawaiting=1':'', cargoOrder==='manual'?'order=manual':''].filter(Boolean).join('&');
+    const r = await fetch('/services/star-citizen/route'+(qs?('?'+qs):''));
+    renderCargoRoute(await r.json());
+  }catch(e){ if(!silent) $('cargo-body').innerHTML='<div class="empty">route request failed</div>'; }
+  btn.textContent='⟳ Route';
+}
+$('cargo-route-btn').addEventListener('click', ()=>runRoute());
+$('cargo-fresh').addEventListener('change', ()=>runRoute());
+$('cargo-auto').addEventListener('change', ()=>{ if($('cargo-auto').checked) runRoute(); });
+
 let timer=setInterval(()=>{ if($('auto').checked) poll(); }, 2000);
+// Cargo auto-refresh: re-route every 3s while the toggle is on and the tab is open.
+let cargoTimer=setInterval(()=>{ if($('cargo-auto').checked && $('view-cargo').style.display!=='none') runRoute(true); }, 3000);
 poll();
 
 (function(){
@@ -515,13 +1102,17 @@ poll();
   function show(v){
     g('view-live').style.display=v==='live'?'':'none';
     g('view-analyze').style.display=v==='analyze'?'':'none';
+    g('view-cargo').style.display=v==='cargo'?'':'none';
     g('live-filter').style.display=v==='live'?'':'none';
     g('tab-live').classList.toggle('on',v==='live');
     g('tab-analyze').classList.toggle('on',v==='analyze');
+    g('tab-cargo').classList.toggle('on',v==='cargo');
     if(v==='analyze' && !D) fetchA();
+    if(v==='cargo'){ runRoute(); loadVocab(); }
   }
   g('tab-live').addEventListener('click',()=>show('live'));
   g('tab-analyze').addEventListener('click',()=>show('analyze'));
+  g('tab-cargo').addEventListener('click',()=>show('cargo'));
   const tog=(key,v)=>{ if(!S[key])S[key]=new Set(); if(S[key].has(v))S[key].delete(v); else S[key].add(v); if(!S[key].size)S[key]=null; };
   g('view-analyze').addEventListener('click',(e)=>{
     const t=e.target.closest('[data-all],[data-multi],[data-clear],[data-reset],[data-oc],[data-ty],[data-fac],[data-pl],[data-ym],[data-allmonths],[data-nomonths]'); if(!t)return;
