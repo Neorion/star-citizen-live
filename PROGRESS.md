@@ -10,6 +10,36 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 👥 Crew/party tracking — PlayerJoined + player_id directory ✅
+**Date:** 2026-08-28 · branch `feature/crew-party`
+
+Shipped the crew/party idea (evidence-counted at 165 real corpus files on a sweep
+done on `feature/cargo-router`'s not-yet-merged `BACKLOG.md`; flagged there as
+*"Strategic — directly feeds the M4 org-wide convergence model"*), per
+`DESIGN-event-convergence.md`'s existing shape: group by shared `mission_id` across
+sources. New VERIFIED parser
+rule `mission:crew` reads the log's one genuine cross-player line — `<PlayerJoined>
+... mission_id <guid> - player_id <num>` — which carries a numeric id only, no
+handle. Resolved via a `{ playerId -> handle }` directory built from `mission:end`'s
+`Player[]`/`PlayerId[]` pairing (the one place the log ties a handle to that same
+numeric id, always for the running player). `scripts/backfill.js` now aggregates
+this directory **org-wide**, across every pilot's log in the corpus — so a
+teammate's crew sighting resolves to a real name once *they've* ever backloaded or
+run the relay, even if you've never seen their own `mission:end` yourself. An
+unresolved id falls back to an honest `Pilot #<last4>` tag, never a guess.
+
+`missionGroups` now carries a resolved `crew` array per mission; the dashboard
+mission cards show a "👥 with …" line. Verified against the real DeadMan corpus
+(25 Mar 2026 log): 22 missions, 15 with real crew data, confirmed both via the live
+`/services/star-citizen/missiongroups` API and the rendered UI chips. 8 new tests
+(parser + service + backfill + a corpus sanity check), full suite 64/64 green.
+
+Scope note: this ships the whole relay-side vertical slice (parse → fold → resolve
+→ REST + UI). Feeding crew into the Analyze/analytics dataset is a natural,
+separable follow-up — not built here.
+
+---
+
 ## 🔎 Sourced issuer→type fallback — type-"Other" 45% → 14% ✅
 **Date:** 2026-06-19 · branch `feature/faction-dimension`
 
