@@ -53,7 +53,7 @@ function findLogs (dir) {
 }
 
 function newAcc () {
-  return { missions: [], deaths: [], sessions: [], heat: {}, players: new Set(), files: 0, lines: 0 };
+  return { missions: [], deaths: [], sessions: [], heat: {}, players: new Set(), crew: [], playerDirectory: {}, files: 0, lines: 0 };
 }
 
 function processFile (file, acc) {
@@ -83,6 +83,13 @@ function processFile (file, acc) {
           player: ev.player || handle || 'unknown',
           ts: ev.timestamp
         });
+        // mission:end also ties this pilot's own numeric player_id to their handle -
+        // the pairing that lets a teammate's PlayerJoined sighting (in ANY pilot's
+        // log) resolve to a real name once the org's logs are backfilled together.
+        if (ev.player && ev.playerId && !acc.playerDirectory[ev.playerId]) acc.playerDirectory[ev.playerId] = ev.player;
+      }
+      if (ev.kind === 'mission:crew') {
+        acc.crew.push({ missionId: ev.missionId, playerId: ev.playerId, ts: ev.timestamp });
       }
     });
     rl.on('close', () => {
@@ -111,6 +118,8 @@ function toStore (acc, generatedAt) {
     sessions: acc.sessions,
     heat: acc.heat,
     players: [...acc.players],
+    crew: acc.crew,
+    playerDirectory: acc.playerDirectory,
     meta: { files: acc.files, lines: acc.lines, generatedAt }
   };
 }
@@ -125,7 +134,7 @@ async function main () {
   console.log(`Found ${files.length} log files. Parsing…`);
 
   const acc = await ingestFiles(files, (done, total, a) => {
-    console.log(`  ${done}/${total} files · ${a.missions.length} missions · ${a.deaths.length} deaths · ${a.players.size} pilots`);
+    console.log(`  ${done}/${total} files · ${a.missions.length} missions · ${a.deaths.length} deaths · ${a.players.size} pilots · ${a.crew.length} crew sightings`);
   });
 
   fs.mkdirSync(path.dirname(STORE), { recursive: true });
@@ -133,6 +142,7 @@ async function main () {
   console.log(`\nWrote ${STORE}`);
   console.log(`  ${acc.files} files · ${acc.lines.toLocaleString()} lines`);
   console.log(`  ${acc.missions.length} ended missions · ${acc.deaths.length} deaths · ${acc.sessions.length} sessions`);
+  console.log(`  ${acc.crew.length} crew sightings · ${Object.keys(acc.playerDirectory).length} pilots resolvable by player_id`);
   console.log(`  pilots: ${[...acc.players].join(', ') || '(none)'}`);
 }
 

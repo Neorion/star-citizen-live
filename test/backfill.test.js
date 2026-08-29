@@ -20,3 +20,19 @@ test('backfill ingests a log into compact aggregates (missions, deaths, heat, pi
   assert.ok(Array.isArray(store.players) && store.players.includes('Kersa'));
   assert.strictEqual(store.meta.generatedAt, '2026-06-18T00:00:00.000Z');
 });
+
+test('backfill also aggregates crew sightings + a player_id -> handle directory', async () => {
+  const acc = await ingestFiles([path.join(__dirname, 'fixtures', 'sample-missions.log')]);
+
+  // The fixture's 3 EndMission lines all pair PlayerId[204821711285] with Kersa.
+  assert.strictEqual(acc.playerDirectory['204821711285'], 'Kersa');
+  // One PlayerJoined line, for a teammate this file never resolves a handle for.
+  assert.strictEqual(acc.crew.length, 1);
+  assert.strictEqual(acc.crew[0].missionId, 'aaaa1111-d438-4996-9755-1c3fc9532e85');
+  assert.strictEqual(acc.crew[0].playerId, '999999999999');
+  assert.strictEqual(acc.playerDirectory['999999999999'], undefined, 'no mission:end seen for this id in this file');
+
+  const store = toStore(acc, '2026-06-18T00:00:00.000Z');
+  assert.deepStrictEqual(store.crew, acc.crew);
+  assert.strictEqual(store.playerDirectory['204821711285'], 'Kersa');
+});

@@ -46,7 +46,7 @@ test('replay corpus parses real logs without crashing', { skip: sample.length ==
     assert.ok(n > 0, `parsed >0 lines from ${path.basename(f)}`);
     assert.ok(s.logs.length > 0, 'recorded log entries');
     // collection sizes are non-negative and bounded by lines (no runaway)
-    for (const coll of [s.players, s.missionGroups, s.incaps, s.notifications, s.combatlog]) {
+    for (const coll of [s.players, s.missionGroups, s.incaps, s.notifications, s.combatlog, s.crew]) {
       assert.ok(Array.isArray(coll) && coll.length <= n, `sane collection size for ${path.basename(f)}`);
     }
     // audit chain (if any mission activity) stays intact

@@ -90,6 +90,43 @@ test('mission marker attaches generator + type to the grouped mission', () => {
   assert.strictEqual(m.type, 'Bounty');
 });
 
+test('mission:crew (PlayerJoined) is stored raw and folded into the mission group crew list', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  let emitted = null;
+  s.on('mission:crew', (c) => { emitted = c; });
+  s.handleLogChange('<2026-03-26T03:57:08.915Z> [Notice] <PlayerJoined> Received PlayerJoined push message for: mission_id 82be0365-268b-477b-b905-12b7b8538640 - player_id 3659022222646 [Team_GameServices][Missions]');
+  assert.strictEqual(s.crew.length, 1);
+  assert.strictEqual(emitted.playerId, '3659022222646');
+  const m = s.missionGroups.find((x) => x.id === '82be0365-268b-477b-b905-12b7b8538640');
+  assert.ok(m, 'a mission group was created from the crew sighting alone');
+  assert.strictEqual(m.crew.length, 1);
+  assert.strictEqual(m.crew[0].playerId, '3659022222646');
+  assert.strictEqual(m.crew[0].handle, null, 'unresolved - no mission:end has been seen for this id yet');
+  assert.strictEqual(m.crew[0].display, 'Pilot #2646', 'honest anonymous fallback, not invented');
+});
+
+test('mission:end resolves a teammate\'s crew sighting once the directory learns their handle', () => {
+  const s = new StarCitizenService({ discord: { enable: false } });
+  // A crew sighting arrives with no known handle for this player_id yet.
+  s.handleLogChange('<2026-03-26T03:57:08.915Z> [Notice] <PlayerJoined> Received PlayerJoined push message for: mission_id 82be0365-268b-477b-b905-12b7b8538640 - player_id 1275581349492 [Team_GameServices][Missions]');
+  let unresolved = s.missionGroups.find((x) => x.id === '82be0365-268b-477b-b905-12b7b8538640');
+  assert.strictEqual(unresolved.crew[0].handle, null);
+  // The relay's OWN mission:end later ties that same player_id to a handle (e.g.
+  // backfilled from that teammate's own relay/log, or seen live if they are the
+  // local player on a different mission) - the directory grows and re-resolves.
+  s.handleLogChange('<2026-03-26T04:13:52.211Z> [Notice] <EndMission> Ending mission for player. MissionId[b62f98be-1889-4606-bc7a-283de2d2654c] Player[DeadMan1227] PlayerId[1275581349492] CompletionType[Abandon] Reason[Mission Ended] [Team_MissionFeatures][Missions]');
+  const resolved = s.missionGroups.find((x) => x.id === '82be0365-268b-477b-b905-12b7b8538640');
+  assert.strictEqual(resolved.crew[0].handle, 'DeadMan1227');
+  assert.strictEqual(resolved.crew[0].display, 'DeadMan1227');
+});
+
+test('a seeded org-wide player directory (from backfill) resolves crew immediately, no local mission:end needed', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: require('node:path').join(__dirname, 'fixtures', 'history-with-directory.json') });
+  s.handleLogChange('<2026-03-26T03:57:08.915Z> [Notice] <PlayerJoined> Received PlayerJoined push message for: mission_id 82be0365-268b-477b-b905-12b7b8538640 - player_id 1275581349492 [Team_GameServices][Missions]');
+  const m = s.missionGroups.find((x) => x.id === '82be0365-268b-477b-b905-12b7b8538640');
+  assert.strictEqual(m.crew[0].handle, 'DeadMan1227');
+});
+
 test('combat objectives are tracked as combat progress (proxy for kills)', () => {
   const s = new StarCitizenService({ discord: { enable: false } });
   let progressed = 0;

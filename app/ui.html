@@ -254,6 +254,9 @@ function renderMissions(el, missions){
     const objs = (m.objectives||[]).map(o=>`<div class="obj">${o.combat ? '⚔️' : '•'} ${esc(o.text || o.id)}</div>`).join('');
     const st = MISSION_STATUS[m.status];
     const statusHTML = st ? `<span class="badge ${st[0]}">${st[1]}</span>` : '';
+    // Crew: other players who joined this mission (resolved to a handle where the
+    // relay has seen it via mission:end, org-wide once backfilled; else anonymous).
+    const crewHTML = (m.crew && m.crew.length) ? `<div class="obj muted">👥 with ${m.crew.map(c=>esc(c.display)).join(', ')}</div>` : '';
     return `<div class="mission">
       <div class="mhead"><span class="badge b-good">${esc(m.type || 'mission')}</span>
         ${statusHTML}
@@ -261,6 +264,7 @@ function renderMissions(el, missions){
         <span class="time">${shortTime(m.endedAt || m.lastSeen)}</span></div>
       <div class="mid">${esc(m.id)}</div>
       ${objs || '<div class="obj muted">(no objectives yet)</div>'}
+      ${crewHTML}
     </div>`;
   }).join('');
 }

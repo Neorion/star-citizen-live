@@ -20,7 +20,7 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const readline = require('readline');
 
-const { parseLine, shipName, parseSessionInfo, missionType, isNPC, missionFaction } = require('./parser');
+const { parseLine, shipName, parseSessionInfo, missionType, isNPC, missionFaction, resolvePlayerId } = require('./parser');
 const { resolveLogFile, channelFromPath } = require('./locate');
 
 // Lines worth surfacing in the monitor - combat/death hints AND mission/objective
@@ -49,7 +49,7 @@ class StarCitizenService extends EventEmitter {
     }, settings);
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false }, settings.discord || {});
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, notifications: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, crew: {}, notifications: {}, logs: {}, startedAt: null };
     this.state.missionGroups = {};  // missions grouped by MissionId (built from the log)
     this.state.objectives = {};     // objective details keyed by ObjectiveId
     this.state.combatlog = {};      // combat progress inferred from mission objectives
@@ -75,13 +75,17 @@ class StarCitizenService extends EventEmitter {
       ? new MissionManager(this.settings.missions) : null;
 
     this.history = this._loadHistory();   // compact backfill of past logs (Analyze tab)
+    // Numeric player_id -> handle, seeded from any prior org-wide backfill and grown
+    // live from this relay's own mission:end pairing. Lets a mission:crew (PlayerJoined)
+    // sighting of a teammate resolve to their real name (see parser.js buildPlayerDirectory).
+    this._playerDirectory = Object.assign({}, this.history.playerDirectory || {});
 
     if (this.settings.discord.enable) this._wireDiscord();
   }
 
   // Load the backfilled history aggregate (built by `npm run backfill`), if present.
   _loadHistory () {
-    const empty = { missions: [], deaths: [], sessions: [], heat: {}, players: [], meta: {} };
+    const empty = { missions: [], deaths: [], sessions: [], heat: {}, players: [], crew: [], playerDirectory: {}, meta: {} };
     try {
       const f = this.settings.historyFile || require('path').join(__dirname, '..', 'stores', 'history.json');
       if (fs.existsSync(f)) return Object.assign(empty, JSON.parse(fs.readFileSync(f, 'utf8')));
@@ -137,6 +141,7 @@ class StarCitizenService extends EventEmitter {
   get incaps () { return Object.values(this.state.incaps); }              // player down (revivable) events
   get deaths () { return Object.values(this.state.deaths); }              // local-player deaths (corpse-recovery signal)
   get missionlog () { return Object.values(this.state.missionlog); }
+  get crew () { return Object.values(this.state.crew); }                    // raw PlayerJoined sightings
   get notifications () { return Object.values(this.state.notifications); }  // general HUD/zone notices
   get combatlog () { return Object.values(this.state.combatlog); }          // combat progress via mission objectives
 
@@ -148,10 +153,16 @@ class StarCitizenService extends EventEmitter {
       // Lifecycle status: an explicit outcome (Complete/Abandon/Fail/Deactivate) once
       // ended, else 'Active' if we saw it start, else null (seen only via objectives).
       const status = m.outcome || (m.startedAt ? 'Active' : null);
+      // Crew: distinct player_ids seen joining this mission, resolved against the
+      // running directory (this relay's own pairings + any org-wide backfill).
+      // Unresolved ids get an honest anonymous fallback, not a guess.
+      const crew = Object.keys(m.crewIds || {}).map((pid) => ({
+        playerId: pid, handle: this._playerDirectory[pid] || null, display: resolvePlayerId(this._playerDirectory, pid)
+      }));
       return { id: m.id, title: last ? last.text : null, generator: m.generator || null, type: missionType(m.generator),
         firstSeen: m.firstSeen, lastSeen: m.lastSeen,
         startedAt: m.startedAt || null, endedAt: m.endedAt || null, outcome: m.outcome || null, reason: m.reason || null,
-        status, contractId: m.contractId || null, player: m.player || null,
+        status, contractId: m.contractId || null, player: m.player || null, crew,
         objectives, notifications: m.notifications };
     });
   }
@@ -221,7 +232,7 @@ class StarCitizenService extends EventEmitter {
           counts: {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
             vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length, deaths: this.deaths.length,
-            missionlog: this.missionlog.length, missions: this.missionGroups.length, notifications: this.notifications.length,
+            missionlog: this.missionlog.length, missions: this.missionGroups.length, crew: this.crew.length, notifications: this.notifications.length,
             combat: this.combatlog.length,
             logs: this.logs.length, flagged: this.flagged.length
           },
@@ -238,11 +249,11 @@ class StarCitizenService extends EventEmitter {
           logs: this.logs.length, missions: this.missions.length
         }});
       }
-      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, notifications: () => this.notifications, messages: () => this.logs };
+      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, crew: () => this.crew, notifications: () => this.notifications, messages: () => this.logs };
       for (const [name, getter] of Object.entries(collections)) {
         if (path === `${base}/${name}`) {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
-          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths') {
+          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths' && name !== 'crew') {
             const data = await body();
             // Players dedupe by handle (distinct roster) rather than per-event.
             if (name === 'players' && data.name) {
@@ -387,9 +398,25 @@ class StarCitizenService extends EventEmitter {
           contract: ev.contract, generator: ev.generator, text: ev.text, objectiveId: ev.objectiveId, missionId: ev.missionId,
           contractId: ev.contractId, completionType: ev.completionType, reason: ev.reason, player: ev.player };
         this.state.missionlog[id] = me;
+        // mission:end is the log's one line that ties a numeric player_id to a real
+        // handle (always the running player's own). Grow the directory with it, so
+        // mission:crew (PlayerJoined) sightings of this same id later resolve to a name.
+        if (ev.kind === 'mission:end' && ev.player && ev.playerId && !this._playerDirectory[ev.playerId]) {
+          this._playerDirectory[ev.playerId] = ev.player;
+        }
         this._indexMission(ev);
         this.emit(ev.kind, me);
         this.emit('mission:event', me);
+        break;
+      }
+      case 'mission:crew': {
+        // Another player joined the same mission (crew/party). Numeric player_id
+        // only; display name is resolved lazily from _playerDirectory wherever the
+        // mission is read (missionGroups), since the directory can still grow later.
+        const c = { id, missionId: ev.missionId, playerId: ev.playerId, timestamp: ev.timestamp };
+        this.state.crew[id] = c;
+        this._indexMission(ev);
+        this.emit('mission:crew', c);
         break;
       }
       case 'hud:notification': {
@@ -448,6 +475,10 @@ class StarCitizenService extends EventEmitter {
         if (m.notifications.length > 100) m.notifications.shift();
       }
       if (ev.objectiveId) m.objectiveIds[ev.objectiveId] = true;
+      if (ev.kind === 'mission:crew' && ev.playerId) {
+        m.crewIds = m.crewIds || {};
+        m.crewIds[ev.playerId] = true;
+      }
     }
 
     // Combat progress proxy: a mission objective whose text implies combat. This

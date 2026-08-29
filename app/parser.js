@@ -129,6 +129,18 @@ const RULES = [
     test: /Added notification "([^"]*)"/,
     fields: (m) => ({ text: m[1] })
   },
+  {
+    // Another player joined the SAME mission as the running player - the log's one
+    // genuine cross-player signal (crew/party on a shared contract). Carries only a
+    // numeric player_id, no handle; resolved later via the mission:end Player[]/
+    // PlayerId[] pairing this relay (or an org-mate's own relay/backfill) has seen.
+    // VERIFIED on real logs (DeadMan 4.7.x corpus, Mar 2026) - e.g. mission_id
+    // b62f98be-1889-4606-bc7a-283de2d2654c also appears in that same file's own
+    // EndMission line, cross-confirming the id space.
+    kind: 'mission:crew', tag: 'PlayerJoined',
+    test: /mission_id\s+([0-9a-fA-F-]+)\s*-\s*player_id\s+(\d+)/,
+    fields: (m) => ({ missionId: m[1], playerId: m[2] })
+  },
 
   // --- CLIENT-INVOLVED COMBAT (parser format VERIFIED on real logs; but see VERSION
   // CAVEAT). The client Game.log records <Actor Death> CActor::Kill and <Vehicle
@@ -294,4 +306,31 @@ function missionFaction (name) {
   return pretty || 'Unknown';
 }
 
-module.exports = { parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS, missionType, MISSION_TYPES, FACTION_TYPES, missionFaction };
+// --- Crew/party directory [derived from mission:end's Player[handle] PlayerId[num]
+// pairing - the ONE place the log ties a numeric player_id to a real handle, and
+// only for the relay's own local player. Aggregating this pairing across an org's
+// members (each relay/backfill contributes its own pairing) lets a mission:crew
+// (PlayerJoined) sighting of a teammate's player_id resolve to their name. An id
+// with no known pairing (not an org member, or one who hasn't run the relay/
+// backloaded yet) falls back to a short anonymous tag - never invented. ---
+
+// Build a { playerId -> handle } map from a list of { player, playerId } pairs
+// (e.g. mission:end events). First occurrence wins - a given playerId should map
+// to one consistent handle across all of that pilot's own logs.
+function buildPlayerDirectory (pairs) {
+  const dir = {};
+  for (const p of pairs || []) {
+    if (p && p.playerId != null && p.player && !dir[String(p.playerId)]) dir[String(p.playerId)] = p.player;
+  }
+  return dir;
+}
+
+// Best-effort display name for a numeric player_id: the known handle, or an
+// anonymous "Pilot #<last 4 digits>" tag when unresolved.
+function resolvePlayerId (directory, playerId) {
+  const known = directory && directory[String(playerId)];
+  if (known) return known;
+  return 'Pilot #' + String(playerId || '').slice(-4);
+}
+
+module.exports = { parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS, missionType, MISSION_TYPES, FACTION_TYPES, missionFaction, buildPlayerDirectory, resolvePlayerId };

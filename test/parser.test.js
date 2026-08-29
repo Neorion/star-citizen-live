@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseLine, shipName, isNPC, parseSessionInfo, missionType, missionFaction } = require('../app/parser');
+const { parseLine, shipName, isNPC, parseSessionInfo, missionType, missionFaction, buildPlayerDirectory, resolvePlayerId } = require('../app/parser');
 
 // --- VERIFIED patterns (from a real Game.log hangar session) ---
 
@@ -221,4 +221,30 @@ test('parseSessionInfo reads build + hardware from header lines', () => {
   assert.deepStrictEqual(parseSessionInfo('Changelist: 11952564'), { key: 'changelist', value: '11952564' });
   assert.deepStrictEqual(parseSessionInfo('31793MB physical memory installed, 9382MB available'), { key: 'ramInstalledMB', value: '31793' });
   assert.strictEqual(parseSessionInfo('just a normal log line'), null);
+});
+
+// --- Crew/party (PlayerJoined) — VERIFIED on real DeadMan 4.7.x corpus, Mar 2026 ---
+
+test('detects a PlayerJoined crew sighting and extracts mission_id + player_id', () => {
+  const line = '<2026-03-26T03:57:08.915Z> [Notice] <PlayerJoined> Received PlayerJoined push message for: mission_id 82be0365-268b-477b-b905-12b7b8538640 - player_id 3659022222646 [Team_GameServices][Missions]';
+  const r = parseLine(line);
+  assert.strictEqual(r.kind, 'mission:crew');
+  assert.strictEqual(r.missionId, '82be0365-268b-477b-b905-12b7b8538640');
+  assert.strictEqual(r.playerId, '3659022222646');
+  assert.strictEqual(r.verified, true);
+});
+
+test('buildPlayerDirectory maps player_id -> handle from mission:end pairs, first occurrence wins', () => {
+  const dir = buildPlayerDirectory([
+    { player: 'DeadMan1227', playerId: '1275581349492' },
+    { player: 'SomeoneElse', playerId: '1275581349492' },  // same id, later - ignored
+    { player: 'Kersa', playerId: '999' }
+  ]);
+  assert.deepStrictEqual(dir, { 1275581349492: 'DeadMan1227', 999: 'Kersa' });
+});
+
+test('resolvePlayerId returns the known handle, or an anonymous fallback', () => {
+  const dir = buildPlayerDirectory([{ player: 'DeadMan1227', playerId: '1275581349492' }]);
+  assert.strictEqual(resolvePlayerId(dir, '1275581349492'), 'DeadMan1227');
+  assert.strictEqual(resolvePlayerId(dir, '3659022222646'), 'Pilot #2646');  // unresolved - anonymous, not invented
 });
