@@ -291,7 +291,7 @@ const doc = new Document({
 });
 
 Packer.toBuffer(doc).then((buf) => {
-  const out = 'C:/Users/Kev29/Claude/Projects/Star-citizen-live/Permafleet-Solution-Brief.docx';
+  const out = require('path').join(__dirname, '..', '..', 'Permafleet-Solution-Brief.docx');
   fs.writeFileSync(out, buf);
   console.log('WROTE', out, buf.length, 'bytes');
 });

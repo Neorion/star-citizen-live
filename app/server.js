@@ -45,7 +45,8 @@ class StarCitizenService extends EventEmitter {
       channel: null, // SC channel (LIVE/PTU/EPTU/HOTFIX/TECH-PREVIEW) for display
       seed: null,   // optional: replay a past log once on start to pre-fill the monitor
       discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false },
-      missions: { enable: true }
+      missions: { enable: true },
+      cargo: { enable: false }   // optional, strippable cargo route-optimizer (services/CargoRouter.js)
     }, settings);
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false }, settings.discord || {});
 
@@ -79,6 +80,13 @@ class StarCitizenService extends EventEmitter {
     // live from this relay's own mission:end pairing. Lets a mission:crew (PlayerJoined)
     // sighting of a teammate resolve to their real name (see parser.js buildPlayerDirectory).
     this._playerDirectory = Object.assign({}, this.history.playerDirectory || {});
+
+    // Optional cargo route-optimizer. Self-contained; fed raw lines via observe()
+    // in handleLogChange. Remove this line + the /cargo,/route routes + the UI
+    // panel to strip the feature entirely (the core relay is unaffected).
+    this.cargoRouter = (this.settings.cargo && this.settings.cargo.enable)
+      ? new (require('../services/CargoRouter'))({ file: (this.settings.cargo && this.settings.cargo.file) || require('path').join(__dirname, '..', 'stores', 'cargo.json') })
+      : null;
 
     if (this.settings.discord.enable) this._wireDiscord();
   }
@@ -201,8 +209,14 @@ class StarCitizenService extends EventEmitter {
         let html;
         try { html = this._uiHtml || (this._uiHtml = fs.readFileSync(require('path').join(__dirname, 'ui.html'), 'utf8')); }
         catch (_) { html = '<h1>Star Citizen Live</h1><p>UI file missing (app/ui.html).</p>'; }
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache, must-revalidate' });
         return res.end(html);
+      }
+      // Client-side OCR contract parser (loaded by the Cargo tab; runs in-browser).
+      if (req.method === 'GET' && path === '/ocr-parse.js') {
+        try { const js = this._ocrJs || (this._ocrJs = fs.readFileSync(require('path').join(__dirname, 'ocr-parse.js'), 'utf8'));
+          res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache, must-revalidate' }); return res.end(js);
+        } catch (_) { return send(404, { error: 'ocr-parse.js missing' }); }
       }
       // Grouped missions (by MissionId), objectives joined in.
       if (req.method === 'GET' && path === `${base}/missiongroups`) {
@@ -218,6 +232,111 @@ class StarCitizenService extends EventEmitter {
       if (req.method === 'GET' && path === `${base}/analytics`) {
         return send(200, this._analyticsDataset());
       }
+      // ---- Cargo route optimizer (optional; only when enabled) ----
+      if (req.method === 'GET' && path === `${base}/route`) {
+        if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled (set SC_CARGO_ROUTER=1)' });
+        const scu = parseInt(url.searchParams.get('scu'), 10) || null;   // optional ship capacity
+        const freshOnly = url.searchParams.get('fresh') === '1';         // drop carried-over deliveries
+        const hideAwaiting = url.searchParams.get('hideawaiting') === '1';
+        const order = url.searchParams.get('order') === 'manual' ? 'manual' : 'optimize';
+        return send(200, this.cargoRouter.route({ shipScu: scu, freshOnly, hideAwaiting, order }));
+      }
+      if (req.method === 'GET' && path === `${base}/cargo`) {
+        if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
+        return send(200, { type: 'Collection', enabled: true, data: this.cargoRouter.activeMissions() });
+      }
+      // Vocabulary for the cargo combobox: UEX seed ∪ learned. Served offline from
+      // the committed snapshot (data/uex-reference.json) — never calls the network.
+      if (req.method === 'GET' && path === `${base}/cargo/vocab`) {
+        if (!this.cargoRouter) return send(503, { enabled: false });
+        return send(200, this.cargoRouter.vocab());
+      }
+      // Optional cloud OCR (Claude) — availability probe + the call. Off unless
+      // SC_OCR_PROVIDER=claude and ANTHROPIC_API_KEY are set (env only).
+      if (req.method === 'GET' && path === `${base}/cargo/ocr-status`) {
+        const provider = process.env.SC_OCR_PROVIDER || 'none';
+        return send(200, { cloud: provider === 'claude' && !!process.env.ANTHROPIC_API_KEY, provider });
+      }
+      if (req.method === 'POST' && path === `${base}/cargo/ocr`) {
+        if (!this.cargoRouter) return send(503, { enabled: false });
+        const provider = process.env.SC_OCR_PROVIDER || 'none';
+        const key = process.env.ANTHROPIC_API_KEY;
+        if (provider !== 'claude' || !key) return send(503, { error: 'Cloud OCR not configured — set SC_OCR_PROVIDER=claude and ANTHROPIC_API_KEY (never in code).', provider });
+        const d = await body();
+        try { return send(200, await require('../services/ocrProvider').ocrViaClaude(d.image, d.mime, key, process.env.SC_OCR_MODEL)); }
+        catch (e) { return send(502, { error: e.message }); }
+      }
+
+      // Cargo folder-watch: config, list new screenshots, serve one image.
+      // The server only LISTS/SERVES files — OCR happens in the browser.
+      if (req.method === 'GET' && path === `${base}/cargo/config`) {
+        if (!this.cargoRouter) return send(503, { enabled: false });
+        return send(200, this.cargoRouter.getConfig());
+      }
+      if (req.method === 'GET' && path === `${base}/cargo/screens`) {
+        if (!this.cargoRouter) return send(503, { enabled: false });
+        const cfg = this.cargoRouter.getConfig();
+        if (!cfg.screensDir) return send(200, { screensDir: null, files: [] });
+        const all = url.searchParams.get('all') === '1';
+        try {
+          const dir = cfg.screensDir;
+          const files = fs.readdirSync(dir)
+            .filter((n) => /\.(png|jpe?g|webp|bmp)$/i.test(n))
+            .map((n) => { try { const st = fs.statSync(require('path').join(dir, n)); return { name: n, mtime: st.mtimeMs, size: st.size }; } catch (_) { return null; } })
+            .filter(Boolean)
+            .filter((f) => all || f.mtime > (cfg.lastProcessed || 0))
+            .sort((a, b) => a.mtime - b.mtime)
+            .slice(0, 40);
+          return send(200, { screensDir: dir, lastProcessed: cfg.lastProcessed || 0, files });
+        } catch (e) { return send(200, { screensDir: cfg.screensDir, error: e.message, files: [] }); }
+      }
+      const scr = path.match(new RegExp(`^${base}/cargo/screen/(.+)$`));
+      if (scr && req.method === 'GET') {
+        if (!this.cargoRouter) return send(503, { enabled: false });
+        const cfg = this.cargoRouter.getConfig();
+        const name = require('path').basename(decodeURIComponent(scr[1]));   // basename only → no traversal
+        if (!cfg.screensDir || !/\.(png|jpe?g|webp|bmp)$/i.test(name)) return send(404, { error: 'not found' });
+        try {
+          const p = require('path').join(cfg.screensDir, name);
+          const buf = fs.readFileSync(p);
+          const ext = name.split('.').pop().toLowerCase();
+          res.writeHead(200, { 'Content-Type': ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'bmp' ? 'image/bmp' : 'image/jpeg' });
+          return res.end(buf);
+        } catch (e) { return send(404, { error: 'could not read image' }); }
+      }
+
+      // Manual board actions: status / pickup / add / remove / notes / purge.
+      if (req.method === 'POST' && path === `${base}/cargo/action`) {
+        if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled' });
+        const d = await body(); const r = this.cargoRouter;
+        try {
+          switch (d.action) {
+            case 'status': r.setStatus(d.id, d.status || null); break;
+            case 'pickup': r.togglePickup(d.id, d.dropKey, d.value); break;
+            case 'notes': r.setNotes(d.id, d.notes); break;
+            case 'snooze': r.setSnooze(d.id, d.value); break;
+            case 'clear': r.setStatus(d.id, 'cleared'); break;                        // dismiss one carried-over haul
+            case 'clearStale': return send(200, { ok: true, cleared: r.clearStale() }); // dismiss all carried-over
+            case 'parcels': r.setParcels(d.id, d.parcels); break;                     // inline cargo requirements
+            case 'pickup-loc': r.setPickup(d.id, d.pickup); break;                    // user-supplied pickup (not in log)
+            case 'learn': return send(200, { ok: true, added: r.learnVocab(d.kind, d.value) });   // add a new cargo/location type
+            case 'unlearn': return send(200, { ok: true, removed: r.unlearnVocab(d.kind, d.value) }); // prune a typo
+            case 'refreshVocab': return send(200, await this._refreshVocab());        // opt-in live UEX refresh (foundation)
+            case 'pin': r.setPin(d.id, d.value); break;
+            case 'order': r.setOrder(d.ids); break;
+            case 'add': return send(200, { ok: true, mission: r.addManual(d.data || d) });
+            case 'import': return send(200, Object.assign({ ok: true }, r.importContract(d.data || d)));
+            case 'remove': r.removeManual(d.id); break;
+            case 'config': r.setScreensDir(d.screensDir); break;
+            case 'crop': r.setCropRegion(d.region); break;
+            case 'processed': r.markProcessed(d.mtime); break;
+            case 'purge': r.purge(); break;
+            default: return send(400, { error: 'unknown action' });
+          }
+          return send(200, { ok: true });
+        } catch (e) { return send(400, { error: e.message }); }
+      }
+
       // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
       if (req.method === 'GET' && path === `${base}/monitor`) {
         const limit = Math.min(parseInt(url.searchParams.get('limit'), 10) || 250, 1000);
@@ -225,6 +344,7 @@ class StarCitizenService extends EventEmitter {
         return send(200, {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
           channel: this.channel, session: this.session, sessions: this.sessions,
+          cargoEnabled: !!this.cargoRouter,
           missions: this.missionGroups,
           missionStats: this.missionStats(),
           kills: newest(this.kills),
@@ -327,6 +447,10 @@ class StarCitizenService extends EventEmitter {
   handleLogChange (entry) {
     const ev = parseLine(entry);
     const id = idFor(entry);
+
+    // Optional cargo router: observe every line (does its own extraction; only
+    // reads ev to drop a mission's cargo when it ends). Strippable seam.
+    if (this.cargoRouter) { try { this.cargoRouter.observe(entry, ev); } catch (_) { /* never break the relay */ } }
 
     // Stamp session build/hardware from header lines (one-shot, additive).
     const sinfo = parseSessionInfo(entry);
@@ -566,6 +690,21 @@ class StarCitizenService extends EventEmitter {
     });
   }
 
+  // Foundation for a future LIVE UEX refresh. OFF by default — the relay serves the
+  // committed snapshot offline (D-002). Set SC_UEX_LIVE=1 to allow this to fetch fresh
+  // UEX reference data and swap it into the router in memory (it does NOT rewrite the
+  // committed file — `npm run build-vocab` does that). The seam exists so later
+  // features (prices, routes) can reuse the same client without re-plumbing.
+  async _refreshVocab () {
+    if (!this.cargoRouter) return { ok: false, error: 'cargo router not enabled' };
+    if (!process.env.SC_UEX_LIVE) return { ok: false, live: false, note: 'live UEX refresh disabled; run `npm run build-vocab` to update the committed snapshot (or set SC_UEX_LIVE=1 for in-memory live refresh)' };
+    try {
+      const { fetchReference } = require('../services/uexClient');
+      const counts = this.cargoRouter.setReference(await fetchReference());
+      return { ok: true, live: true, counts };
+    } catch (e) { return { ok: false, live: true, error: e.message }; }
+  }
+
   // ---- Discord (optional) ----
   _wireDiscord () {
     this.on('kill', (k) => { if (this.settings.discord.announceKills) this._discordKill(k); });
@@ -661,7 +800,8 @@ if (require.main === module) {
     channel: resolved.channel,
     seed: process.env.SC_SEED || resolved.file,   // pre-fill from history by default
     missions: { enable: true, dir: process.env.SC_REGISTER_DIR || null, officers: (process.env.SC_OFFICERS || '').split(',').map((s) => s.trim()).filter(Boolean) },
-    discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null }
+    discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null },
+    cargo: { enable: !!process.env.SC_CARGO_ROUTER }   // opt-in cargo route optimizer
   });
   svc.start();
 }

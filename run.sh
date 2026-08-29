@@ -19,4 +19,6 @@ fi
 
 echo "Starting Star Citizen Live — dashboard opens at http://localhost:3041/ (Ctrl+C to stop)."
 echo "It auto-detects your Star Citizen install and tails the freshest Game.log (read-only)."
+# Enable the optional cargo route-optimizer (Cargo tab: routing, inline cargo entry, UEX vocab).
+export SC_CARGO_ROUTER="${SC_CARGO_ROUTER:-1}"
 exec "$NODE" app/server.js

@@ -1,0 +1,332 @@
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const CargoRouter = require('../services/CargoRouter');
+
+// Real-format lines (verified against the corpus, builds 4.7-4.8.0).
+const MID = '1b393a11-629e-4098-8fee-bb3bbc2e5796';
+const objTo = (have, need, commodity, dest, idx, mid = MID) =>
+  `<2026-03-30T21:11:55.111Z> [Notice] <SHUDEvent_OnNotification> Added notification "New Objective: Deliver ${have}/${need} SCU of ${commodity} to ${dest}: " [8] to queue. New queue size: 2, MissionId: [${mid}], ObjectiveId: [dropoff_eacd0014-8c17-4950-b0bc-c483ef44a459_${idx}] [Team_CoreGameplayFeatures][Missions][Comms]`;
+const acceptFrom = (pickup, mid = MID) =>
+  `<2026-06-28T18:17:37.836Z> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Junior | Stellar Small Haul | from ${pickup} <EM4>[50/100 Rep]</EM4>: " [15] to queue. New queue size: 1, MissionId: [${mid}], ObjectiveId: []`;
+const handlerDropoff = (station, token, guid) =>
+  `<2025-08-10T17:44:17.754Z> [Notice] <CreateHaulingObjectiveHandler> Dropoff created - [Cient] sourcename: X, missionId: 00000000-0000-0000-0000-000000000000, locationName: ${station} [${token}], locationHash: 1615454559, objectiveId: dropoff_${guid}_0_0`;
+
+test('builds a pickup -> dropoff leg with bodies from both ends', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));                                    // pickup hub (Pyro)
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));       // dropoff (Hurston)
+  const out = r.route();
+  assert.strictEqual(out.hubs.length, 1);
+  assert.strictEqual(out.hubs[0].pickup, 'Fallow Field');
+  assert.strictEqual(out.hubs[0].pickupBody, 'Pyro');
+  assert.strictEqual(out.hubs[0].collectScu, 7);
+  assert.strictEqual(out.hubs[0].legs[0].dropoff, 'HUR-L2 Faithful Dream Station');
+  assert.strictEqual(out.hubs[0].legs[0].dropBody, 'Hurston');
+  assert.strictEqual(out.summary.pickups, 1);
+  assert.strictEqual(out.summary.dropoffs, 1);
+});
+
+test('a delivery whose pickup is not in the log is grouped honestly (not "source your own")', () => {
+  const r = new CargoRouter();
+  r.ingest(objTo(0, 5, 'Quartz', 'Checkmate at the L4 Lagrange of Pyro II', 0));   // no accept-from line
+  const out = r.route();
+  assert.strictEqual(out.hubs[0].pickupKnown, false);
+  assert.doesNotMatch(out.hubs[0].pickup, /source your own/i);
+  assert.strictEqual(out.hubs[0].legs[0].dropBody, 'Pyro');
+});
+
+test('a bare "<System> System" dropoff is pending until the handler names the station', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Orison'));
+  r.ingest(objTo(0, 4, 'Aluminum', 'Stanton System', 1));
+  assert.strictEqual(r.route().hubs[0].legs[0].pending, true);             // no station yet
+  r.ingest(handlerDropoff('Wikelo Emporium Selo Station', 'TheCollectorsAsteriod_Stanton2', 'eacd0014-8c17-4950-b0bc-c483ef44a459'));
+  const out = r.route();
+  assert.strictEqual(out.hubs[0].legs.length, 1);
+  assert.strictEqual(out.hubs[0].legs[0].dropoff, 'Wikelo Emporium Selo Station');
+});
+
+test('orders a hub\'s dropoffs by celestial-body circuit', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 5, 'Stims', 'ArcCorp Area18', 0));                     // ArcCorp (order 3)
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 1));       // Hurston (order 1)
+  const legs = r.route().hubs[0].legs;
+  assert.strictEqual(legs[0].dropBody, 'Hurston');                        // Hurston before ArcCorp
+  assert.strictEqual(legs[1].dropBody, 'ArcCorp');
+  assert.strictEqual(r.route().hubs[0].collectScu, 12);
+});
+
+test('a fully delivered objective drops out', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.ingest(objTo(7, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));       // complete
+  assert.strictEqual(r.route().hubs.length, 0);
+});
+
+test('shows an accepted mission from its title before any cargo line (the 7-missions case)', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));                                    // "| from X" (pickup named)
+  r.ingest(`<2026-06-28T18:17:38.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Junior | Stellar Small Haul | to Ruin Station <EM4>[50 Rep]</EM4>: " [16] to queue. New queue size: 2, MissionId: [22222222-2222-2222-2222-222222222222], ObjectiveId: []`);
+  const out = r.route();
+  assert.strictEqual(out.summary.missions, 2);                             // both show, no Deliver line needed
+  const ruin = out.hubs.find((h) => !h.pickupKnown).legs[0];
+  assert.strictEqual(ruin.dropoff, 'Ruin Station');                        // dropoff from the "| to Y" title
+  assert.strictEqual(ruin.dropBody, 'Pyro');
+  assert.strictEqual(ruin.awaiting, true);                                 // cargo not known yet
+  assert.strictEqual(ruin.contractType, 'Stellar Small Haul');             // in-game header fields
+  assert.strictEqual(ruin.rank, 'Junior');
+  assert.match(ruin.reward, /Rep/);
+});
+
+test('carries a mission over a new session (crash/exit) until re-confirmed', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  assert.strictEqual(r.route().hubs[0].stale, false);
+  r.observe('<...> Log started on Mon Jun 29 00:04:10 2026', { kind: 'session:start' });
+  const out = r.route();
+  assert.strictEqual(out.hubs[0].stale, true);
+  assert.strictEqual(out.summary.carriedOver, 1);
+  assert.ok(out.notes.some((n) => /carried over/.test(n)));
+  assert.strictEqual(r.route({ freshOnly: true }).hubs.length, 0);
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));       // re-confirm this session
+  assert.strictEqual(r.route().hubs[0].stale, false);
+});
+
+test('vocab() serves the UEX seed and grows with learned entries', () => {
+  const r = new CargoRouter();
+  const v = r.vocab();
+  assert.ok(v.commodities.length > 100, 'UEX commodity seed present');
+  assert.ok(v.locations.length > 50, 'UEX location seed present');
+  assert.ok(v.locations.every((l) => 'body' in l), 'locations carry a body field');
+  // a brand-new commodity the user types is remembered and marked learned
+  assert.strictEqual(r.learnVocab('commodity', 'Unobtanium'), true);
+  assert.strictEqual(r.learnVocab('commodity', 'Unobtanium'), false);          // idempotent
+  const c = r.vocab().commodities.find((x) => x.name === 'Unobtanium');
+  assert.strictEqual(c.source, 'learned');
+  // an item already in the UEX seed is NOT duplicated into learned
+  const known = r.vocab().commodities.find((x) => x.source === 'uex');
+  assert.strictEqual(r.learnVocab('commodity', known.name), false);
+  // prune a learned typo
+  assert.strictEqual(r.unlearnVocab('commodity', 'Unobtanium'), true);
+  assert.ok(!r.vocab().commodities.some((x) => x.name === 'Unobtanium'));
+});
+
+test('bodyFromStation resolves a real UEX station name exactly (not just regex)', () => {
+  const r = new CargoRouter();
+  // "Port Tressler" is a microTech station in UEX; a name with no regex hub-prefix
+  r.ingest(acceptFrom('Everus Harbor'));
+  r.ingest(objTo(0, 6, 'Titanium', 'Port Tressler', 0));
+  assert.strictEqual(r.route().hubs[0].legs[0].dropBody, 'microTech');
+});
+
+test('inline setParcels adds user cargo to an awaiting mission (badged, counts SCU)', () => {
+  const r = new CargoRouter();
+  // accepted "to X" with no Deliver line -> awaiting, invites inline cargo
+  r.ingest(`<t> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Junior | Stellar Small Haul | to Ruin Station <EM4>[50 Rep]</EM4>: " [16] to queue. MissionId: [${MID}], ObjectiveId: []`);
+  let leg = r.route().hubs.flatMap((h) => h.legs)[0];
+  assert.strictEqual(leg.awaiting, true);
+  assert.strictEqual(leg.canAddCargo, true);
+  r.setParcels(MID, [{ commodity: 'Iron', scu: 12, dropoff: 'Ruin Station' }]);
+  const out = r.route();
+  leg = out.hubs.flatMap((h) => h.legs).find((l) => l.commodity === 'Iron');
+  assert.strictEqual(leg.scu, 12);
+  assert.strictEqual(leg.userLeg, true);                 // honestly flagged as hand-entered
+  assert.strictEqual(out.hubs[0].collectScu, 12);
+  // clearing the user parcels reverts to awaiting
+  r.setParcels(MID, []);
+  assert.strictEqual(r.route().hubs.flatMap((h) => h.legs)[0].awaiting, true);
+});
+
+test('setPickup fills a pickup the log never recorded (deliver-to contracts)', () => {
+  const r = new CargoRouter();
+  r.ingest(objTo(0, 5, 'Quartz', 'Checkmate at the L4 Lagrange of Pyro II', 0));   // no accept-from
+  assert.strictEqual(r.route().hubs[0].pickupKnown, false);
+  r.setPickup(MID, 'Ruin Station');
+  const hub = r.route().hubs[0];
+  assert.strictEqual(hub.pickup, 'Ruin Station');
+  assert.strictEqual(hub.pickupKnown, true);
+});
+
+test('ignores non-hauling contracts (a bounty accept must not show as cargo)', () => {
+  const r = new CargoRouter();
+  const bounty = '<t> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Bounty Assignment: Domenico Pfaffner (HRT) <EM4>[50 Rep]</EM4>: " [5] to queue. New queue size:1, MissionId: [99999999-9999-9999-9999-999999999999], ObjectiveId: []';
+  r.ingest(bounty);
+  assert.strictEqual(r.route().summary.missions, 0);            // bounty not tracked
+  r.ingest(acceptFrom('Fallow Field'));                          // "Stellar Small Haul" -> tracked
+  assert.strictEqual(r.route().summary.missions, 1);
+});
+
+test('log completion greys the mission into Done instead of deleting it', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.observe('end', { kind: 'mission:end', missionId: MID, completionType: 'Complete' });
+  const out = r.route();
+  assert.strictEqual(out.hubs.length, 0);                       // off the active board
+  assert.strictEqual(out.done.length, 1);                       // but visible in Done
+  assert.strictEqual(out.done[0].status, 'completed');
+});
+
+test('clearStale dismisses carried-over hauls into Done in one call (reversible)', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.observe('<...> Log started on Mon Jun 29 00:04:10 2026', { kind: 'session:start' });
+  assert.strictEqual(r.route().summary.carriedOver, 1);           // now stale
+  assert.strictEqual(r.clearStale(), 1);                          // one dismissed
+  const out = r.route();
+  assert.strictEqual(out.hubs.length, 0);                        // off the active board
+  assert.strictEqual(out.summary.carriedOver, 0);
+  assert.strictEqual(out.done[0].status, 'cleared');             // greyed, not deleted
+  assert.strictEqual(r.clearStale(), 0);                         // idempotent (nothing left to clear)
+  r.setStatus(MID, null);                                        // reactivate ↺
+  assert.strictEqual(r.route().hubs.length, 1);
+});
+
+test('clearStale leaves current-session and manual missions untouched', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));                          // current session -> not stale
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.addManual({ contractType: 'Small Haul', dropoff: 'Orbituary', commodity: 'Quartz', scu: 6 });
+  assert.strictEqual(r.clearStale(), 0);                         // nothing carried over yet
+  assert.strictEqual(r.route().summary.missions, 2);            // both still active
+});
+
+test('manual mark complete / reactivate overrides the log (precedence)', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.setStatus(MID, 'completed');
+  assert.strictEqual(r.route().done.length, 1);
+  r.setStatus(MID, null);                                       // reactivate
+  assert.strictEqual(r.route().done.length, 0);
+  assert.strictEqual(r.route().hubs.length, 1);
+});
+
+test('picked-up legs drop out of the collect total', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  const dk = r.route().hubs[0].legs[0].dropKey;
+  assert.strictEqual(r.route().hubs[0].collectScu, 7);
+  r.togglePickup(MID, dk, true);
+  assert.strictEqual(r.route().hubs[0].legs[0].pickedUp, true);
+  assert.strictEqual(r.route().hubs[0].collectScu, 0);          // already collected
+});
+
+test('hand-added candidate appears as a manual OFFER; purge clears manual but keeps log', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  const mi = r.addManual({ contractType: 'Small Haul', dropoff: 'Orbituary', commodity: 'Quartz', scu: 6 });
+  const leg = r.route().hubs.flatMap((h) => h.legs).find((l) => l.missionId === mi.missionId);
+  assert.strictEqual(leg.source, 'manual');
+  assert.strictEqual(leg.candidate, true);
+  assert.strictEqual(leg.dropoff, 'Orbituary');
+  r.purge();
+  const legs = r.route().hubs.flatMap((h) => h.legs);
+  assert.ok(!legs.some((l) => l.source === 'manual'));          // manual gone
+  assert.strictEqual(r.route().summary.missions, 1);            // log mission remains
+});
+
+test('snooze hides a mission from the active board into its own section', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  assert.strictEqual(r.route().summary.missions, 1);
+  r.setSnooze(MID, true);
+  const out = r.route();
+  assert.strictEqual(out.hubs.length, 0);
+  assert.strictEqual(out.snoozed.length, 1);
+  r.setSnooze(MID, false);
+  assert.strictEqual(r.route().hubs.length, 1);
+});
+
+test('hideAwaiting drops accepted-but-not-loaded hauls', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));                         // accepted, no cargo line -> awaiting
+  assert.strictEqual(r.route().hubs.length, 1);
+  assert.strictEqual(r.route({ hideAwaiting: true }).hubs.length, 0);
+});
+
+test('pin sorts a hub first; manual order respects setOrder', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Fallow Field'));                                          // MID -> Hurston station below
+  r.ingest(objTo(0, 7, 'Iron', 'HUR-L2 Faithful Dream Station', 0));
+  r.ingest(acceptFrom('Sacren\'s Plot', 'BBBBBBBB-bbbb-bbbb-bbbb-bbbbbbbbbbbb'));
+  r.ingest(objTo(0, 5, 'Quartz', 'ArcCorp Area18', 0, 'BBBBBBBB-bbbb-bbbb-bbbb-bbbbbbbbbbbb'));
+  // default optimize: Hurston(1) hub before ArcCorp(3)
+  assert.strictEqual(r.route().hubs[0].pickup, 'Fallow Field');
+  r.setPin('BBBBBBBB-bbbb-bbbb-bbbb-bbbbbbbbbbbb', true);
+  assert.strictEqual(r.route().hubs[0].pickup, "Sacren's Plot");                 // pinned floats up
+  r.setPin('BBBBBBBB-bbbb-bbbb-bbbb-bbbbbbbbbbbb', false);
+  r.setOrder(['BBBBBBBB-bbbb-bbbb-bbbb-bbbbbbbbbbbb', MID]);
+  assert.strictEqual(r.route({ order: 'manual' }).hubs[0].pickup, "Sacren's Plot");  // user order
+  assert.strictEqual(r.route({ order: 'optimize' }).hubs[0].pickup, 'Fallow Field'); // back to body-cluster
+});
+
+test('importContract dedups on identity: re-import merges, fills blanks, no duplicate', () => {
+  const r = new CargoRouter();
+  const a = r.importContract({ source: 'ocr', contractType: 'Small Haul', dropoff: 'Orbituary', reward: '172,250', deliveries: [{ scu: 14, commodity: 'Silicon', dropoff: 'Orbituary' }] });
+  assert.strictEqual(a.merged, false);
+  // same contract again, now with the pickup filled in — should MERGE, not add
+  const b = r.importContract({ source: 'ocr', contractType: 'Small Haul', dropoff: 'Orbituary', reward: '172,250', pickup: 'Ashland', deliveries: [{ scu: 14, commodity: 'Silicon', dropoff: 'Orbituary' }] });
+  assert.strictEqual(b.merged, true);
+  assert.strictEqual(b.id, a.id);
+  assert.strictEqual(Object.keys(r.manual.added).length, 1);                 // no duplicate
+  assert.strictEqual(r.manual.added[a.id].pickup, 'Ashland');                // blank filled by re-import
+  // a genuinely different contract is NOT merged
+  const c = r.importContract({ source: 'ocr', contractType: 'Small Haul', dropoff: 'Ruin Station', reward: '172,250' });
+  assert.strictEqual(c.merged, false);
+  assert.strictEqual(Object.keys(r.manual.added).length, 2);
+});
+
+test('keeps ALL pickup locations of a multi-pickup haul (not just the first)', () => {
+  const r = new CargoRouter();
+  const mi = r.addManual({ source: 'ocr', contractType: 'Small Haul', dropoff: 'Megumi Refueling', reward: '172,250',
+    pickups: [{ commodity: 'Aluminum', from: 'Fallow Field' }, { commodity: 'Aluminum', from: 'The Golden Riviera' }],
+    deliveries: [{ scu: 5, commodity: 'Aluminum', dropoff: 'Megumi Refueling' }] });
+  assert.deepStrictEqual(r.manual.added[mi.missionId].pickupList, ['Fallow Field', 'The Golden Riviera']);
+  const leg = r.route().hubs.flatMap((h) => h.legs).find((l) => l.missionId === mi.missionId);
+  assert.deepStrictEqual(leg.pickups, ['Fallow Field', 'The Golden Riviera']);   // both shown, neither dropped
+  // a re-import revealing a 3rd pickup unions it in
+  r.importContract({ source: 'ocr', contractType: 'Small Haul', dropoff: 'Megumi Refueling', reward: '172,250',
+    pickups: [{ from: 'Canard View' }], deliveries: [{ scu: 5, commodity: 'Aluminum', dropoff: 'Megumi Refueling' }] });
+  assert.deepStrictEqual(r.manual.added[mi.missionId].pickupList, ['Fallow Field', 'The Golden Riviera', 'Canard View']);
+});
+
+test('HDPC-* stations are Hurston, not Pyro (log path, bare station name)', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('Everus Harbor'));
+  r.ingest(objTo(0, 3, 'Stims', 'HDPC-Cassillo', 0));                     // no "on Hurston" suffix in the log
+  r.ingest(objTo(0, 3, 'Stims', 'HDPC-Farnesway', 1));
+  const legs = r.route().hubs[0].legs;
+  assert.ok(legs.every((l) => l.dropBody === 'Hurston'));                 // was mis-tagged 'Pyro'
+});
+
+test('OCR import: body from the suffix survives name-cleaning (no Unknown regression)', () => {
+  const r = new CargoRouter();
+  const mi = r.addManual({ source: 'ocr', contractType: 'Small Haul', reward: '90,750',
+    pickups: [{ commodity: 'Stims', from: 'Everus Harbor' }],
+    deliveries: [
+      { scu: 2, commodity: 'Stims', dropoff: 'Covalex Distribution Center S1DC06', body: 'Hurston' },
+      { scu: 2, commodity: 'Stims', dropoff: 'Sakura Sun Magnolia Workcenter', body: 'Hurston' }] });
+  const legs = r.route().hubs.flatMap((h) => h.legs).filter((l) => l.missionId === mi.missionId);
+  assert.ok(legs.every((l) => l.dropBody === 'Hurston'));                 // Covalex/Sakura have no prefix -> body comes from OCR suffix
+  assert.strictEqual(r.route().summary.totalScu, 4);
+});
+
+test('flags when a hub load exceeds the entered ship capacity', () => {
+  const r = new CargoRouter();
+  r.ingest(acceptFrom('CRU-L1 Ambitious Dream Station'));
+  r.ingest(objTo(0, 40, 'Hydrogen', 'microTech Port Tressler', 0));
+  const out = r.route({ shipScu: 32 });
+  assert.ok(out.notes.some((n) => /exceeds/.test(n)));
+  assert.strictEqual(out.hubs[0].pickupBody, 'Crusader');                 // CRU- prefix
+  assert.strictEqual(out.hubs[0].legs[0].dropBody, 'microTech');
+});

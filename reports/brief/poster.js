@@ -146,5 +146,5 @@ b += txt(1040, fy + 92, 'Star Citizen — Permafleet Protectorate · 2026', { si
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${b}</svg>`;
 fs.writeFileSync('poster.svg', svg);
 const png = new Resvg(svg, { fitTo: { mode: 'width', value: W * 2 }, font: { loadSystemFonts: true } }).render().asPng();
-fs.writeFileSync('C:/Users/Kev29/Claude/Projects/Star-citizen-live/Permafleet-Protectorate-Vision.png', png);
+fs.writeFileSync(require('path').join(__dirname, '..', '..', 'Permafleet-Protectorate-Vision.png'), png);
 console.log('WROTE Permafleet-Protectorate-Vision.png', png.length, 'bytes', W * 2 + 'x' + H * 2);

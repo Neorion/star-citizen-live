@@ -1,0 +1,2202 @@
+{
+  "source": "https://api.uexcorp.space/2.0",
+  "attribution": "Data © UEX Corp (https://uexcorp.space) — community-maintained; cached snapshot for offline use.",
+  "generatedAt": "2026-07-05T18:51:13.149Z",
+  "counts": {
+    "commodities": 205,
+    "locations": 137
+  },
+  "commodities": [
+    {
+      "name": "AcryliPlex Composite",
+      "code": "ACCO",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Agricium",
+      "code": "AGRI",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Agricium (Ore)",
+      "code": "AGRI",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Agricultural Supplies",
+      "code": "AGRS",
+      "kind": "Agricultural",
+      "illegal": false
+    },
+    {
+      "name": "Altruciatoxin",
+      "code": "AUTR",
+      "kind": "Drug",
+      "illegal": true
+    },
+    {
+      "name": "Aluminum",
+      "code": "ALUM",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Aluminum (Ore)",
+      "code": "ALUM",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Amioshi Plague",
+      "code": "AMIP",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Ammonia",
+      "code": "AMMO",
+      "kind": "Raw Materials",
+      "illegal": false
+    },
+    {
+      "name": "Anti-Hydrogen",
+      "code": "AHYD",
+      "kind": "Gas",
+      "illegal": false
+    },
+    {
+      "name": "Aphorite",
+      "code": "APHO",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Apoxygenite",
+      "code": "APOX",
+      "kind": "Chemical",
+      "illegal": false
+    },
+    {
+      "name": "Argon",
+      "code": "ARGO",
+      "kind": "Gas",
+      "illegal": false
+    },
+    {
+      "name": "Arsenic",
+      "code": "ARSE",
+      "kind": "Non-Metal",
+      "illegal": false
+    },
+    {
+      "name": "Aslarite",
+      "code": "ASLA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Aslarite (Raw)",
+      "code": "ASLW",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Astatine",
+      "code": "ASTA",
+      "kind": "Halogen",
+      "illegal": false
+    },
+    {
+      "name": "Atacamite",
+      "code": "ATAC",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Atlasium",
+      "code": "ATLA",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Audio-Visual Equipment",
+      "code": "AUDI",
+      "kind": "Temporary",
+      "illegal": false
+    },
+    {
+      "name": "Beradom",
+      "code": "BERA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Beryl",
+      "code": "BERY",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Beryl (Raw)",
+      "code": "BERY",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Bexalite",
+      "code": "BEXA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Bexalite (Raw)",
+      "code": "BEXA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Bioplastic",
+      "code": "BIOPL",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Blue Bilva",
+      "code": "BLUE",
+      "kind": "Food",
+      "illegal": false
+    },
+    {
+      "name": "Borase",
+      "code": "BORA",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Borase (Ore)",
+      "code": "BORA",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Boron",
+      "code": "BORO",
+      "kind": "Non-Metal",
+      "illegal": false
+    },
+    {
+      "name": "Cadmium Allinide",
+      "code": "CAAL",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Caranite",
+      "code": "CARA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Caranite (Raw)",
+      "code": "CARW",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Carbon",
+      "code": "CARB",
+      "kind": "Raw Materials",
+      "illegal": false
+    },
+    {
+      "name": "Carbon-Silk",
+      "code": "CSIL",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Carinite",
+      "code": "CARI",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Carinite (Pure)",
+      "code": "CARP",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Cave Kopion Horn",
+      "code": "CAVEK",
+      "kind": "Medical",
+      "illegal": false
+    },
+    {
+      "name": "Chlorine",
+      "code": "CHLO",
+      "kind": "Halogen",
+      "illegal": false
+    },
+    {
+      "name": "CK13-GID Seed Blend",
+      "code": "CK13",
+      "kind": "Seed",
+      "illegal": false
+    },
+    {
+      "name": "Coal",
+      "code": "COAL",
+      "kind": "Non-Metal",
+      "illegal": false
+    },
+    {
+      "name": "Cobalt",
+      "code": "COBA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Cobalt (Raw)",
+      "code": "COBA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Compboard",
+      "code": "COMP",
+      "kind": "Scrap",
+      "illegal": false
+    },
+    {
+      "name": "Construction Material Pebbles",
+      "code": "CMATP",
+      "kind": "Scrap",
+      "illegal": false
+    },
+    {
+      "name": "Construction Material Rubble",
+      "code": "CMATR",
+      "kind": "Scrap",
+      "illegal": false
+    },
+    {
+      "name": "Construction Material Salvage",
+      "code": "CMATS",
+      "kind": "Scrap",
+      "illegal": false
+    },
+    {
+      "name": "Construction Materials",
+      "code": "CMAT",
+      "kind": "Scrap",
+      "illegal": false
+    },
+    {
+      "name": "Copper",
+      "code": "COPP",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Copper (Ore)",
+      "code": "COPP",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Corundum",
+      "code": "CORU",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Corundum (Raw)",
+      "code": "CORU",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Crude Oil",
+      "code": "COIL",
+      "kind": "Non-Metal",
+      "illegal": false
+    },
+    {
+      "name": "CryoPod",
+      "code": "CRYP",
+      "kind": "Medical",
+      "illegal": false
+    },
+    {
+      "name": "DCSR2",
+      "code": "DCSR",
+      "kind": "Agricultural",
+      "illegal": true
+    },
+    {
+      "name": "Decari Pod",
+      "code": "DECA",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Degnous Root",
+      "code": "DEGR",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Detatrine",
+      "code": "DETA",
+      "kind": "Explosive",
+      "illegal": false
+    },
+    {
+      "name": "Diamond",
+      "code": "DIAM",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Diamond (Raw)",
+      "code": "DIAM",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Diamond Laminate",
+      "code": "DIAL",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Diluthermex",
+      "code": "DILU",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Distilled Spirits",
+      "code": "DIST",
+      "kind": "Vice",
+      "illegal": false
+    },
+    {
+      "name": "Dolivine",
+      "code": "DOLI",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Dopple",
+      "code": "DOPP",
+      "kind": "Vice",
+      "illegal": true
+    },
+    {
+      "name": "Dymantium",
+      "code": "DYMA",
+      "kind": "Explosive",
+      "illegal": false
+    },
+    {
+      "name": "DynaFlex",
+      "code": "DYNF",
+      "kind": "Man-Made",
+      "illegal": false
+    },
+    {
+      "name": "E'tam",
+      "code": "ETAM",
+      "kind": "Drug",
+      "illegal": true
+    },
+    {
+      "name": "Elespo",
+      "code": "ELES",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Feynmaline",
+      "code": "FEYN",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Fireworks",
+      "code": "FIRE",
+      "kind": "Temporary",
+      "illegal": false
+    },
+    {
+      "name": "Fluorine",
+      "code": "FLUO",
+      "kind": "Halogen",
+      "illegal": false
+    },
+    {
+      "name": "Freeze",
+      "code": "FREE",
+      "kind": "Vice",
+      "illegal": true
+    },
+    {
+      "name": "Fresh Food",
+      "code": "FFOO",
+      "kind": "Food",
+      "illegal": false
+    },
+    {
+      "name": "Gasping Weevil Eggs",
+      "code": "GAWE",
+      "kind": "Natural",
+      "illegal": true
+    },
+    {
+      "name": "Glacosite",
+      "code": "GLAC",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Glow",
+      "code": "GLOW",
+      "kind": "Vice",
+      "illegal": true
+    },
+    {
+      "name": "Gold",
+      "code": "GOLD",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Gold (Ore)",
+      "code": "GOLD",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Golden Medmon",
+      "code": "GOLM",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Hadanite",
+      "code": "HADA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Heart of the Woods",
+      "code": "HOTW",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Helium",
+      "code": "HELI",
+      "kind": "Gas",
+      "illegal": false
+    },
+    {
+      "name": "Hephaestanite",
+      "code": "HEPH",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Hephaestanite (Raw)",
+      "code": "HEPH",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "HexaPolyMesh Coating",
+      "code": "HPMC",
+      "kind": "Crafting",
+      "illegal": false
+    },
+    {
+      "name": "Human Food Bars",
+      "code": "HFBA",
+      "kind": "Commodity",
+      "illegal": true
+    },
+    {
+      "name": "Hydrogen",
+      "code": "HYDR",
+      "kind": "Gas",
+      "illegal": false
+    },
+    {
+      "name": "Hydrogen Fuel",
+      "code": "HYDF",
+      "kind": "Fuel",
+      "illegal": false
+    },
+    {
+      "name": "Ice (Raw)",
+      "code": "ICEW",
+      "kind": "Liquid",
+      "illegal": false
+    },
+    {
+      "name": "Inert Materials",
+      "code": "INER",
+      "kind": "Other",
+      "illegal": false
+    },
+    {
+      "name": "Iodine",
+      "code": "IODI",
+      "kind": "Halogen",
+      "illegal": false
+    },
+    {
+      "name": "Iron",
+      "code": "IRON",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Iron (Ore)",
+      "code": "IRONO",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Irradiated Kopion Horn",
+      "code": "IKOP",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Jaclium",
+      "code": "JACL",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Jaclium (Ore)",
+      "code": "JACO",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Jahlium",
+      "code": "JAHL",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Janalite",
+      "code": "JANA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Jumping Limes",
+      "code": "JUMP",
+      "kind": "Food",
+      "illegal": false
+    },
+    {
+      "name": "Kopion Horn",
+      "code": "KOPH",
+      "kind": "Medical",
+      "illegal": false
+    },
+    {
+      "name": "Krypton",
+      "code": "KRYP",
+      "kind": "Gas",
+      "illegal": false
+    },
+    {
+      "name": "Laranite",
+      "code": "LARA",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Laranite (Raw)",
+      "code": "LARA",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Lastaphrene",
+      "code": "LAST",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "LifeCure Medsticks",
+      "code": "LMED",
+      "kind": "Medical",
+      "illegal": true
+    },
+    {
+      "name": "Lindinium",
+      "code": "LIND",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Lindinium (Ore)",
+      "code": "LINW",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Luminalia Gift",
+      "code": "LUMG",
+      "kind": "Temporary",
+      "illegal": false
+    },
+    {
+      "name": "Lunes",
+      "code": "LUNE",
+      "kind": "Food",
+      "illegal": false
+    },
+    {
+      "name": "Lycara",
+      "code": "LYCA",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Magnesium",
+      "code": "MAGN",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Mala",
+      "code": "MALA",
+      "kind": "Vice",
+      "illegal": true
+    },
+    {
+      "name": "Marok Gem",
+      "code": "MARG",
+      "kind": "Animal",
+      "illegal": false
+    },
+    {
+      "name": "Maze",
+      "code": "MAZE",
+      "kind": "Drug",
+      "illegal": true
+    },
+    {
+      "name": "Medical Supplies",
+      "code": "MEDS",
+      "kind": "Medical",
+      "illegal": false
+    },
+    {
+      "name": "Mercury",
+      "code": "MERC",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Methane",
+      "code": "METH",
+      "kind": "Gas",
+      "illegal": false
+    },
+    {
+      "name": "Molina Mold Samples",
+      "code": "MOLMS",
+      "kind": "Medicine",
+      "illegal": false
+    },
+    {
+      "name": "Molina Mold Treatment",
+      "code": "MOLMT",
+      "kind": "Medicine",
+      "illegal": false
+    },
+    {
+      "name": "Molina Ventilation Filters",
+      "code": "MOLVF",
+      "kind": "Medicine",
+      "illegal": false
+    },
+    {
+      "name": "Neograph",
+      "code": "NEOG",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Neon",
+      "code": "NEON",
+      "kind": "Drug",
+      "illegal": true
+    },
+    {
+      "name": "Nitrogen",
+      "code": "NITR",
+      "kind": "Gas",
+      "illegal": false
+    },
+    {
+      "name": "Omnapoxy",
+      "code": "OMPO",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Organics",
+      "code": "ORGN",
+      "kind": "Organics",
+      "illegal": false
+    },
+    {
+      "name": "Osoian Hides",
+      "code": "OSOH",
+      "kind": "Vice",
+      "illegal": true
+    },
+    {
+      "name": "Ouratite",
+      "code": "OURA",
+      "kind": "mineral",
+      "illegal": false
+    },
+    {
+      "name": "Ouratite (Raw)",
+      "code": "OURW",
+      "kind": "Minteral",
+      "illegal": false
+    },
+    {
+      "name": "Partillium",
+      "code": "PRTL",
+      "kind": "Gas",
+      "illegal": false
+    },
+    {
+      "name": "Party Favors",
+      "code": "PART",
+      "kind": "Temporary",
+      "illegal": false
+    },
+    {
+      "name": "Phosphorus",
+      "code": "PHOS",
+      "kind": "Non-Metal",
+      "illegal": false
+    },
+    {
+      "name": "Pitambu",
+      "code": "PITA",
+      "kind": "Food",
+      "illegal": false
+    },
+    {
+      "name": "Potassium",
+      "code": "POTA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Pressurized Ice",
+      "code": "PICE",
+      "kind": "Raw Materials",
+      "illegal": false
+    },
+    {
+      "name": "Processed Food",
+      "code": "PFOO",
+      "kind": "Food",
+      "illegal": false
+    },
+    {
+      "name": "Prota",
+      "code": "PROT",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Quantainium",
+      "code": "QUAN",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Quantainium (Raw)",
+      "code": "QUAN",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Quantum Fuel",
+      "code": "QFUE",
+      "kind": "Fuel",
+      "illegal": false
+    },
+    {
+      "name": "Quartz",
+      "code": "QUAR",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Quartz (Raw)",
+      "code": "QUAR",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Ranta Dung",
+      "code": "RAND",
+      "kind": "Agricultural",
+      "illegal": false
+    },
+    {
+      "name": "Recycled Material Composite",
+      "code": "RMC",
+      "kind": "Scrap",
+      "illegal": false
+    },
+    {
+      "name": "Redfin Energy Modulators",
+      "code": "REMO",
+      "kind": "Electronics",
+      "illegal": true
+    },
+    {
+      "name": "Revenant Pod",
+      "code": "REVP",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Revenant Tree Pollen",
+      "code": "REVE",
+      "kind": "Vice",
+      "illegal": false
+    },
+    {
+      "name": "Riccite",
+      "code": "RICC",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Riccite (Ore)",
+      "code": "RICO",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Sadaryx",
+      "code": "SADA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Sadaryx (Raw)",
+      "code": "SADA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Saldynium (Ore)",
+      "code": "SALD",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Sarilus",
+      "code": "SARI",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Savrilium",
+      "code": "SAVR",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Savrilium (Ore)",
+      "code": "SAVW",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Scrap",
+      "code": "SCRA",
+      "kind": "Scrap",
+      "illegal": false
+    },
+    {
+      "name": "Selenium",
+      "code": "SELE",
+      "kind": "Non-Metal",
+      "illegal": false
+    },
+    {
+      "name": "Ship Ammunition",
+      "code": "SHPA",
+      "kind": "Ammunition",
+      "illegal": false
+    },
+    {
+      "name": "Ship Ammunition - Size 1",
+      "code": "SHPA1",
+      "kind": "Ammunition",
+      "illegal": false
+    },
+    {
+      "name": "Ship Ammunition - Size 2",
+      "code": "SHPA2",
+      "kind": "Ammunition",
+      "illegal": false
+    },
+    {
+      "name": "Ship Ammunition - Size 3",
+      "code": "SHPA3",
+      "kind": "Ammunition",
+      "illegal": false
+    },
+    {
+      "name": "Ship Ammunition - Size 4",
+      "code": "SHPA4",
+      "kind": "Ammunition",
+      "illegal": false
+    },
+    {
+      "name": "Ship Ammunition - Size 5",
+      "code": "SHPA5",
+      "kind": "Ammunition",
+      "illegal": false
+    },
+    {
+      "name": "Ship Ammunition - Size 6",
+      "code": "SHPA6",
+      "kind": "Ammunition",
+      "illegal": false
+    },
+    {
+      "name": "Ship Ammunition - Size 7",
+      "code": "SHPA7",
+      "kind": "Ammunition",
+      "illegal": false
+    },
+    {
+      "name": "Ship Decoy Countermeasures",
+      "code": "SHPDC",
+      "kind": "Ammunition",
+      "illegal": false
+    },
+    {
+      "name": "Ship Noise Countermeasures",
+      "code": "SHPNC",
+      "kind": "Ammunition",
+      "illegal": false
+    },
+    {
+      "name": "Silicon",
+      "code": "SILI",
+      "kind": "Raw Materials",
+      "illegal": false
+    },
+    {
+      "name": "Silicon (Raw)",
+      "code": "SILI",
+      "kind": "Raw Materials",
+      "illegal": false
+    },
+    {
+      "name": "Silnex",
+      "code": "SILN",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "SLAM",
+      "code": "SLAM",
+      "kind": "Drug",
+      "illegal": true
+    },
+    {
+      "name": "Souvenirs",
+      "code": "SOUV",
+      "kind": "Temporary",
+      "illegal": false
+    },
+    {
+      "name": "Steel",
+      "code": "STEE",
+      "kind": "Alloy",
+      "illegal": false
+    },
+    {
+      "name": "Stileron",
+      "code": "STIL",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Stileron (Raw)",
+      "code": "STIL",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Stims",
+      "code": "STIM",
+      "kind": "Vice",
+      "illegal": false
+    },
+    {
+      "name": "Stone Bug Shell",
+      "code": "STBS",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Sunset Berries",
+      "code": "SUNB",
+      "kind": "Natural",
+      "illegal": false
+    },
+    {
+      "name": "Taranite",
+      "code": "TARA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Taranite (Raw)",
+      "code": "TARA",
+      "kind": "Mineral",
+      "illegal": false
+    },
+    {
+      "name": "Tellurium",
+      "code": "TELL",
+      "kind": "Non-Metal",
+      "illegal": false
+    },
+    {
+      "name": "Thermalfoam",
+      "code": "FOAM",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Thrust",
+      "code": "THRU",
+      "kind": "Vice",
+      "illegal": true
+    },
+    {
+      "name": "Tin",
+      "code": "TIN",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Tin (Ore)",
+      "code": "TINO",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Titanium",
+      "code": "TITA",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Titanium (Ore)",
+      "code": "TITA",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Torite",
+      "code": "TORI",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Torite (Ore)",
+      "code": "TORIO",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Tritium",
+      "code": "TRIT",
+      "kind": "Gas",
+      "illegal": false
+    },
+    {
+      "name": "Tundra Kopion Horn",
+      "code": "KOPT",
+      "kind": "Medical",
+      "illegal": false
+    },
+    {
+      "name": "Tungsten",
+      "code": "TUNG",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Tungsten (Ore)",
+      "code": "TUNG",
+      "kind": "Metal",
+      "illegal": false
+    },
+    {
+      "name": "Waste",
+      "code": "WAST",
+      "kind": "Waste",
+      "illegal": false
+    },
+    {
+      "name": "WiDoW",
+      "code": "WIDO",
+      "kind": "Drug",
+      "illegal": true
+    },
+    {
+      "name": "Wuotan Seed",
+      "code": "WUOT",
+      "kind": "Organic",
+      "illegal": false
+    },
+    {
+      "name": "Xa'Pyen",
+      "code": "XAPY",
+      "kind": "Alloy",
+      "illegal": false
+    },
+    {
+      "name": "Xenon",
+      "code": "XENO",
+      "kind": "Gas",
+      "illegal": false
+    },
+    {
+      "name": "Year of the Dog Envelope",
+      "code": "YTDO",
+      "kind": "Temporary",
+      "illegal": false
+    },
+    {
+      "name": "Year of the Monkey Envelope",
+      "code": "YTMO",
+      "kind": "Temporary",
+      "illegal": false
+    },
+    {
+      "name": "Year of the Pig Envelope",
+      "code": "YTPO",
+      "kind": "Temporary",
+      "illegal": false
+    },
+    {
+      "name": "Year of the Rat Envelope",
+      "code": "YTRO",
+      "kind": "Temporary",
+      "illegal": false
+    },
+    {
+      "name": "Year of the Rooster Envelope",
+      "code": "YTRO",
+      "kind": "Temporary",
+      "illegal": false
+    },
+    {
+      "name": "Zeta-Prolanide",
+      "code": "ZEPR",
+      "kind": "Man-made",
+      "illegal": false
+    },
+    {
+      "name": "Zip",
+      "code": "ZIP",
+      "kind": "Vice",
+      "illegal": true
+    }
+  ],
+  "locations": [
+    {
+      "name": "ARC-L1 Wide Forest Station",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "station"
+    },
+    {
+      "name": "ARC-L2 Lively Pathway Station",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "station"
+    },
+    {
+      "name": "ARC-L3 Modern Express Station",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "station"
+    },
+    {
+      "name": "ARC-L4 Faint Glen Station",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "station"
+    },
+    {
+      "name": "ARC-L5 Yellow Core Station",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "station"
+    },
+    {
+      "name": "ArcCorp Mining Area 045",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "outpost"
+    },
+    {
+      "name": "ArcCorp Mining Area 048",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "outpost"
+    },
+    {
+      "name": "ArcCorp Mining Area 056",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "outpost"
+    },
+    {
+      "name": "ArcCorp Mining Area 061",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "outpost"
+    },
+    {
+      "name": "ArcCorp Mining Area 141",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "outpost"
+    },
+    {
+      "name": "ArcCorp Mining Area 157",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "outpost"
+    },
+    {
+      "name": "Area 18",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "city"
+    },
+    {
+      "name": "Arid Reach",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Monox",
+      "kind": "outpost"
+    },
+    {
+      "name": "Ashland",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro V",
+      "kind": "outpost"
+    },
+    {
+      "name": "Astor's Clearing",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Baijini Point",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "station"
+    },
+    {
+      "name": "Blackrock Exchange",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "outpost"
+    },
+    {
+      "name": "Brio's Breaker Yard",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "outpost"
+    },
+    {
+      "name": "Bueno Ravine",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "outpost"
+    },
+    {
+      "name": "Bullock's Reach",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "outpost"
+    },
+    {
+      "name": "Canard View",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "outpost"
+    },
+    {
+      "name": "Carver's Ridge",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "outpost"
+    },
+    {
+      "name": "Chawla's Beach",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro V",
+      "kind": "outpost"
+    },
+    {
+      "name": "Checkmate Station",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Monox",
+      "kind": "station"
+    },
+    {
+      "name": "CRU-L1 Ambitious Dream Station",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "station"
+    },
+    {
+      "name": "CRU-L4 Shallow Fields Station",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "station"
+    },
+    {
+      "name": "CRU-L5 Beautiful Glen Station",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "station"
+    },
+    {
+      "name": "Deakins Research",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "outpost"
+    },
+    {
+      "name": "Devlin Scrap & Salvage",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Dinger's Depot",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro IV",
+      "kind": "outpost"
+    },
+    {
+      "name": "Dudley & Daughters",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "station"
+    },
+    {
+      "name": "Dunboro",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Endgame",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro IV",
+      "kind": "station"
+    },
+    {
+      "name": "Everus Harbor",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "station"
+    },
+    {
+      "name": "Fallow Field",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro IV",
+      "kind": "outpost"
+    },
+    {
+      "name": "Feo Canyon Depot",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro V",
+      "kind": "outpost"
+    },
+    {
+      "name": "Frigid Knot",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "outpost"
+    },
+    {
+      "name": "Frostbite",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Gaslight",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro V",
+      "kind": "station"
+    },
+    {
+      "name": "Goner's Deal",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro IV",
+      "kind": "outpost"
+    },
+    {
+      "name": "Gray Gardens Depot",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro I",
+      "kind": "outpost"
+    },
+    {
+      "name": "Green Imperial Housing Exchange",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "station"
+    },
+    {
+      "name": "HDMS-Anderson",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Bezdek",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Edmond",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Hadley",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Hahn",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Lathan",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Norgaard",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Oparei",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Perlman",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Pinewood",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Ryder",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Stanhope",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Thedus",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "HDMS-Woodruff",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "Hickes Research",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "outpost"
+    },
+    {
+      "name": "Humboldt Mines",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "outpost"
+    },
+    {
+      "name": "HUR-L1 Green Glade Station",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "station"
+    },
+    {
+      "name": "HUR-L2 Faithful Dream Station",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "station"
+    },
+    {
+      "name": "HUR-L3 Thundering Express Station",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "station"
+    },
+    {
+      "name": "HUR-L4 Melodic Fields Station",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "station"
+    },
+    {
+      "name": "HUR-L5 High Course Station",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "station"
+    },
+    {
+      "name": "Jackson's Swap",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Monox",
+      "kind": "outpost"
+    },
+    {
+      "name": "Kabir's Post",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro V",
+      "kind": "outpost"
+    },
+    {
+      "name": "Kinder Plots",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "outpost"
+    },
+    {
+      "name": "Last Landings",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "outpost"
+    },
+    {
+      "name": "Levski",
+      "body": null,
+      "system": "Nyx",
+      "planet": null,
+      "kind": "city"
+    },
+    {
+      "name": "Lorville",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "city"
+    },
+    {
+      "name": "Megumi Refueling",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "station"
+    },
+    {
+      "name": "MIC-L1 Shallow Frontier Station",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "station"
+    },
+    {
+      "name": "MIC-L2 Long Forest Station",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "station"
+    },
+    {
+      "name": "MIC-L3 Endless Odyssey Station",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "station"
+    },
+    {
+      "name": "MIC-L4 Red Crossroads Station",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "station"
+    },
+    {
+      "name": "MIC-L5 Modern Icarus Station",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "station"
+    },
+    {
+      "name": "Narena's Rest",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "outpost"
+    },
+    {
+      "name": "New Babbage",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "city"
+    },
+    {
+      "name": "Nyx Gateway (Pyro)",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Nyx Gateway (Stanton)",
+      "body": null,
+      "system": "Stanton",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Orbituary",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "station"
+    },
+    {
+      "name": "Orison",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "city"
+    },
+    {
+      "name": "Ostler's Claim",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Monox",
+      "kind": "outpost"
+    },
+    {
+      "name": "Patch City",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "station"
+    },
+    {
+      "name": "People's Service Station Alpha",
+      "body": null,
+      "system": "Nyx",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "People's Service Station Delta",
+      "body": null,
+      "system": "Nyx",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "People's Service Station Lambda",
+      "body": null,
+      "system": "Nyx",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "People's Service Station Theta",
+      "body": null,
+      "system": "Nyx",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Picker's Field",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "Port Tressler",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "station"
+    },
+    {
+      "name": "Prophet's Peak",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro V",
+      "kind": "outpost"
+    },
+    {
+      "name": "Pyro Gateway (Nyx)",
+      "body": null,
+      "system": "Nyx",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Pyro Gateway (Stanton)",
+      "body": null,
+      "system": "Stanton",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Rappel",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "Rat's Nest",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro V",
+      "kind": "station"
+    },
+    {
+      "name": "Rayari Anvik Research Outpost",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Rayari Cantwell Research Outpost",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Rayari Deltana Research Outpost",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Rayari Kaltag Research Outpost",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Rayari McGrath Research Outpost",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Reclamation & Disposal Orinth",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "Rod's Fuel 'N Supplies",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro V",
+      "kind": "station"
+    },
+    {
+      "name": "Rough Landing",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "outpost"
+    },
+    {
+      "name": "Ruin Station",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "station"
+    },
+    {
+      "name": "Rustville",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro I",
+      "kind": "outpost"
+    },
+    {
+      "name": "Sacren's Plot",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro IV",
+      "kind": "outpost"
+    },
+    {
+      "name": "Samson & Son's Salvage Center",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "outpost"
+    },
+    {
+      "name": "Scarper's Turn",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "outpost"
+    },
+    {
+      "name": "Seer's Canyon",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro V",
+      "kind": "outpost"
+    },
+    {
+      "name": "Seraphim Station",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "station"
+    },
+    {
+      "name": "Shepherd's Rest",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "outpost"
+    },
+    {
+      "name": "Shubin Mining Facility SAL-2",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "outpost"
+    },
+    {
+      "name": "Shubin Mining Facility SAL-5",
+      "body": "ArcCorp",
+      "system": "Stanton",
+      "planet": "ArcCorp",
+      "kind": "outpost"
+    },
+    {
+      "name": "Shubin Mining Facility SCD-1",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "outpost"
+    },
+    {
+      "name": "Shubin Mining Facility SM0-10",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Shubin Mining Facility SM0-13",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Shubin Mining Facility SM0-18",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Shubin Mining Facility SM0-22",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Shubin Mining Facility SMCa-6",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Shubin Mining Facility SMCa-8",
+      "body": "microTech",
+      "system": "Stanton",
+      "planet": "MicroTech",
+      "kind": "outpost"
+    },
+    {
+      "name": "Slowburn Depot",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Monox",
+      "kind": "outpost"
+    },
+    {
+      "name": "Stag's Rut",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Pyro I",
+      "kind": "outpost"
+    },
+    {
+      "name": "Stanton Gateway (Nyx)",
+      "body": null,
+      "system": "Nyx",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Stanton Gateway (Pyro)",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Starlight Service Station",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "station"
+    },
+    {
+      "name": "Sunset Mesa",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Monox",
+      "kind": "outpost"
+    },
+    {
+      "name": "Terra Gateway (Stanton)",
+      "body": null,
+      "system": "Stanton",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Terra Mills HydroFarm",
+      "body": "Crusader",
+      "system": "Stanton",
+      "planet": "Crusader",
+      "kind": "outpost"
+    },
+    {
+      "name": "The Golden Riviera",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "outpost"
+    },
+    {
+      "name": "The Yard",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "outpost"
+    },
+    {
+      "name": "Watcher's Depot",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Terminus",
+      "kind": "outpost"
+    },
+    {
+      "name": "Weeping Cove",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    },
+    {
+      "name": "Wikelo Emporium Dasi Station",
+      "body": null,
+      "system": "Stanton",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Wikelo Emporium Kinga Station",
+      "body": null,
+      "system": "Stanton",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Wikelo Emporium Selo Station",
+      "body": null,
+      "system": "Stanton",
+      "planet": null,
+      "kind": "station"
+    },
+    {
+      "name": "Windfall",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Bloom",
+      "kind": "outpost"
+    },
+    {
+      "name": "Yang's Place",
+      "body": "Pyro",
+      "system": "Pyro",
+      "planet": "Monox",
+      "kind": "outpost"
+    },
+    {
+      "name": "Zephyr",
+      "body": "Hurston",
+      "system": "Stanton",
+      "planet": "Hurston",
+      "kind": "outpost"
+    }
+  ]
+}

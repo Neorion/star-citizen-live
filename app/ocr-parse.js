@@ -1,0 +1,125 @@
+'use strict';
+
+/**
+ * ocr-parse.js — turn raw OCR text of a Star Citizen contract screen into a
+ * structured contract. Shared by the BROWSER (Cargo tab OCR import) and Node
+ * tests. No dependencies; works in both via the UMD shim at the bottom.
+ *
+ * Verified against the 2026-06-30 bake-off output (7 real mobiGlas ACCEPTED
+ * detail screenshots, tesseract.js). See DESIGN-cargo-planning.md §6b.
+ *
+ * The domain normalizer fixes the deterministic OCR misreads seen in the bake-off
+ * (the slash in "0/10" read as "7"; "5b"→"Sb"; "500"→"S00"; smart quotes;
+ * "Linehaul"→"Linshaul"). Everything else is regex extraction.
+ */
+
+function normalize (text) {
+  return String(text || '')
+    .replace(/[‘’′`]/g, "'")            // smart single quotes -> '
+    .replace(/[“”]/g, '"')                   // smart double quotes
+    .replace(/\bDeliver\s+(\d)7(\d+)\s+SCU/gi, 'Deliver $1/$2 SCU')   // 0710 -> 0/10 (slash misread)
+    .replace(/\bSb\b/g, '5b').replace(/\bS00\b/g, '500')
+    .replace(/Lin[a-z]?haul/gi, 'Linehaul');
+}
+
+function clean (s) {
+  return String(s || '').replace(/\s+/g, ' ').trim()
+    .replace(/[.,;:]+$/, '').trim();
+}
+
+// Strip the "on Pyro 5b" / "above Pyro III" / "on Hurston" celestial suffix off a
+// station name. Covers both systems and all four Stanton planets (a Hurston/Crusader/
+// ArcCorp/microTech contract keeps its suffix otherwise, dirtying the station name).
+// Also strips the "in Lorville" landing-zone tail (Teasa Spaceport in Lorville).
+const BODY_SUFFIX = /\s+(on|above|at the|in)\s+(Pyro|Stanton|Hurston|Crusader|ArcCorp|microTech|Lorville|Orison|New\s?Babbage|Area\s?18|L\d).*$/i;
+function stripBody (s) {
+  return clean(String(s || '').replace(BODY_SUFFIX, '')
+    .replace(/\s*\[.*$/, '').replace(/\*+$/, ''));   // drop a trailing "[BP]*" / "[50/100 Rep]" tier tag
+}
+
+// Read the celestial body OUT of that suffix (before it's stripped) so a clean
+// station name doesn't lose its planet. "Stanton"/Lagrange are systems, not bodies;
+// landing zones (Lorville/Orison/...) resolve to their planet.
+function bodyFromSuffix (s) {
+  const m = String(s || '').match(/\s+(?:on|above|at the|in)\s+([A-Za-z]+)/i);
+  if (!m) return null;
+  const map = { hurston: 'Hurston', crusader: 'Crusader', arccorp: 'ArcCorp', microtech: 'microTech', pyro: 'Pyro',
+    lorville: 'Hurston', orison: 'Crusader' };
+  return map[m[1].toLowerCase()] || null;
+}
+
+const RANKS = /^(Junior|Member|Senior|Trainee|Recruit|Master|Associate)$/i;
+
+function parseContractText (rawText) {
+  const t = normalize(rawText);
+  const lines = t.split('\n').map((l) => l.trim()).filter(Boolean);
+
+  // Title line: the one mentioning a haul with the "rank | type | from/to X" shape.
+  const titleLine = lines.find((l) => /Haul/i.test(l) && /\|/.test(l)) || '';
+  const parts = titleLine.split('|').map((x) => x.trim()).filter(Boolean);
+  let rank = null, contractType = null, pickup = null, titleDropoff = null;
+  if (parts.length) {
+    const rankM = titleLine.match(/\b(Junior|Member|Senior|Trainee|Recruit|Master|Associate)\b/i);
+    rank = rankM ? rankM[1] : null;
+    // contractType = the "... Haul" segment
+    contractType = clean((parts.find((p) => /Haul/i.test(p)) || parts[1] || parts[0] || '')
+      .replace(/\s*\[.*$/, ''));       // drop trailing "[50/100/..." rep tiers if they bled in
+    const route = parts.find((p) => /^\s*(from|to)\s+/i.test(p));
+    if (route) {
+      // cut the endpoint at Reward/Contract/double-space (OCR bleeds the reward
+      // panel onto the same line since the crop puts them side by side).
+      const m = route.match(/^\s*(from|to)\s+(.+?)(?:\s+Rewa|\s+Contract|\s{2,}|$)/i);
+      if (m) { if (/from/i.test(m[1])) pickup = stripBody(m[2]); else titleDropoff = stripBody(m[2]); }
+    }
+  }
+
+  // Reward (aUEC) — "Reward  ¤ 172,250" (¤ often OCRs to a stray digit; skip it lazily)
+  const rewardM = t.match(/Rewa\w{0,3}?.{0,16}?(\d{1,3}(?:,\d{3})+|\d{4,})/i);
+  const reward = rewardM ? rewardM[1] : null;
+
+  // Contractor — "Contracted By  Red Wind Linehaul"
+  const contractorM = t.match(/Contract(?:ed)? [Bb]y[^A-Za-z]{0,4}([A-Za-z][A-Za-z ]{2,40})/);
+  const contractor = contractorM ? clean(contractorM[1]) : null;
+
+  // Deliveries — "Deliver 0/9 SCU of Hydrogen to Seer's Canyon on Pyro 5b."
+  // OCR-tolerant: on a low-contrast whole-screen grab the thin SC font misreads
+  // per line ("Deliver"->"Deiiver", "SCU"->"SGU"/"S0U", "/"->"7"|"|"), which used
+  // to drop every objective but the cleanest one. Fuzz just those fixed tokens —
+  // the "<count>/<need> S.U of <commodity> to <dest>" shape stays strict.
+  const deliveries = [];
+  for (const m of t.matchAll(/De[il1|]{1,2}ver\s+\d+\s*[/7|]\s*(\d+)\s+S[CGO0][UIL1]\s+of\s+([A-Za-z][A-Za-z' ]*?)\s+to\s+([^\n.]+?)(?:\.|\n|$)/gi)) {
+    deliveries.push({ scu: Number(m[1]), commodity: clean(m[2]), dropoff: stripBody(m[3]), body: bodyFromSuffix(m[3]) });
+  }
+
+  // Pickups — "Collect Hydrogen from Fallow Field."
+  const pickups = [];
+  for (const m of t.matchAll(/Collect ([A-Za-z][A-Za-z' ]*?) from ([^\n.]+?)(?:\.|\n|$)/gi)) {
+    const from = stripBody(m[2]);
+    if (from && !/^unknown/i.test(from) && !pickups.some((p) => p.from === from && p.commodity === clean(m[1]))) {
+      pickups.push({ commodity: clean(m[1]), from });
+    }
+  }
+  if (!pickup && pickups.length) pickup = pickups[0].from;                 // "to X" contracts: pickup from Collect line
+  const dropoff = titleDropoff || (deliveries[0] && deliveries[0].dropoff) || null;
+
+  // Auto-classify by screen: an ACCEPTED contract has an ABANDON button; an OFFER
+  // has an ACCEPT button. Reliable — the button word is unambiguous (unlike the
+  // tab labels, which both appear in the text).
+  const suggestedStatus = /\bABANDON\b/i.test(t) ? 'active' : (/ACCEPT\s+OFFER|\bACCEPT\b(?!ED)/i.test(t) ? 'candidate' : null);
+  const heldM = t.match(/ACCEPTED\s*\((\d+)\s*\/\s*(\d+)\)/i);
+  const held = heldM ? { accepted: Number(heldM[1]), max: Number(heldM[2]) } : null;
+
+  // Confidence heuristic: did we get the load-bearing fields?
+  const got = [contractType, reward, (deliveries.length || pickup), dropoff].filter(Boolean).length;
+  const confidence = got >= 4 ? 'high' : got >= 2 ? 'medium' : 'low';
+
+  return {
+    isContract: /Haul/i.test(t) || deliveries.length > 0,
+    title: titleLine || null, rank, contractType: contractType || 'Hauling contract',
+    pickup: pickup || null, dropoff, reward, contractor,
+    deliveries, pickups, confidence, suggestedStatus, held
+  };
+}
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { parseContractText, normalize, stripBody, bodyFromSuffix };
+if (typeof window !== 'undefined') window.parseContractText = parseContractText;
