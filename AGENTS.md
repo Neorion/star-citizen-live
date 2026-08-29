@@ -9,6 +9,15 @@
 > **Last reviewed against source:** branch `feature/fabric-free-m1` · 2026-06-15.
 > If you change architecture, commands, or state, update **this file** and the
 > reality it describes — not a copy.
+>
+> ⚠️ **This file describes OUR fork's `master`, which last moved 2026-07-05.**
+> The lead developer's branch (`martindale/star-citizen-live @ feature/rsi`) has
+> since diverged into a different product — Electron + Android, Fabric P2P back
+> as the transport, Bitcoin payouts, Federation groups, a 506-line parser. Our
+> work through 2026-06-24 was merged there; nothing after it was.
+> **Read [`UPSTREAM-RSI-STATE.md`](UPSTREAM-RSI-STATE.md) before planning any new
+> feature** — it records the divergence, what upstream now provides for free, and
+> which backlog items (ours and Verseview's) that unblocks. Snapshot: 2026-08-17.
 
 ---
 
@@ -142,6 +151,19 @@ Kept during migration; safe to ignore unless explicitly working on migration.
 > ⚠️ `API.md` is **stale** auto-generated JSDoc for the *legacy Fabric* classes.
 > The list above (from `app/server.js`) is the real API.
 
+### Feature work living on branches (NOT yet on `master`)
+A fresh clone lands on `master`, so features still on branches are invisible until
+you fetch them. Check `git branch -r` before assuming something doesn't exist.
+- **Cargo manifest board + contract-screen OCR** → branch **`feature/cargo-router`**.
+  A "🚚 Cargo" dashboard tab that turns accepted hauling contracts into a
+  pickup→dropoff route board, populated two ways: **log-derived** (own extraction in
+  `services/CargoRouter.js`, never touches `app/parser.js`) and **OCR import** of the
+  in-game contract screen (`app/ocr-parse.js`, browser-side tesseract.js;
+  `services/ocrProvider.js` optional cloud fallback). Design: `DESIGN-cargo-router.md`,
+  `DESIGN-cargo-planning.md`. Tests: `test/cargo.test.js`, `test/ocr-parse.test.js`.
+  Separable by design (one module + one flag + one panel). Still WIP — see the branch
+  and `BACKLOG.md` for open phases.
+
 ---
 
 ## 5. Current state — what works vs. what's next
@@ -226,6 +248,9 @@ Discord webhook into a tracked file.**
 | `DESIGN-event-convergence.md` | How to merge many players' event streams into one org-wide view (transport-agnostic; for M4 + future Fabric). |
 | `REFERENCES.md` | Catalog of reusable SC open-source projects + log-format findings. |
 | `BACKLOG.md` | Idea backlog. |
+| `UPSTREAM-RSI-STATE.md` | **Read before planning features.** Where `martindale/star-citizen-live @ feature/rsi` is (2026-08-17 snapshot), what diverged, and the backlog mapping for StarCitizen Live + Verseview. Self-contained for a future model/session. |
+| `PORT-ANALYSIS-rsi.md` | Companion to the above: the RSI fork's design patterns (the conformance target), a community-tool scan (what's already solved), and **level-of-effort estimates per backlog feature** to recode onto those patterns. |
+| `BUILD-PLAN-rsi.md` | Execution plan for the above: workstreams WS0–WS5 broken into sub-agent-sized tasks with acceptance criteria, verification commands, and reusable agent briefs. Written for a lower-effort execution model. |
 | `SPIKE-LOG-tier0-boot.md` | The spike that proved Fabric was too heavy. |
 | `MOBILE-SETUP.md` | Mobile/remote access notes. |
 | `START-HERE-claude-code.md` | Beginner walkthrough for running this in Claude Code. |
