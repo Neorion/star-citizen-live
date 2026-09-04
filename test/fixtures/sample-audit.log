@@ -1,0 +1,6 @@
+<2026-06-17T07:00:00.000Z> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[Kersa] - Time[182954069] [Team_GameServices][Login]
+<2026-06-17T07:10:00.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "Entered Monitored Space: " [8] to queue. New queue size: 1, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]
+<2026-06-17T07:10:05.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "Entered Monitored Space: " [9] to queue. New queue size: 1, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]
+<2026-06-17T07:10:10.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "Quantum Travel Calibration Started By DeadMan1227: " [10] to queue. New queue size: 1, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]
+<2026-06-17T07:10:15.000Z> [Notice] <SomeUnrecognizedThing> nothing we parse yet [Team_X][Y]
+<2026-06-17T07:10:20.000Z> [Notice] <SomeUnrecognizedThing> nothing we parse yet either [Team_X][Y]
