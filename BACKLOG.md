@@ -58,8 +58,9 @@ so the core stays lean. Priority order noted.
   Cheap, log-only, unique. *(Priority 1 — cheapest unique value.)*
 - **📋 Insurance / fleet attrition** — `CWallet::ProcessClaimToNextStep New Insurance
   Claim Request`. **328 files.** Claims over time vs deaths/collisions = cost-of-ops.
-- **👥 Crew / party** — `<PlayerJoined> mission_id … player_id …`. **165 files.** Who you
-  flew with + shared missions; directly feeds the M4 org-wide convergence model. *(Strategic.)*
+- ✅ **Crew / party** — `<PlayerJoined> mission_id … player_id …`. **165 files.** Who you
+  flew with + shared missions; directly feeds the M4 org-wide convergence model.
+  **Shipped** on `feature/crew-party` (merged 2026-08-29) — see `PROGRESS.md`.
 - **💰 Wallet / trading-lite** — `SendShopBuyRequest … shopName[…] client_price[…]`.
   **136 files.** Prices actually paid; a lead toward a trading assistant.
 - **🚀 Ship usage** — ship IDs in nav/QT/collision lines. *Lead — needs a verification
