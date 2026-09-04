@@ -127,3 +127,73 @@ test('analytics endpoint aggregates missions, deaths and a heatmap for the Analy
     await s.stop();
   }
 });
+
+// --- POST …/events (BUILD-PLAN-fabric-mesh.md WS1: bulk idempotent ingest) ---
+
+test('POST …/events is refused (403) unless ingest.httpEnable is set', async () => {
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false } });
+  await s.start();
+  PORT = s.server.address().port;
+  try {
+    const r = await call('POST', `${BASE}/events`, { events: [{ collection: 'deaths', data: { player: 'X' } }] });
+    assert.strictEqual(r.status, 403);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('POST …/events accepts a batch, is idempotent on replay, and attributes to the sender, not the local pilot', async () => {
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, ingest: { httpEnable: true } });
+  await s.start();
+  PORT = s.server.address().port;
+  try {
+    s.handleLogChange('<2026-09-04T00:00:00.000Z> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[LocalPilot] - Time[1] [Login]');
+
+    const batch = {
+      source: 'peer1',
+      events: [
+        { collection: 'deaths', data: { player: 'PeerPilot', bodyId: '1', timestamp: '2026-09-04T00:01:00.000Z' } },
+        { collection: 'missionlog', data: { kind: 'mission:end', missionId: 'cccc3333-0319-4a6a-8b2b-ece75082c848', player: 'PeerPilot', completionType: 'Complete', reason: 'Mission Ended', timestamp: '2026-09-04T00:02:00.000Z' } }
+      ]
+    };
+    let r = await call('POST', `${BASE}/events`, batch);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.received, 2);
+    assert.strictEqual(r.json.created, 2);
+
+    // Replaying the exact same batch is a no-op, not a duplicate.
+    r = await call('POST', `${BASE}/events`, batch);
+    assert.strictEqual(r.json.created, 0, 'idempotent on replay');
+
+    r = await call('GET', `${BASE}/deaths`);
+    assert.strictEqual(r.json.data.length, 1, 'no duplicate death stored');
+    assert.strictEqual(r.json.data[0].source, 'peer1');
+    assert.strictEqual(r.json.data[0].player, 'PeerPilot');
+
+    r = await call('GET', `${BASE}/missiongroups`);
+    const peerMission = r.json.data.find((m) => m.id === 'cccc3333-0319-4a6a-8b2b-ece75082c848');
+    assert.ok(peerMission);
+    assert.strictEqual(peerMission.source, 'peer1');
+    assert.strictEqual(peerMission.player, 'PeerPilot', 'not misattributed to LocalPilot');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('the per-collection POST seam (players/vehicles/kills/missionlog) is also idempotent now', async () => {
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false } });
+  await s.start();
+  PORT = s.server.address().port;
+  try {
+    const payload = { name: 'PeerPilot', timestamp: '2026-09-04T00:00:00.000Z' };
+    let r = await call('POST', `${BASE}/players`, payload);
+    assert.strictEqual(r.status, 200);
+    const before = (await call('GET', `${BASE}/players`)).json.data.length;
+    r = await call('POST', `${BASE}/players`, payload);
+    assert.strictEqual(r.status, 200);
+    const after = (await call('GET', `${BASE}/players`)).json.data.length;
+    assert.strictEqual(after, before, 'reposting the same player is not a duplicate');
+  } finally {
+    await s.stop();
+  }
+});

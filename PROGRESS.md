@@ -10,6 +10,41 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 🔗 WS1 — Idempotent, source-attributed ingest ✅
+**Date:** 2026-09-04 · branch `feature/mesh-ingest-idempotent` · first workstream of `BUILD-PLAN-fabric-mesh.md` (D-008)
+
+Zero-dependency prerequisite for the Fabric mesh backbone, buildable and useful
+on its own: `canonicalStringify()` + `_ingestEvent(source, collection, data)`
+give every ingested event a **stable id** (`idFor(canonicalStringify({source,
+collection, data}))`), so re-delivering the same event is a safe no-op
+(`created: false`) instead of a duplicate — the single de-risking step
+`DESIGN-event-convergence.md` §7 and `HANDOFF-master.md` §5 named first.
+
+- New `POST …/events` (bulk, off by default — `SC_HTTP_INGEST=1`): accepts
+  `{ source, events: [{collection, data}] }`, returns per-event
+  `{id, created}`. Unsigned/trusted-LAN only until WS2 adds envelope
+  verification.
+- The existing per-collection `POST …/<name>` seam (players/vehicles/kills/
+  missionlog) now routes through the same idempotent path — `activities`
+  deliberately excluded (a local pass-through record, not part of the peer
+  model).
+- Peer-sourced `missionlog`/`crew` events fold into `missionGroups` via the
+  existing `_indexMission()`, stamped with `source` and attributed to the
+  *sender's* player, never silently defaulted to the local pilot — a peer's
+  mission or crew sighting now shows up correctly in `_analyticsDataset()`
+  under their own name.
+- `INGEST_COLLECTIONS` allowlist: `players, kills, deaths, incaps, vehicles,
+  missionlog, crew, disconnects`.
+
+9 new tests (6 unit + 3 API round-trip/idempotency/403-gate), full suite
+122/122 green. `git grep "require('@fabric" app/` confirms zero footprint —
+this workstream needs no new dependency at all.
+
+Next: WS2 (`FabricSync` module skeleton + identity), per
+`BUILD-PLAN-fabric-mesh.md`.
+
+---
+
 ## 👥 Crew/party tracking — PlayerJoined + player_id directory ✅
 **Date:** 2026-08-28 · branch `feature/crew-party`
 
