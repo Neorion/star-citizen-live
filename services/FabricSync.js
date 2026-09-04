@@ -208,6 +208,41 @@ class FabricSync extends EventEmitter {
     return rec;
   }
 
+  /** Find a peer by id (WS5 REST surface). */
+  getPeer (id) { return this.peers.find((p) => p.id === id) || null; }
+
+  // Update enabled/label/shareLogs/expectedPubkey on an existing peer (T5.1
+  // "POST …/peers/:id toggles enabled/label/shareLogs"). The address is
+  // deliberately pinned to its current value - this is a consent/metadata
+  // toggle, not an address edit; re-add the peer to change its address.
+  // Dials immediately if the update just enabled a peer. Returns the
+  // updated record, or null if `id` isn't on the roster.
+  updatePeer (id, patch) {
+    const idx = this.peers.findIndex((p) => p.id === id);
+    if (idx === -1) return null;
+    const existing = this.peers[idx];
+    const merged = Object.assign({}, existing, patch || {}, { address: existing.address, id: existing.id });
+    const rec = this._normalizePeerRecord(merged);
+    if (!rec) return null;
+    rec.lastSeen = existing.lastSeen;
+    rec.lastError = existing.lastError;
+    this.peers[idx] = rec;
+    this._persistPeers();
+    if (rec.enabled !== false) this._dialAddresses([rec.address]);
+    return rec;
+  }
+
+  // Remove a peer from the roster and persist. Does not force-close an
+  // already-open connection - it simply won't be redialed if it drops.
+  // Returns true if a peer was actually removed.
+  removePeer (id) {
+    const before = this.peers.length;
+    this.peers = this.peers.filter((p) => p.id !== id);
+    if (this.peers.length === before) return false;
+    this._persistPeers();
+    return true;
+  }
+
   // ---- Consent gate (T3.2 - ported verbatim from the reference's
   // _logShareTargets/_canShareLogs/_logSharePublishOpts) ----
 

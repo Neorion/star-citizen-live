@@ -220,6 +220,63 @@ network. Per `BUILD-PLAN-fabric-mesh.md`.
 
 ---
 
+## 🕸️ WS5 — Roster REST + dashboard "Mesh" tab ✅
+**Date:** 2026-09-04 · branch `feature/mesh-roster-ui` · fifth (and final planned) workstream of `BUILD-PLAN-fabric-mesh.md` (D-008)
+
+The consent UI itself — the whole reason the roster/consent-gate work in
+WS3/WS4 exists. No further Fabric gates needed (routes/UI only touch the
+roster model, testable against WS3's fake network with no `@fabric/core`
+install required).
+
+- `services/FabricSync.js` gained `getPeer`/`updatePeer`/`removePeer` —
+  `updatePeer` pins the address (a consent/metadata toggle, not an address
+  edit) and dials immediately if the update just enabled a peer.
+- New REST (`app/server.js`, 503 `{enabled:false}` when `!this.fabric`, same
+  pattern as Cargo): `GET/POST …/peers`, `GET/POST/DELETE …/peers/:id`,
+  `POST …/mesh/settings`. Validates the address, refuses a self-dial and a
+  duplicate with clear 400s (reusing `services/fabricAddress.js` directly —
+  zero-dep, safe to require unconditionally). `monitor` snapshot gained a
+  `mesh: {enabled, ready, connected, queued, shareLogsActive}` summary (T5.3).
+- New "🕸 Mesh" dashboard tab (`app/ui.html`, same show/hide-by-`*Enabled`
+  pattern as 🚚 Cargo): a status strip, a global "share with all connected
+  peers" toggle (off by default, explicit warning copy), an add-peer form,
+  and a roster table with a **per-peer "share my events" checkbox — this is
+  the actual consent UI**. Mission cards gained a "📡 shared by …" badge
+  when `m.source` is a peer, resolved to that peer's label where known
+  (honesty rule, T5.2) — scoped to mission cards for this pass; the
+  Analyze-tab pilot list wasn't touched, to avoid a larger, more invasive
+  change to that heavily cross-filtered rendering code.
+- Found and fixed a real scoping bug before it shipped: the mesh JS was
+  first written inside the Analyze tab's own IIFE, where `renderMissions()`
+  (a top-level function, like `$`) couldn't reach it — moved to top level,
+  matching how every other cross-tab helper in this file already works.
+
+**Verified against the real, running relay** (`SC_FABRIC=1`, real seeded
+history from the actual `Game.log`) — not just the test suite: the mesh tab
+showed a real identity, real listen port, and `connected: 2` against the
+**actual public seed hubs** (`hub.fabric.pub`, `relay.goon.vc` — this relay
+really reached the real Fabric network). Toggling a peer's "share my
+events" checkbox flipped `shareLogsActive` live over the real API, exactly
+as designed. Caught a near-miss during this same check: briefly turning
+consent on for `hub.fabric.pub` on a real instance seeded with real
+gameplay history is exactly the action a user takes to actually start
+sharing - confirmed `uplinkQueued` stayed `0` throughout (no live game
+session was appending new events in that window) before immediately
+reverting the toggle and stopping the preview. No real data left this
+machine, but it's a sharp reminder of what this UI actually does once real
+consent is granted.
+
+Tests: 5 new in `test/api.test.js` (503-gating, address validation/self-dial/
+duplicate rejection, live consent-flip via `POST …/peers/:id` then `DELETE`,
+`shareLogsGlobal` flip, monitor's mesh summary on and off). Full suite:
+**151/151** (149 pass, 2 gated-skip on plain `npm test`).
+
+This completes the planned Fabric-mesh build plan (WS1–WS5); WS6 (cumulative
+snapshot for late joiners) remains optional, "port only if the owner wants
+history convergence" per the plan.
+
+---
+
 ## 👥 Crew/party tracking — PlayerJoined + player_id directory ✅
 **Date:** 2026-08-28 · branch `feature/crew-party`
 
