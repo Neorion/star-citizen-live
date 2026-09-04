@@ -2,16 +2,25 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const path = require('node:path');
 const StarCitizenService = require('../app/server');
 
+// A path that never exists, so _loadHistory() always falls back to its empty
+// defaults. Tests must not depend on this machine's local stores/history.json -
+// `npm run backfill` regenerates it with real, unpredictable corpus data (real
+// pilots, real player_ids), which silently "resolves" things these tests need
+// to start unresolved. Found the hard way when a backfill run made a test
+// start seeing a real handle instead of null.
+const NO_HISTORY = path.join(__dirname, 'fixtures', '__no-history-here.json');
+
 test('service constructs with mission stub and starts STOPPED', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   assert.strictEqual(s.status, 'STOPPED');
   assert.ok(s.missionManager, 'mission manager present');
 });
 
 test('handleLogChange routes a kill into the kills collection and emits', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   let emitted = null;
   s.on('kill', (k) => { emitted = k; });
   s.handleLogChange("<2026-06-09T07:00:00.000Z> [Notice] <Actor Death> CActor::Kill: 'V' [1] in zone 'Z' killed by 'K' [2] using 'W' [Class WC] with damage type 'Energy' from direction x: 0, y: 0, z: 0");
@@ -21,7 +30,7 @@ test('handleLogChange routes a kill into the kills collection and emits', () => 
 
 test('replays a sample combat log: detects kills, classifies kill vs death + NPC', async () => {
   const path = require('node:path');
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   await s.replayLog(path.join(__dirname, 'fixtures', 'sample-combat.log'));
   assert.strictEqual(s.kills.length, 3, 'three kill lines parsed');
   assert.deepStrictEqual(s.kills.map((k) => k.involves).sort(), ['death', 'kill', 'kill']);
@@ -33,14 +42,14 @@ test('replays a sample combat log: detects kills, classifies kill vs death + NPC
 });
 
 test('handleLogChange routes a login into the players collection', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   s.handleLogChange("<2026-06-09T06:23:07.643Z> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[Kersa] - Time[1]");
   assert.strictEqual(s.players.length, 1);
   assert.strictEqual(s.players[0].name, 'Kersa');
 });
 
 test('players dedupe by handle; logins count every event', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   let joins = 0;
   s.on('player:join', () => { joins++; });
   const login = (t) => s.handleLogChange(`<${t}> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[Kersa] - Time[1] [Login]`);
@@ -58,7 +67,7 @@ test('players dedupe by handle; logins count every event', () => {
 });
 
 test('handleLogChange routes a mission objective into missionlog and emits', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   let emitted = null;
   s.on('mission:objective', (m) => { emitted = m; });
   s.handleLogChange("<2026-06-12T20:20:11.249Z> [Notice] <CMissionLogEntry::UpdateActiveObjective> Objective updated id=3340e494-888d-96be-0192-0c08d4841aa3, flags=ShowInLog|, hidden=0, uiDisplay[Priority=1][Text=Defeat Hostile Ship] [Team_MissionFeatures][Missions]");
@@ -67,7 +76,7 @@ test('handleLogChange routes a mission objective into missionlog and emits', () 
 });
 
 test('mission events group by MissionId with objectives joined via ObjectiveId', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   // a mission notification introduces objective O under mission M
   s.handleLogChange('<2026-06-13T07:20:00.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "New Objective: Defeat Hostile Ships: " [25] to queue. New queue size: 1, MissionId: [4491dc34-bcf3-4f56-a0b8-228e3e3f40e9], ObjectiveId: [3340e494-888d-96be-0192-0c08d4841aa3] [Team_CoreGameplayFeatures][Missions][Comms]');
   // an objective update for the same ObjectiveId carries the latest text
@@ -81,7 +90,7 @@ test('mission events group by MissionId with objectives joined via ObjectiveId',
 });
 
 test('mission marker attaches generator + type to the grouped mission', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   // notification creates the group; marker (same MissionId) attaches the generator
   s.handleLogChange('<2026-06-13T07:20:00.000Z> [Notice] <SHUDEvent_OnNotification> Added notification "New Objective: Defeat Hostile Ships: " [25] to queue. New queue size: 1, MissionId: [4491dc34-bcf3-4f56-a0b8-228e3e3f40e9], ObjectiveId: [3340e494-888d-96be-0192-0c08d4841aa3] [Team_CoreGameplayFeatures][Missions][Comms]');
   s.handleLogChange('<2026-06-13T07:20:01.000Z> [Notice] <CLocalMissionPhaseMarker::CreateMarker> Creating objective marker: missionId [4491dc34-bcf3-4f56-a0b8-228e3e3f40e9], generator name [BountyHuntersGuild_KIllShip] [Team_MissionFeatures][Missions]');
@@ -91,7 +100,7 @@ test('mission marker attaches generator + type to the grouped mission', () => {
 });
 
 test('mission:crew (PlayerJoined) is stored raw and folded into the mission group crew list', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   let emitted = null;
   s.on('mission:crew', (c) => { emitted = c; });
   s.handleLogChange('<2026-03-26T03:57:08.915Z> [Notice] <PlayerJoined> Received PlayerJoined push message for: mission_id 82be0365-268b-477b-b905-12b7b8538640 - player_id 3659022222646 [Team_GameServices][Missions]');
@@ -106,7 +115,7 @@ test('mission:crew (PlayerJoined) is stored raw and folded into the mission grou
 });
 
 test('mission:end resolves a teammate\'s crew sighting once the directory learns their handle', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   // A crew sighting arrives with no known handle for this player_id yet.
   s.handleLogChange('<2026-03-26T03:57:08.915Z> [Notice] <PlayerJoined> Received PlayerJoined push message for: mission_id 82be0365-268b-477b-b905-12b7b8538640 - player_id 1275581349492 [Team_GameServices][Missions]');
   let unresolved = s.missionGroups.find((x) => x.id === '82be0365-268b-477b-b905-12b7b8538640');
@@ -128,7 +137,7 @@ test('a seeded org-wide player directory (from backfill) resolves crew immediate
 });
 
 test('combat objectives are tracked as combat progress (proxy for kills)', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   let progressed = 0;
   s.on('combat:progress', () => { progressed++; });
   // a combat objective update
@@ -142,7 +151,7 @@ test('combat objectives are tracked as combat progress (proxy for kills)', () =>
 });
 
 test('player incapacitation routes to incaps, attributed to the session player', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   let downed = null;
   s.on('player:incap', (i) => { downed = i; });
   s.handleLogChange('<2026-03-26T04:00:00.000Z> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[DeadMan1227] - Time[1] [Login]');
@@ -153,7 +162,7 @@ test('player incapacitation routes to incaps, attributed to the session player',
 });
 
 test('player death routes to deaths, attributed to the session player (gear lines ignored)', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   let died = null;
   s.on('player:death', (d) => { died = d; });
   s.handleLogChange('<2026-06-17T07:00:00.000Z> [Notice] <Legacy login response> [CIG-net] User Login Success - Handle[Kersa] - Time[1] [Login]');
@@ -168,7 +177,7 @@ test('player death routes to deaths, attributed to the session player (gear line
 
 test('replays a real-format session: death + mission lifecycle outcomes', async () => {
   const path = require('node:path');
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   await s.replayLog(path.join(__dirname, 'fixtures', 'sample-missions.log'));
 
   // two deaths (two body markers; the gear lines in between are not deaths)
@@ -191,7 +200,7 @@ test('replays a real-format session: death + mission lifecycle outcomes', async 
 });
 
 test('HUD notification routes to notifications, not missionlog', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   s.handleLogChange('<2026-06-13T07:12:41.081Z> [Notice] <SHUDEvent_OnNotification> Added notification "Entering Armistice Zone - Combat Prohibited: " [8] to queue. New queue size: 3, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]');
   assert.strictEqual(s.notifications.length, 1);
   assert.strictEqual(s.missionlog.length, 0);
@@ -199,7 +208,7 @@ test('HUD notification routes to notifications, not missionlog', () => {
 });
 
 test('handleLogChange stamps session build/hardware from header lines', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   s.handleLogChange('<2026-06-12T20:04:54.975Z> Log started on Fri Jun 12 20:04:54 2026');
   s.handleLogChange('<2026-06-12T20:04:55.614Z> Branch: sc-alpha-4.8.0-hotfix');
   s.handleLogChange('<2026-06-12T20:04:55.614Z> Changelist: 11952564');
@@ -208,7 +217,7 @@ test('handleLogChange stamps session build/hardware from header lines', () => {
 });
 
 test('handleLogChange tracks each game session and resets on a new launch', () => {
-  const s = new StarCitizenService({ discord: { enable: false } });
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   let started = 0;
   s.on('session:start', () => { started++; });
   s.handleLogChange('<2026-06-12T20:04:54.975Z> Log started on Fri Jun 12 20:04:54 2026');
