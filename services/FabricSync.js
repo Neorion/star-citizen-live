@@ -14,18 +14,22 @@ const fabricAddress = require('./fabricAddress');
  * one of these when settings.fabric.enable is true -
  *   this.fabric = this.settings.fabric.enable ? new FabricSync({...}) : null
  * - so requiring this file must NEVER pull in @fabric/core at module load
- * time. Every Fabric-touching call is deferred to inside a method (start(),
- * mostly via meshIdentity, whose own functions are lazy the same way), and
+ * time. Every Fabric-touching call is deferred to inside a method, and
  * guarded so the service degrades to "installed: false" instead of throwing
  * when @fabric/core isn't present (npm run fabric:install pulls it in).
  *
- * WS2 stood up identity + a status seam. WS3 (this workstream) adds the
- * PEER ROSTER, the CONSENT GATE ("who is this pilot's data allowed to reach,
- * and only once they say so"), and the OUTBOUND QUEUE + flush loop - all of
- * it runs with no @fabric/core installed, driven by a `network` object
- * (real in WS4, a fake with publishEventBatch() in tests today) injected via
- * settings/the constructor or set directly as `fabric.network`. Nothing here
- * opens a real socket yet - that's WS4.
+ * WS2 stood up identity + a status seam. WS3 added the peer roster, the
+ * outbound consent gate, and the queue + flush loop, driven by an injected
+ * `network` test double - none of it needs @fabric/core installed. WS4
+ * (this workstream) adds the REAL transport: a real `@fabric/core` Peer,
+ * signed-and-relayed SCEventBatch publish/inbound dispatch into
+ * `_ingestEvent`, and seed-hub dialing. Real peer transport is opt-in via
+ * `settings.fabric.startPeer` (separate from `enable`, which only turns on
+ * identity + consent/queue) - so every WS2/WS3 test and every ordinary
+ * `fabric.enable:true` caller stays exactly as side-effect-free as before,
+ * even now that @fabric/core is actually installed; only a caller that
+ * explicitly asks for `startPeer:true` (the production CLI when SC_FABRIC=1,
+ * and WS4's own gated two-node test) ever opens a real socket.
  */
 
 function idFor (content) {
@@ -48,34 +52,50 @@ function sanitizeForUplink (data) {
   return out;
 }
 
+// First-boot roster seed (T4.6) when the caller specifies no peers at all
+// (settings.peers left unset) and no roster file exists yet. Transport-only:
+// shareLogs stays false - a seed hub relays traffic but is never
+// auto-authorized to receive this pilot's events (consent is always
+// explicit, per-peer or global, never implied by being on the roster).
+const DEFAULT_PEERS = ['hub.fabric.pub:7777', 'relay.goon.vc:7777'];
+
 class FabricSync extends EventEmitter {
   constructor ({ service, settings, storeDir, network } = {}) {
     super();
     this.service = service || null;
     this.settings = Object.assign({
       enable: false,
-      listen: true,
+      startPeer: false,        // opt-in: actually open a real @fabric/core Peer (WS4). See class doc.
+      listen: true,             // when startPeer is on, accept inbound connections (vs. dial-out only)
       port: 7777,
       interface: '0.0.0.0',
-      peers: null,             // array of seed peer addresses (strings) or partial peer records
-      identityFile: null,      // defaults to <storeDir>/fabric-identity.json
-      peersFile: null,         // defaults to <storeDir>/fabric-peers.json
-      shareLogsGlobal: false,  // broadcast to every connected peer once identity is ready
+      peers: null,              // array of seed peer addresses (strings) or partial peer records
+      allowedKeys: null,        // optional inbound roster pin: array of pubkeys; null = accept any signer
+      identityFile: null,       // defaults to <storeDir>/fabric-identity.json
+      peersFile: null,          // defaults to <storeDir>/fabric-peers.json
+      shareLogsGlobal: false,   // broadcast to every connected peer once identity is ready
       uplinkIntervalMs: 5000
     }, settings || {});
     this.storeDir = storeDir || path.join(__dirname, '..', 'stores');
 
     this.installed = meshIdentity.available();
     this.identity = null;
-    this.peer = null;          // real @fabric/core Peer instance - WS4
-    // Real transport (WS4) or a test double: { ready, status(), publishEventBatch(events, sentAt, opts) }.
+    this.peer = null;          // real @fabric/core Peer instance, once _startPeer() runs
+    // Transport facade: { ready, status(), publishEventBatch(events, sentAt, opts) }.
+    // A test double until _startPeer() replaces it with the real one.
     this.network = network || null;
+    this._contractIdCache = null;
 
     this.peers = [];           // known-peer roster, see _normalizePeerRecord()
     this._uplinkQueue = [];    // outbound event queue
     this._uplinkTimer = null;
     this._uplinkWired = false;
     this._startError = null;
+
+    // Safety net: FabricSync is a standalone EventEmitter (app/server.js
+    // doesn't listen on it today). Without at least one 'error' listener,
+    // a stray Peer 'error' event would throw and crash the process.
+    this.on('error', (e) => console.error('[STAR-CITIZEN] fabric error:', (e && e.message) || e));
   }
 
   async start () {
@@ -94,22 +114,32 @@ class FabricSync extends EventEmitter {
     try {
       this.identity = meshIdentity.loadOrCreate(file, process.env.SC_FABRIC_PASSPHRASE || null);
       console.log(`[STAR-CITIZEN] fabric: identity ready (pubkey ${this.identity.pubkey.slice(0, 12)}…)`);
-      return true;
     } catch (err) {
       this._startError = err.message;
       console.error('[STAR-CITIZEN] fabric: identity load failed:', err.message);
       return false;
     }
+
+    if (this.settings.startPeer) {
+      try {
+        await this._startPeer();
+      } catch (err) {
+        this._startError = err.message;
+        console.error('[STAR-CITIZEN] fabric: peer transport failed to start:', err.message);
+        return false;
+      }
+    }
+    return true;
   }
 
   async stop () {
     if (this._uplinkTimer) { clearInterval(this._uplinkTimer); this._uplinkTimer = null; }
-    // Real transport teardown (Peer#stop) lands in WS4 - nothing open yet.
+    await this._stopPeer();
   }
 
   get ready () { return !!(this.installed && this.identity); }
 
-  // ---- Peer roster (T3.1) ----
+  // ---- Peer roster (T3.1, T4.6) ----
 
   // Normalize a peer roster entry to a stable shape. Returns null for a
   // malformed/unparseable address or one that would dial this process
@@ -135,7 +165,10 @@ class FabricSync extends EventEmitter {
   _peersFilePath () { return this.settings.peersFile || path.join(this.storeDir, 'fabric-peers.json'); }
 
   // Load the persisted roster; on first run (no file yet), seed it from
-  // settings.peers (address strings or partial records) and persist.
+  // settings.peers (address strings or partial records) - or, if the caller
+  // specified no peers at all, from the default transport-only seed hubs
+  // (T4.6). An explicit empty array (`peers: []`) means "no seeds", not
+  // "use the defaults" - tests rely on that to stay isolated.
   _loadOrSeedPeers () {
     const file = this._peersFilePath();
     try {
@@ -144,7 +177,10 @@ class FabricSync extends EventEmitter {
         if (Array.isArray(arr)) { this.peers = arr.map((p) => this._normalizePeerRecord(p)).filter(Boolean); return; }
       }
     } catch (e) { console.error('[STAR-CITIZEN] fabric: peer roster read failed:', e.message); }
-    const seeds = Array.isArray(this.settings.peers) ? this.settings.peers : [];
+
+    const seeds = Array.isArray(this.settings.peers)
+      ? this.settings.peers
+      : DEFAULT_PEERS.map((address) => ({ address, shareLogs: false }));
     this.peers = seeds.map((p) => this._normalizePeerRecord(typeof p === 'string' ? { address: p } : p)).filter(Boolean);
     if (this.peers.length) this._persistPeers();
   }
@@ -159,7 +195,8 @@ class FabricSync extends EventEmitter {
     } catch (e) { console.error('[STAR-CITIZEN] fabric: peer roster persist failed:', e.message); }
   }
 
-  // Add (or replace, by address) a peer and persist the roster. Returns the
+  // Add (or replace, by address) a peer, persist the roster, and (T4.5) dial
+  // it immediately if the real transport is already running. Returns the
   // normalized record, or null if the address was rejected.
   addPeer (input) {
     const rec = this._normalizePeerRecord(input);
@@ -167,6 +204,7 @@ class FabricSync extends EventEmitter {
     this.peers = this.peers.filter((p) => p.address !== rec.address);
     this.peers.push(rec);
     this._persistPeers();
+    if (rec.enabled !== false) this._dialAddresses([rec.address]);
     return rec;
   }
 
@@ -264,6 +302,182 @@ class FabricSync extends EventEmitter {
       this.emit('uplink:error', { error: e.message });
       return null;
     }
+  }
+
+  // ---- Real Fabric Peer transport (WS4) ----
+
+  // Our own private contract namespace (T4.1, owner gate G2 = B). Requires
+  // @fabric/core - only call once this.installed is true.
+  _contractId () {
+    if (!this._contractIdCache) this._contractIdCache = require('../contracts/starcitizenlive').starCitizenLiveContractId();
+    return this._contractIdCache;
+  }
+
+  // T4.2: start a real @fabric/core Peer, dialing the current roster and
+  // (if settings.listen) accepting inbound connections. Wires the same
+  // `network` facade WS3's flush loop already expects, so _flushUplink()
+  // needed zero changes for real transport to work.
+  async _startPeer () {
+    if (this.peer) return this.peer;
+    if (!this.identity) throw new Error('identity required (call after start() has loaded/created one)');
+
+    const Peer = require('@fabric/core/types/peer');
+    const master = meshIdentity.masterKeyFromIdentity(this.identity);
+    const dialAddresses = this.peers.filter((p) => p.enabled !== false).map((p) => p.address);
+
+    const peer = new Peer({
+      listen: this.settings.listen !== false,
+      port: Number(this.settings.port) || 7777,
+      interface: this.settings.interface || '0.0.0.0',
+      peers: dialAddresses,
+      peersDb: null,
+      networking: true,
+      reconnectToKnownPeers: false,
+      listenPortAttempts: 20,
+      key: { xprv: master.xprv },
+      upnp: false,
+      constraints: { peers: { max: 32 } }
+    });
+
+    peer.on('error', (e) => this.emit('error', e));
+    peer.on('warning', (m) => this.emit('warning', m));
+    peer.on('ready', (info) => this.emit('ready', info));
+    peer.on('connections:open', (ev) => this.emit('connections:open', ev));
+    peer.on('connections:close', (ev) => this.emit('connections:close', ev));
+    peer.on('peer:self', (ev) => this.emit('peer:self', ev));
+    peer.on('contract:message', (ev) => this._onContractMessage(ev));
+
+    await peer.start();
+    this.peer = peer;
+    this.network = this._buildNetworkFacade(peer);
+    console.log(`[STAR-CITIZEN] fabric peer listening on ${peer.settings.port} (id ${String(peer.key.pubkey).slice(0, 12)}…)`);
+    return peer;
+  }
+
+  // T4.5: destroy raw connections, stop the peer, null everything out. Safe
+  // to call even when no peer was ever started.
+  async _stopPeer () {
+    const peer = this.peer;
+    this.peer = null;
+    this.network = null;
+    if (!peer) return;
+    for (const id of Object.keys(peer.connections || {})) {
+      const c = peer.connections[id];
+      if (!c) continue;
+      try { if (typeof c.destroy === 'function') c.destroy(); } catch (_) { /* already torn down */ }
+    }
+    try { await peer.stop(); } catch (e) { this.emit('error', e); }
+  }
+
+  // T4.5: dial newly-added roster addresses at runtime (e.g. from a future
+  // WS5 "add peer" REST call), without restarting the whole peer.
+  _dialAddresses (addresses) {
+    if (!this.peer || typeof this.peer._connect !== 'function') return;
+    for (const addr of addresses) {
+      if (this.peer.connections && this.peer.connections[addr]) continue;
+      try {
+        if (typeof this.peer._upsertPeerRegistry === 'function') this.peer._upsertPeerRegistry(addr, { address: addr });
+        this.peer._connect(addr);
+      } catch (e) { this.emit('warning', `[STAR-CITIZEN] fabric: connect ${addr} failed: ${e.message}`); }
+    }
+  }
+
+  // T4.3: the `network` facade _flushUplink() (WS3) already knows how to
+  // drive - `ready`/`status()`/`publishEventBatch()` - now backed by a real peer.
+  _buildNetworkFacade (peer) {
+    const self = this;
+    return {
+      get ready () { return !!(peer && self.identity && peer.key); },
+      status () { return { fabricConnected: Object.keys(peer.connections || {}).length }; },
+      publishEventBatch (events, sentAt, opts) {
+        return self._publishContractMessage('SCEventBatch', { events, sentAt }, opts);
+      }
+    };
+  }
+
+  // Sign a CONTRACT_MESSAGE body under our own contract id and relay it -
+  // broadcast (peer.relayFrom) when opts.to is absent, directed (writing
+  // straight to the matching connections) otherwise. Ported/simplified from
+  // the reference's _signMessage + _signAndRelay + _publishContractMessage
+  // (FabricNetwork.js:543-590, 1609-1626) - no groups/chat/proposals, this
+  // mesh only ever sends one body type.
+  _publishContractMessage (type, object, opts = {}) {
+    if (!this.peer) throw new Error('fabric peer not started');
+    const pubkey = this.identity && this.identity.pubkey;
+    if (!pubkey) throw new Error('identity required');
+    const Message = require('@fabric/core/types/message');
+    const body = { contract: this._contractId(), type, actor: { publicKey: pubkey, id: pubkey }, object };
+    const msg = Message.fromVector(['CONTRACT_MESSAGE', JSON.stringify(body)]).signWithKey(this.peer.key);
+
+    const targets = Array.isArray(opts.to) ? opts.to.map((a) => String(a).trim()).filter(Boolean) : null;
+    if (!targets || !targets.length) {
+      this.peer.relayFrom(null, msg);
+      return msg;
+    }
+    const buf = msg.toBuffer();
+    for (const id of Object.keys(this.peer.connections || {})) {
+      if (!targets.some((addr) => FabricSync._connectionMatchesAddress(id, addr))) continue;
+      const conn = this.peer.connections[id];
+      if (conn && typeof conn._writeFabric === 'function') conn._writeFabric(buf);
+    }
+    return msg;
+  }
+
+  /** True when `connectionId` matches a roster address (exact or host match). */
+  static _connectionMatchesAddress (connectionId, rosterAddress) {
+    const id = String(connectionId || '').toLowerCase();
+    const addr = String(rosterAddress || '').toLowerCase();
+    if (!id || !addr) return false;
+    if (id === addr) return true;
+    const host = addr.split(':')[0];
+    return !!(host && (id === host || id.startsWith(host + ':')));
+  }
+
+  // T4.4: inbound dispatch - our private contract's SCEventBatch only. Loops
+  // events into the SAME _ingestEvent() the HTTP /events route uses (WS1),
+  // so a Fabric-delivered event is just as idempotent/source-attributed as
+  // one that arrived over HTTP.
+  _onContractMessage (ev) {
+    if (!ev || !ev.contract || ev.contract !== this._contractId()) return;
+    const body = ev.object || {};
+    if (body.type !== 'SCEventBatch') return;
+
+    // `ev.signer` is cryptographically recovered by the Peer itself (from
+    // the message signature, not from the JSON body) - trustworthy, but in
+    // @fabric/core's own x-only form (verified empirically: it's the
+    // compressed pubkey minus its 02/03 prefix byte, same convention
+    // meshIdentity's pubkeyXOnly/pubkeysMatch already normalize for). The
+    // body's own `actor.publicKey` is the full compressed form (matches the
+    // HTTP-envelope path's `source` convention) but is unverified content -
+    // only trust it once it's confirmed to match the real signer; never let
+    // a peer spoof attribution just by writing a different key into the body.
+    const claimed = (body.actor && (body.actor.publicKey || body.actor.id)) || null;
+    let signer = ev.signer || null;
+    if (!signer) return;
+    if (claimed && meshIdentity.pubkeysMatch(signer, claimed)) signer = claimed;
+
+    const allowed = this.settings.allowedKeys;
+    if (Array.isArray(allowed) && allowed.length && !allowed.some((k) => meshIdentity.pubkeysMatch(k, signer))) {
+      this.emit('warning', `[STAR-CITIZEN] fabric: dropping SCEventBatch from an unlisted signer (${String(signer).slice(0, 12)}…)`);
+      return;
+    }
+
+    const object = body.object != null ? body.object : body;
+    const events = Array.isArray(object.events) ? object.events : [];
+    let created = 0;
+    for (const e of events) {
+      if (!this.service || !e) continue;
+      try {
+        const r = this.service._ingestEvent(signer, e.collection, e.data);
+        if (r.created) created++;
+      } catch (_) { /* malformed event from a peer - skip it, never crash on inbound data */ }
+    }
+
+    const now = new Date().toISOString();
+    for (const p of this.peers) {
+      if (p.expectedPubkey && meshIdentity.pubkeysMatch(p.expectedPubkey, signer)) p.lastSeen = now;
+    }
+    if (this.service) this.service.emit('ingest', { source: signer, received: events.length, created, via: 'fabric' });
   }
 
   // Verify a signed envelope from a peer against the roster (if one is
