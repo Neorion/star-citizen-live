@@ -11,6 +11,12 @@
 > **Snapshot taken:** 2026-08-17 · **Author:** Claude Code session on branch
 > `claude/star-citizen-fork-features-he1h1f`.
 >
+> **Re-verified 2026-09-03:** `git fetch origin feature/rsi` (+ `--prune` across all
+> upstream branches) from the `martindale-star-citizen-live` clone. Tip is still
+> `a96d5ae` — **zero new commits** since this snapshot was taken (~2.5 weeks of no
+> upstream activity on `feature/rsi`). No new/deleted branches either. Everything
+> below is still current as-is; no re-derivation needed this pass.
+>
 > ⚠️ **This is a survey, not an authorisation.** Per `AGENTS.md` §10 / D-006 the
 > owner decides what gets built. Nothing here has been implemented.
 
