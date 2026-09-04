@@ -182,6 +182,70 @@ test('stabilityStats merges the live session with a backfilled corpus', () => {
   assert.strictEqual(stats.byCategory.crash, 1);
 });
 
+// --- _ingestEvent (BUILD-PLAN-fabric-mesh.md WS1: idempotent, source-attributed ingest) ---
+
+test('_ingestEvent rejects a collection not on the allowlist', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  assert.throws(() => s._ingestEvent('peer1', 'activities', {}), /unknown ingest collection/);
+});
+
+test('_ingestEvent is idempotent: re-delivering the same (source, collection, data) is a no-op', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  const data = { player: 'PeerPilot', bodyId: '12345', timestamp: '2026-09-04T00:00:00.000Z' };
+  const first = s._ingestEvent('peer1', 'deaths', data);
+  assert.strictEqual(first.created, true);
+  assert.strictEqual(s.deaths.length, 1);
+  const second = s._ingestEvent('peer1', 'deaths', data);
+  assert.strictEqual(second.created, false, 'replaying the identical event is not a duplicate');
+  assert.strictEqual(second.id, first.id, 'same logical event -> same id');
+  assert.strictEqual(s.deaths.length, 1, 'store did not grow on replay');
+});
+
+test('_ingestEvent stamps source and attributes a peer death to the peer, not the local player', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  s._sessionHandle = 'LocalPilot';
+  s._ingestEvent('peer1', 'deaths', { player: 'PeerPilot', bodyId: '999', timestamp: '2026-09-04T00:00:00.000Z' });
+  assert.strictEqual(s.deaths[0].source, 'peer1');
+  assert.strictEqual(s.deaths[0].player, 'PeerPilot');
+  const dataset = s._analyticsDataset();
+  const peerDeath = dataset.deaths.find((d) => d.player === 'PeerPilot');
+  assert.ok(peerDeath, 'peer death appears under the peer\'s own name');
+  assert.ok(!dataset.deaths.some((d) => d.player === 'LocalPilot'), 'not misattributed to the local pilot');
+});
+
+test('_ingestEvent folds a peer\'s mission:end into missionGroups, stamped with source, not counted as the local pilot\'s mission', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  s._sessionHandle = 'LocalPilot';
+  const missionId = 'aaaa1111-d438-4996-9755-1c3fc9532e85';
+  s._ingestEvent('peer1', 'missionlog', {
+    kind: 'mission:end', missionId, player: 'PeerPilot', completionType: 'Complete', reason: 'Mission Ended', timestamp: '2026-09-04T00:00:00.000Z'
+  });
+  const m = s.missionGroups.find((x) => x.id === missionId);
+  assert.ok(m, 'mission group created from the peer event alone');
+  assert.strictEqual(m.source, 'peer1');
+  assert.strictEqual(m.player, 'PeerPilot');
+  assert.notStrictEqual(m.player, 'LocalPilot');
+  const dataset = s._analyticsDataset();
+  const peerMission = dataset.missions.find((x) => x.player === 'PeerPilot');
+  assert.ok(peerMission, 'peer mission appears under the peer\'s own name, not defaulted to "me"');
+});
+
+test('_ingestEvent folds a peer\'s crew (PlayerJoined) sighting into missionGroups.crew', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  const missionId = 'bbbb2222-150d-4ec1-bd99-670bbf60d4f4';
+  s._ingestEvent('peer1', 'crew', { missionId, playerId: '1275581349492', timestamp: '2026-09-04T00:00:00.000Z' });
+  const m = s.missionGroups.find((x) => x.id === missionId);
+  assert.ok(m, 'mission group created from a bare crew sighting');
+  assert.strictEqual(m.source, 'peer1');
+  assert.strictEqual(m.crew.length, 1);
+  assert.strictEqual(m.crew[0].playerId, '1275581349492');
+});
+
+test('an "activities" ingest is rejected (not part of the peer model)', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  assert.throws(() => s._ingestEvent('peer1', 'activities', { foo: 1 }), { code: 'BAD_COLLECTION' });
+});
+
 test('combat objectives are tracked as combat progress (proxy for kills)', () => {
   const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
   let progressed = 0;

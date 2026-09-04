@@ -36,6 +36,25 @@ function idFor (content) {
   return crypto.createHash('sha256').update(String(content)).digest('hex').slice(0, 32);
 }
 
+// Deterministic JSON (sorted object keys) so the same logical event always
+// hashes to the same id regardless of key insertion order - the basis for
+// idempotent upsert on re-delivery (WS1 of BUILD-PLAN-fabric-mesh.md; see
+// DESIGN-event-convergence.md §7 / HANDOFF-master.md §5 item 1). Pure,
+// zero-dep - ported from the proven reference's identity.js canonicalStringify.
+function canonicalStringify (value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(canonicalStringify).join(',') + ']';
+  const keys = Object.keys(value).sort();
+  return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalStringify(value[k])).join(',') + '}';
+}
+
+// Collections a peer (or any signed/attributed sender, later Fabric - see
+// BUILD-PLAN-fabric-mesh.md) is allowed to contribute to via _ingestEvent().
+// Deliberately excludes 'activities' (a local pass-through record, not part of
+// the peer model) and anything derived purely from the running player's own
+// session (logins/notifications stay local-only).
+const INGEST_COLLECTIONS = ['players', 'kills', 'deaths', 'incaps', 'vehicles', 'missionlog', 'crew', 'disconnects'];
+
 class StarCitizenService extends EventEmitter {
   constructor (settings = {}) {
     super();
@@ -46,8 +65,10 @@ class StarCitizenService extends EventEmitter {
       seed: null,   // optional: replay a past log once on start to pre-fill the monitor
       discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false },
       missions: { enable: true },
-      cargo: { enable: false }   // optional, strippable cargo route-optimizer (services/CargoRouter.js)
+      cargo: { enable: false },   // optional, strippable cargo route-optimizer (services/CargoRouter.js)
+      ingest: { httpEnable: false }   // POST …/events - off by default (BUILD-PLAN-fabric-mesh.md WS1)
     }, settings);
+    this.settings.ingest = Object.assign({ httpEnable: false }, settings.ingest || {});
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false }, settings.discord || {});
 
     this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, crew: {}, disconnects: {}, notifications: {}, logs: {}, startedAt: null };
@@ -171,7 +192,7 @@ class StarCitizenService extends EventEmitter {
       return { id: m.id, title: last ? last.text : null, generator: m.generator || null, type: missionType(m.generator),
         firstSeen: m.firstSeen, lastSeen: m.lastSeen,
         startedAt: m.startedAt || null, endedAt: m.endedAt || null, outcome: m.outcome || null, reason: m.reason || null,
-        status, contractId: m.contractId || null, player: m.player || null, crew,
+        status, contractId: m.contractId || null, player: m.player || null, source: m.source || null, crew,
         objectives, notifications: m.notifications };
     });
   }
@@ -259,6 +280,27 @@ class StarCitizenService extends EventEmitter {
       // mission type + outcome. Local-player today; same shape serves org-wide (M4).
       if (req.method === 'GET' && path === `${base}/analytics`) {
         return send(200, this._analyticsDataset());
+      }
+      // Bulk idempotent ingest (BUILD-PLAN-fabric-mesh.md WS1) - the seam a
+      // future Fabric peer (WS4) or any other relay posts shared events
+      // through. Off by default; set SC_HTTP_INGEST=1 (unsigned/trusted-LAN
+      // use only until WS2 adds envelope verification).
+      if (req.method === 'POST' && path === `${base}/events`) {
+        if (!this.settings.ingest.httpEnable) return send(403, { error: 'HTTP ingest not enabled (set SC_HTTP_INGEST=1)' });
+        const d = await body();
+        const events = Array.isArray(d.events) ? d.events : [];
+        const source = d.source || `http:${(req.socket && req.socket.remoteAddress) || 'unknown'}`;
+        const results = [];
+        let created = 0;
+        for (const e of events) {
+          try {
+            const r = this._ingestEvent(source, e.collection, e.data);
+            results.push(Object.assign({ collection: e.collection }, r));
+            if (r.created) created++;
+          } catch (err) { results.push({ collection: e.collection, error: err.message }); }
+        }
+        this.emit('ingest', { source, received: events.length, created });
+        return send(200, { type: 'IngestResult', received: events.length, created, results });
       }
       // ---- Cargo route optimizer (optional; only when enabled) ----
       if (req.method === 'GET' && path === `${base}/route`) {
@@ -403,15 +445,22 @@ class StarCitizenService extends EventEmitter {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
           if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths' && name !== 'crew' && name !== 'disconnects') {
             const data = await body();
-            // Players dedupe by handle (distinct roster) rather than per-event.
-            if (name === 'players' && data.name) {
-              const { player } = this.recordPlayer(data.name, data.timestamp || new Date().toISOString());
-              return send(200, { type: 'players', data: player });
+            // 'activities' is a local pass-through record, not part of the
+            // peer-ingest model (see INGEST_COLLECTIONS) - keep its old,
+            // non-idempotent behaviour unchanged.
+            if (name === 'activities') {
+              const id = idFor(JSON.stringify(data) + Date.now());
+              this.state.activities[id] = Object.assign({ id }, data);
+              return send(200, { type: name, data: this.state.activities[id] });
             }
-            const id = idFor(JSON.stringify(data) + Date.now());
-            this.state[name][id] = Object.assign({ id }, data);
-            if (name === 'kills') this.emit('kill', this.state[name][id]);
-            return send(200, { type: name, data: this.state[name][id] });
+            // Everything else (players, vehicles, kills, missionlog) now goes
+            // through the same idempotent path a peer's events will (WS1) -
+            // re-posting the same data is a safe no-op, not a duplicate.
+            const source = `http:${(req.socket && req.socket.remoteAddress) || 'unknown'}`;
+            try {
+              const r = this._ingestEvent(source, name, data);
+              return send(200, { type: name, data: Object.assign({ id: r.id, source }, data) });
+            } catch (e) { return send(400, { error: e.message }); }
           }
         }
       }
@@ -638,6 +687,12 @@ class StarCitizenService extends EventEmitter {
       const m = this.state.missionGroups[ev.missionId] ||
         (this.state.missionGroups[ev.missionId] = { id: ev.missionId, firstSeen: ev.timestamp, objectiveIds: {}, notifications: [] });
       m.lastSeen = ev.timestamp;
+      // Peer-sourced attribution (WS1 of BUILD-PLAN-fabric-mesh.md): stamp who
+      // this event came from, and set the group's player if nothing has yet -
+      // never clobber an already-known local attribution (mission:end below
+      // still owns that unconditionally for events this relay parsed itself).
+      if (ev.source) m.source = ev.source;
+      if (ev.player && !m.player) m.player = ev.player;
       if (ev.generator) m.generator = ev.generator;   // template name -> mission type
       // Lifecycle: start stamps acceptance + contract template; end stamps the outcome.
       if (ev.kind === 'mission:start') {
@@ -669,6 +724,46 @@ class StarCitizenService extends EventEmitter {
       this.state.combatlog[c.id] = c;
       this.emit('combat:progress', c);
     }
+  }
+
+  // Idempotent ingest of an event from a source other than this relay's own
+  // live log (an HTTP POST today; a Fabric peer once BUILD-PLAN-fabric-mesh.md
+  // WS4 lands). `source` identifies the sender (an IP-derived string today, a
+  // pubkey once events are signed) - never the local player. Re-delivering the
+  // exact same (source, collection, data) yields the same id, so replay is a
+  // safe no-op (created: false) rather than a duplicate. Ported from the
+  // reference implementation's _ingestEvent(); see WS1 in
+  // BUILD-PLAN-fabric-mesh.md for the full design + acceptance criteria.
+  _ingestEvent (source, collection, data) {
+    if (!INGEST_COLLECTIONS.includes(collection)) {
+      throw Object.assign(new Error(`unknown ingest collection: ${collection}`), { code: 'BAD_COLLECTION' });
+    }
+    data = data || {};
+
+    if (collection === 'players') {
+      if (!data.name) throw new Error('players ingest requires a name');
+      const { player, isNew } = this.recordPlayer(data.name, data.timestamp || new Date().toISOString());
+      player.source = source;
+      return { id: player.id, created: isNew };
+    }
+
+    const id = idFor(canonicalStringify({ source, collection, data }));
+    const existed = !!this.state[collection][id];
+    this.state[collection][id] = Object.assign({ id, source }, data);
+    if (!existed) {
+      if (collection === 'kills') this.emit('kill', this.state[collection][id]);
+      // Peer-sourced mission activity folds into missionGroups the same way a
+      // local line does, so a shared mission_id shows every participant - see
+      // DESIGN-event-convergence.md §4. 'crew' records don't carry `kind`
+      // locally (they're stored as a bare {missionId, playerId, timestamp}),
+      // so it's supplied here rather than trusted from the peer payload.
+      if (collection === 'missionlog' && data.missionId) {
+        this._indexMission(Object.assign({}, data, { source }));
+      } else if (collection === 'crew' && data.missionId) {
+        this._indexMission(Object.assign({}, data, { kind: 'mission:crew', source }));
+      }
+    }
+    return { id, created: !existed };
   }
 
   // Distinct-player roster keyed by handle, plus a login-event history. Forward-
@@ -857,7 +952,8 @@ if (require.main === module) {
     seed: process.env.SC_SEED || resolved.file,   // pre-fill from history by default
     missions: { enable: true, dir: process.env.SC_REGISTER_DIR || null, officers: (process.env.SC_OFFICERS || '').split(',').map((s) => s.trim()).filter(Boolean) },
     discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null },
-    cargo: { enable: !!process.env.SC_CARGO_ROUTER }   // opt-in cargo route optimizer
+    cargo: { enable: !!process.env.SC_CARGO_ROUTER },   // opt-in cargo route optimizer
+    ingest: { httpEnable: !!process.env.SC_HTTP_INGEST }   // opt-in POST …/events (BUILD-PLAN-fabric-mesh.md WS1)
   });
   svc.start();
 }
