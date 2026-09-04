@@ -74,6 +74,24 @@ etc.) and picks the channel whose `Game.log` is freshest — LIVE, PTU, EPTU,
 HOTFIX, or TECH-PREVIEW (the one you're actually playing). The dashboard shows
 the chosen channel + build.
 
+## Fabric mesh backbone (optional, in progress — see `BUILD-PLAN-fabric-mesh.md`)
+
+D-008 replaced the old "central VPS" M4 plan with a Fabric P2P mesh. It's fully
+optional and off by default — the core service stays zero-dependency either
+way. To try it:
+
+```bash
+npm run fabric:install         # pulls in @fabric/core only (not the whole Fabric stack)
+SC_FABRIC=1 npm start           # generates/loads a mesh identity, stores/fabric-identity.json
+SC_HTTP_INGEST=1 npm start       # also accept POST …/events (WS1's idempotent bulk ingest)
+```
+
+`GET …/mesh` reports identity/roster/queue status (`{enabled:false}` when
+Fabric isn't turned on). `SC_FABRIC_PASSPHRASE` encrypts the identity file at
+rest (scrypt + AES-256-GCM); otherwise it's written plaintext with an explicit
+`warning` field. WS2 only wires up identity + signed-envelope verification —
+there's no real peer transport yet (that's WS4).
+
 Overrides (highest priority first):
 - `SC_LOGFILE=/full/path/to/Game.log` — force an exact file.
 - `SC_CHANNEL=HOTFIX` — force a channel (e.g. after a hotfix drops and auto-detect
