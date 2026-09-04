@@ -4,8 +4,11 @@
 > `SOLUTION-BRIEF.md`; this is the technical plan.
 > **Builds on:** `services/MissionManager.js` (stub interface), `app/server.js`
 > (REST + collections + events), `types/Mission.js` (crypto/multisig, used at M6).
-> **Principle:** centralized, **officer-validated**; the log relay is *evidence*,
-> never proof (D-005). Zero new runtime deps where possible.
+> **Principle:** centralized *authority* (one officer validates — D-005
+> unchanged), but no VPS required — see D-008 (2026-09-04): the register still
+> needs *a* home node, just not a rented one; `HANDOFF-master.md` §4 has the two
+> options. The log relay is *evidence*, never proof (D-005). Zero new runtime
+> deps where possible.
 
 ---
 
@@ -24,7 +27,7 @@ evidence (**M6**); multisig completion (`Mission.js`, M6+); federation (D-004).
 ## 2. Architecture
 
 ```
- Member PC (Flow A)            Cloud VPS (Flow B - this design)            Discord
+ Member PC (Flow A)      Register's home node (Flow B - this design)        Discord
 ┌───────────────┐   POST evidence   ┌──────────────────────────────┐
 │ Live Relay    │ ────────────────► │ app/server.js (REST)         │ ◄── Bot (slash
 │ (app/server)  │   (optional)      │  └─ MissionManager (real)    │     commands)
@@ -33,10 +36,14 @@ evidence (**M6**); multisig completion (`Mission.js`, M6+); federation (D-004).
                                      └──────────────────────────────┘
 ```
 
+*(No longer "Cloud VPS" — D-008 removed that plan. "Register's home node" is any
+always-on machine, e.g. an officer's own or a Fabric peer; which one is an open
+decision, not this design's concern — see `HANDOFF-master.md` §4.)*
+
 - The **same `app/server.js`** process hosts the register (it already routes
   `/missions`). The relay and the register can run in one process for a single
-  org, or be split (relay local, register on the VPS) — the REST boundary is the
-  same either way.
+  org, or be split (relay local, register on its home node) — the REST boundary
+  is the same either way.
 - **MissionManager** graduates from in-memory stub to a persisted implementation
   with the new entities/methods below, keeping its current method names/events so
   nothing else breaks.
@@ -212,8 +219,8 @@ no evidence — identical flow, officer decides.
 - **M5.5 — Web view.** Read-only missions board added to the existing dashboard
   (officers see a validate queue). *Demo:* board + validate queue.
 
-Each ends with a `PROGRESS.md` retro. M4 (provision the VPS) can run in parallel;
-it's ops, not code.
+Each ends with a `PROGRESS.md` retro. M4 (the Fabric backbone, D-008) can run in
+parallel; it's a separate integration track, not a blocker for this design.
 
 ---
 

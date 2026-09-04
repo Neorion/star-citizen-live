@@ -1,10 +1,15 @@
 # Design — A Distributed (Non-Central) Option
 
-> **Status:** Design only. No code yet. See `DECISIONS.md` → **D-004**.
+> **Status:** Design only; no code yet on this fork (a proven reference
+> implementation exists elsewhere — see §6). See `DECISIONS.md` → **D-004**, and
+> **D-008** (2026-09-04), which supersedes this doc's "defer the transport
+> choice" stance: **the transport is Fabric, decided, not one of §6's
+> candidates.**
 > **Target rung:** **L1 — federated** (grow toward L2/L3 later).
 > **Constraint:** Discord stays the **primary UI**; the federated layer runs
-> *underneath* for resilience. The VPS becomes one node/bridge, not the sole
-> source of truth.
+> *underneath* for resilience. **There is no VPS** (D-008) — a **Fabric Hub**
+> (a seed/relay node, not an org-owned server) fills the always-reachable role
+> §4's diagram originally gave the VPS.
 
 This doc explains *what* a non-central version of the project looks like and
 *how* we'd get there in small, testable milestones — written so a non-developer
@@ -68,10 +73,16 @@ can decentralize later.
                         │ bridge        │ bridge
                  ┌──────┴─────┐   ┌──────┴─────┐
    Game.log →    │   Node A   │◄─►│   Node B   │   ← members run nodes; they
-   (local)       │ (a member) │   │ (the VPS)  │     gossip SIGNED events to
-                 └──────▲─────┘   └────────────┘     each other (federation)
-                        │
-   Game.log →    ┌──────┴─────┐
+   (local)       │ (a member) │   │ (a member) │     gossip SIGNED events to
+                 └──────▲─────┘   └──────▲─────┘     each other (federation)
+                        │                │
+                        └───────┬────────┘
+                          ┌─────┴──────┐
+                          │ Fabric Hub │  ← seed/relay node (e.g. hub.fabric.pub,
+                          │(not an org │    relay.goon.vc); helps peers find &
+                          │  server)   │    reach each other. Holds no org data.
+                          └────────────┘
+   Game.log →    ┌────────────┐
    (local)       │   Node C   │◄─► … more member nodes …
                  └────────────┘
 ```
@@ -81,12 +92,14 @@ can decentralize later.
 - Nodes **gossip** signed events to a few peers; every node ends up with the same
   feed without a single required hub.
 - One or more nodes act as a **Discord bridge**, mirroring the feed into channels.
-  If any one node (including the VPS) goes down, the others carry on.
+  If any one node goes down, the others carry on — including whichever node was
+  bridging Discord; **there is no VPS to go down** in the first place (D-008).
 
-This is **L1**: a handful of trusted, member-run nodes federating. No DHT, no NAT
-hole-punching yet — peers connect over known addresses (the VPS plus any member
-willing to expose a port, or a lightweight relay). That keeps the hard p2p
-problems out of scope for now.
+This is **L1**: a handful of trusted, member-run nodes federating over **Fabric**
+(decided, D-008 — not a placeholder). No DHT, no hand-rolled NAT hole-punching —
+Fabric's own seed hubs handle peer discovery and relay, which is exactly the
+practical hurdle §7 point 2 used to justify keeping a VPS around. That justification
+is gone.
 
 ---
 
@@ -111,25 +124,34 @@ problems out of scope for now.
 
 ---
 
-## 6. Transport choice (deferred, but scoped)
+## 6. Transport choice — decided: Fabric (D-008, 2026-09-04)
 
-For L1 we need the *least* machinery that lets a few known nodes exchange signed
-events. Candidates, to decide at the M2 spike:
+This section used to defer the choice among the four candidates below. **The
+owner has since decided: Fabric.** Kept for the record of what was weighed, and
+because the reasoning explains *why* Fabric is an acceptable answer to the
+exact concern that made D-002 remove it in the first place.
 
-| Option | Why consider | Watch-out |
-|--------|-------------|-----------|
-| **Plain signed HTTP/WebSocket gossip** | Tiny, no new deps, nodes already run an HTTP server | We hand-roll peer list + retries |
-| **Nostr-style (signed events + swappable relays)** | Reuses our exact secp256k1; relays are redundant & replaceable | Relays are *semi*-central (run several) |
-| **Hyperswarm / Hypercore** | True serverless, NAT hole-punching, append-only signed logs | Newer; more glue; really an L3 tool |
-| **js-libp2p** | Battle-tested gossipsub + DHT | Heaviest; over-scoped for L1 |
+| Option | Why it was considered | Watch-out | Status |
+|--------|-------------|-----------|---|
+| **Fabric** (Schnorr-signed peers, seed-hub bootstrap) | Not actually a candidate at write-time — D-002 had removed it for being fragile. Reconsidered because a **working, tested reference implementation now exists** (see below) and it's what the upstream fork independently converged on. | Same install-weight concerns D-002 raised, ~400 MB dep tree — mitigated by making it an **optional, strippable module**, not a core dependency (D-008). | **Chosen** |
+| Plain signed HTTP/WebSocket gossip | Tiny, no new deps, nodes already run an HTTP server | Hand-roll peer list + retries + NAT traversal ourselves | Not pursued |
+| Nostr-style (signed events + swappable relays) | Reuses our exact secp256k1; relays are redundant & replaceable | Relays are *semi*-central (run several) | Not pursued |
+| Hyperswarm / Hypercore | True serverless, NAT hole-punching, append-only signed logs | Newer; more glue; really an L3 tool | Not pursued |
+| js-libp2p | Battle-tested gossipsub + DHT | Heaviest; over-scoped for L1 | Not pursued |
 
-> **Lean:** start L1 on **plain signed gossip** (or Nostr if we want relays for
-> free), because both reuse our crypto and keep the build small. Hyperswarm/libp2p
-> are the **L3** upgrade path when/if we drop known-address federation for true
-> serverless discovery.
+**Not a cold start.** A consent-gated Fabric integration — peer identity, the
+`_canShareLogs()` / `_logSharePublishOpts()` per-peer opt-in gate (this is where
+"share with chosen members only" already lives, with no new design needed for
+it), `_startFabricFlush()` for outbound queuing, `_ingestEvent()` folding inbound
+peer batches through the *same* history-apply path local events use — was built
+and tested this session on the `martindale-star-citizen-live` clone's
+`feat/op-participation` branch. MD0–MD2 below are largely **already done there**;
+what remains is porting/adapting the pattern onto this fork's much smaller
+`app/server.js`, not inventing it fresh.
 
-A small **CRDT** library (Automerge/Yjs) may go *inside* whichever transport we
-pick, to merge mission state without conflicts — evaluated at M4.
+A small **CRDT** library (Automerge/Yjs) may still go *inside* Fabric's gossip, to
+merge mission state without conflicts — evaluated when the mission register's
+federated-home question (`HANDOFF-master.md` §4) is picked up, not before.
 
 ---
 
@@ -138,8 +160,11 @@ pick, to merge mission state without conflicts — evaluated at M4.
 1. **Source trust is unfixable by decentralization.** Only you see your own
    `Game.log`; a node could *lie* about kills. Signing proves **who said it**, not
    **that it's true**. Accept this; don't pretend otherwise.
-2. **NAT traversal** (home routers) is the #1 practical hurdle for real p2p — and
-   the main reason L1 sticks to known addresses + a relay/VPS instead of pure DHT.
+2. **NAT traversal** (home routers) is the #1 practical hurdle for real p2p —
+   **Fabric's seed hubs solve this for us** (relay when a direct connection isn't
+   reachable), which is exactly the job §4's diagram used to give the VPS. This
+   used to be an open problem this doc scoped around; as of D-008 it's a solved
+   one, inherited from the transport choice.
 3. **Eventual consistency:** two members may briefly see different mission states;
    the conflict rules in §5 settle it, and the UI must tolerate "settling."
 4. **No blockchain needed.** UEC isn't on-chain money; signatures give
@@ -156,18 +181,20 @@ Each milestone is small, demoable, and ends with a retro note in `PROGRESS.md`.
 These slot **after** the existing roadmap's M3-combat and can run in parallel with
 M4/M5 thinking.
 
-- **MD0 — Identity primitives.** Generate/load a per-node secp256k1 keypair;
-  sign + verify a sample event. Reuse `Mission.js` crypto. *Demo:* two keypairs,
-  one signs, the other verifies. *Risk it kills:* "is the crypto reusable?"
-- **MD1 — Signed event envelope.** Define the `{ event, author_pubkey, sig, ts,
-  hash }` wrapper around the existing parser output; round-trip + verify; reject
-  tampered/off-roster events. *Demo:* feed a real log line → signed envelope →
-  verified.
+- **MD0 — Identity primitives.** Generate/load a per-node keypair; sign + verify
+  a sample event. **Fabric provides this directly** (Schnorr identity) — no need
+  to reuse `Mission.js`'s secp256k1/musig2 for the transport layer specifically;
+  that crypto stays reserved for M6's register signing. *Already proven* on the
+  `feat/op-participation` reference — this is a port, not a spike.
+- **MD1 — Signed event envelope.** Define the wrapper around the existing parser
+  output; round-trip + verify; reject events from a peer without consent
+  (`_canShareLogs()` in the reference implementation). *Already proven* there too.
 - **MD2 — Two-node federation (the transport spike).** Stand up **two** local
-  nodes; Node A gossips signed events to Node B over the chosen transport
-  (decide: plain WS gossip vs Nostr); B dedupes by hash and shows the same feed.
-  *Demo:* replay a log on A, watch events appear on B. *Risk it kills:* "does the
-  transport choice hold up?"
+  nodes; Node A gossips signed events to Node B **over Fabric** (decided, not a
+  spike choice); B dedupes by hash and shows the same feed. *Demo:* replay a log
+  on A, watch events appear on B. *Already proven* on the reference branch
+  (quantum-travel + ship-use events, consent-gated) — remaining work here is
+  porting that pattern onto this fork's `app/server.js`.
 - **MD3 — Discord bridge as a node.** Make one node mirror the federated feed into
   Discord, proving Discord is a *view*, not the backbone — kill the bridge node
   and the feed still flows between A and B. *Demo:* bridge down, federation up.
@@ -182,10 +209,12 @@ M4/M5 thinking.
   only roster-signed events; cover add/remove/rotate. *Demo:* an off-roster node's
   events are ignored org-wide.
 
-**Stop/return points:** after **MD2** we'll know if the transport is sound (go/no-go
-on plain-gossip vs Nostr vs escalating to Hyperswarm). After **MD5** we have a
-genuinely decentralized contract layer. L2/L3 (serverless discovery, dropping
-relays) only get scoped if the org wants to remove the VPS entirely.
+**Stop/return points:** MD0–MD2 are de-risked already (the reference
+implementation is the go). After **MD5** we have a genuinely decentralized
+contract layer for the mission register, if/when that's picked up. L2/L3
+(dropping even the seed-hub relay for pure serverless discovery) remain later,
+optional escalations — not required by D-008, which only removes the VPS, not
+Fabric's own seed-hub layer.
 
 ---
 
@@ -194,4 +223,10 @@ relays) only get scoped if the org wants to remove the VPS entirely.
 - Discord stays the primary, human-facing UI.
 - The local `Game.log` watcher / `parser.js` are unchanged — they just feed a
   signing+gossip layer instead of (or in addition to) a single central service.
-- The VPS can keep running; it simply stops being a *single point of failure*.
+- **There is no VPS to keep running (D-008).** If the org later wants a
+  reliably-online node for the Discord bridge or a web UI, that node is one
+  Fabric peer among several, not a privileged central server — see
+  `HANDOFF-master.md` §4 for the one thing that still genuinely needs a
+  federated-or-elected home: the mission register's single-source-of-truth
+  requirement (D-005), which this doc's Flow B (§1/§5) was always scoped to
+  handle separately from the event firehose.
