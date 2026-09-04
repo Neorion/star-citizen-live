@@ -3,6 +3,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const http = require('http');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const StarCitizenService = require('../app/server');
 
 let PORT;   // assigned after the server binds an ephemeral port (avoids clashes)
@@ -193,6 +196,117 @@ test('the per-collection POST seam (players/vehicles/kills/missionlog) is also i
     assert.strictEqual(r.status, 200);
     const after = (await call('GET', `${BASE}/players`)).json.data.length;
     assert.strictEqual(after, before, 'reposting the same player is not a duplicate');
+  } finally {
+    await s.stop();
+  }
+});
+
+// --- Peer roster REST (BUILD-PLAN-fabric-mesh.md WS5) - the consent UI's
+// backend. These stub fabric.identity directly, same as test/mesh.test.js,
+// so the consent-flipping assertions hold regardless of whether
+// @fabric/core is actually installed in this environment. ---
+
+test('every /peers* and /mesh/settings route 503s when the mesh backbone is disabled', async () => {
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false } });
+  await s.start();
+  PORT = s.server.address().port;
+  try {
+    let r = await call('GET', `${BASE}/peers`);
+    assert.strictEqual(r.status, 503);
+    assert.strictEqual(r.json.enabled, false);
+    r = await call('POST', `${BASE}/peers`, { address: '127.0.0.1:7801' });
+    assert.strictEqual(r.status, 503);
+    r = await call('GET', `${BASE}/peers/anything`);
+    assert.strictEqual(r.status, 503);
+    r = await call('POST', `${BASE}/mesh/settings`, { shareLogsGlobal: true });
+    assert.strictEqual(r.status, 503);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('POST …/peers validates the address, rejects a self-dial and a duplicate with clear 400s', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-peers-'));
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, fabric: { enable: true, port: 7777, peers: [], identityFile: path.join(dir, 'id.json'), peersFile: path.join(dir, 'peers.json') } });
+  await s.start();
+  PORT = s.server.address().port;
+  try {
+    let r = await call('POST', `${BASE}/peers`, { address: 'not-an-address' });
+    assert.strictEqual(r.status, 400);
+
+    r = await call('POST', `${BASE}/peers`, { address: '127.0.0.1:7777' }); // our own listen port - self-dial
+    assert.strictEqual(r.status, 400);
+
+    r = await call('POST', `${BASE}/peers`, { address: '127.0.0.1:7801', label: 'friend' });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.data.address, '127.0.0.1:7801');
+    assert.strictEqual(r.json.data.shareLogs, false, 'not consenting by default');
+
+    r = await call('POST', `${BASE}/peers`, { address: '127.0.0.1:7801' }); // duplicate
+    assert.strictEqual(r.status, 400);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('POST …/peers/:id flips consent live, DELETE removes it - no restart needed', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-peers-'));
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, fabric: { enable: true, peers: [], identityFile: path.join(dir, 'id.json'), peersFile: path.join(dir, 'peers.json') } });
+  await s.start();
+  s.fabric.identity = { pubkey: 'test' };   // stub - portable whether or not @fabric/core is installed here
+  PORT = s.server.address().port;
+  try {
+    let r = await call('POST', `${BASE}/peers`, { address: '127.0.0.1:7801' });
+    assert.strictEqual(r.status, 200);
+    const id = r.json.data.id;
+    assert.strictEqual(s.fabric._logSharePublishOpts(), null, 'not consenting yet');
+
+    r = await call('POST', `${BASE}/peers/${id}`, { shareLogs: true });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.data.shareLogs, true);
+    assert.deepStrictEqual(s.fabric._logSharePublishOpts(), { to: ['127.0.0.1:7801'] }, 'flips from null to {to:[address]} without a restart');
+
+    r = await call('DELETE', `${BASE}/peers/${id}`);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(s.fabric._logSharePublishOpts(), null, 'removed - back to nothing authorized');
+
+    r = await call('GET', `${BASE}/peers/${id}`);
+    assert.strictEqual(r.status, 404);
+    r = await call('DELETE', `${BASE}/peers/${id}`);
+    assert.strictEqual(r.status, 404, 'deleting an already-gone peer is a clear 404, not a silent 200');
+  } finally {
+    await s.stop();
+  }
+});
+
+test('POST …/mesh/settings flips shareLogsGlobal live, and GET …/monitor exposes the mesh summary (T5.3)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-peers-'));
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, fabric: { enable: true, peers: [], identityFile: path.join(dir, 'id.json'), peersFile: path.join(dir, 'peers.json') } });
+  await s.start();
+  s.fabric.identity = { pubkey: 'test' };
+  PORT = s.server.address().port;
+  try {
+    assert.strictEqual(s.fabric._canShareLogs(), false);
+    let r = await call('POST', `${BASE}/mesh/settings`, { shareLogsGlobal: true });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.shareLogsGlobal, true);
+    assert.strictEqual(s.fabric._canShareLogs(), true);
+
+    r = await call('GET', `${BASE}/monitor`);
+    assert.strictEqual(r.json.mesh.enabled, true);
+    assert.strictEqual(r.json.mesh.shareLogsActive, true);
+  } finally {
+    await s.stop();
+  }
+});
+
+test('GET …/monitor reports {enabled:false} for mesh when the backbone is off', async () => {
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false } });
+  await s.start();
+  PORT = s.server.address().port;
+  try {
+    const r = await call('GET', `${BASE}/monitor`);
+    assert.deepStrictEqual(r.json.mesh, { enabled: false });
   } finally {
     await s.stop();
   }

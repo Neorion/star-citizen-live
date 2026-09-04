@@ -22,6 +22,9 @@ const readline = require('readline');
 
 const { parseLine, shipName, parseSessionInfo, missionType, isNPC, missionFaction, resolvePlayerId, disconnectCategory, crashDetail } = require('./parser');
 const { resolveLogFile, channelFromPath } = require('./locate');
+// Pure address-validation helpers (WS5's peer roster REST) - zero-dep, no
+// @fabric/core involved, safe to require unconditionally.
+const fabricAddress = require('../services/fabricAddress');
 
 // Lines worth surfacing in the monitor - combat/death hints AND mission/objective
 // activity. Includes wording the parser may not recognize yet, so we can keep
@@ -337,6 +340,53 @@ class StarCitizenService extends EventEmitter {
       if (req.method === 'GET' && path === `${base}/mesh`) {
         return send(200, this.fabric ? this.fabric.status() : { enabled: false });
       }
+      // Peer roster REST (BUILD-PLAN-fabric-mesh.md WS5) - the consent UI's
+      // backend. Every mutation goes through FabricSync so _persistPeers()
+      // + (re)dialing stay in one place; 503 when the mesh isn't enabled,
+      // same pattern as the cargo router below.
+      if (path === `${base}/mesh/settings` && req.method === 'POST') {
+        if (!this.fabric) return send(503, { enabled: false, error: 'Fabric mesh not enabled (set SC_FABRIC=1)' });
+        const d = await body();
+        if ('shareLogsGlobal' in d) this.fabric.settings.shareLogsGlobal = d.shareLogsGlobal === true;
+        return send(200, this.fabric.status());
+      }
+      if (path === `${base}/peers`) {
+        if (!this.fabric) return send(503, { enabled: false, error: 'Fabric mesh not enabled (set SC_FABRIC=1)' });
+        if (req.method === 'GET') return send(200, { type: 'Collection', data: this.fabric.peers });
+        if (req.method === 'POST') {
+          const d = await body();
+          const normalized = fabricAddress.normalizeFabricAddress(d.address, { migrate: true });
+          if (!normalized) return send(400, { error: 'invalid address - expected host:port' });
+          if (fabricAddress.isSelfFabricAddress(normalized, { listenPort: this.fabric.settings.port })) {
+            return send(400, { error: 'cannot add this relay itself as a peer' });
+          }
+          if (this.fabric.peers.some((p) => p.address === normalized)) {
+            return send(400, { error: 'peer already on the roster', address: normalized });
+          }
+          const rec = this.fabric.addPeer(d);
+          if (!rec) return send(400, { error: 'could not add peer' });
+          return send(200, { type: 'Peer', data: rec });
+        }
+      }
+      let pr;
+      if ((pr = path.match(new RegExp(`^${base}/peers/([^/]+)$`)))) {
+        if (!this.fabric) return send(503, { enabled: false, error: 'Fabric mesh not enabled (set SC_FABRIC=1)' });
+        const peerId = pr[1];
+        if (req.method === 'GET') {
+          const p = this.fabric.getPeer(peerId);
+          return p ? send(200, { type: 'Peer', data: p }) : send(404, { error: 'Peer not found' });
+        }
+        if (req.method === 'POST') {
+          const d = await body();
+          const patch = {};
+          for (const k of ['enabled', 'label', 'shareLogs', 'expectedPubkey']) { if (k in d) patch[k] = d[k]; }
+          const p = this.fabric.updatePeer(peerId, patch);
+          return p ? send(200, { type: 'Peer', data: p }) : send(404, { error: 'Peer not found' });
+        }
+        if (req.method === 'DELETE') {
+          return this.fabric.removePeer(peerId) ? send(200, { ok: true }) : send(404, { error: 'Peer not found' });
+        }
+      }
       // ---- Cargo route optimizer (optional; only when enabled) ----
       if (req.method === 'GET' && path === `${base}/route`) {
         if (!this.cargoRouter) return send(503, { enabled: false, error: 'Cargo router not enabled (set SC_CARGO_ROUTER=1)' });
@@ -451,6 +501,11 @@ class StarCitizenService extends EventEmitter {
           channel: this.channel, session: this.session, sessions: this.sessions,
           cargoEnabled: !!this.cargoRouter,
           meshEnabled: !!this.fabric,
+          mesh: (() => {
+            if (!this.fabric) return { enabled: false };
+            const fst = this.fabric.status();
+            return { enabled: true, ready: fst.ready, connected: fst.connected, queued: fst.uplinkQueued, shareLogsActive: fst.shareLogsActive };
+          })(),
           missions: this.missionGroups,
           missionStats: this.missionStats(),
           kills: newest(this.kills),
