@@ -141,6 +141,25 @@ const RULES = [
     test: /mission_id\s+([0-9a-fA-F-]+)\s*-\s*player_id\s+(\d+)/,
     fields: (m) => ({ missionId: m[1], playerId: m[2] })
   },
+  {
+    // Network channel disconnect - the crash/timeout/kick/voluntary-exit signal
+    // for B-011 "Stability & session health". The AUTHORITATIVE tag is
+    // <Channel Process Disconnection>, NOT the narrower <Channel Disconnected>
+    // (BACKLOG.md's original working name) - verified by diffing both tags
+    // side-by-side on a real corpus file: <Channel Process Disconnection> is a
+    // strict superset, repeating every <Channel Disconnected> cause=/reason=
+    // pair ~10ms later AND adding causes the narrower tag never carries,
+    // including the real crash signal (cause=30013). Using the narrower tag
+    // would silently miss every crash. hostType="GameClient" is a local-only
+    // paired echo of the same teardown event (only ever cause=30010/30020,
+    // never a real network disconnect) - the service filters it out downstream
+    // so the raw record stays available for audit. VERIFIED on the real
+    // DeadMan 4.7.x/4.8.x corpus: 2523 lines, 6 real crashes (cause=30013,
+    // GeneralSignal/SEGV).
+    kind: 'session:disconnect', tag: 'Channel Process Disconnection',
+    test: /cause=(\d+) reason="([^"]*)".*?hostType="([^"]*)".*?playerGEID=(\d+) uptime_secs=([\d.]+)/,
+    fields: (m) => ({ cause: m[1], reason: m[2], hostType: m[3], playerGEID: m[4], uptimeSecs: parseFloat(m[5]) })
+  },
 
   // --- CLIENT-INVOLVED COMBAT (parser format VERIFIED on real logs; but see VERSION
   // CAVEAT). The client Game.log records <Actor Death> CActor::Kill and <Vehicle
@@ -333,4 +352,44 @@ function resolvePlayerId (directory, playerId) {
   return 'Pilot #' + String(playerId || '').slice(-4);
 }
 
-module.exports = { parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS, missionType, MISSION_TYPES, FACTION_TYPES, missionFaction, buildPlayerDirectory, resolvePlayerId };
+// --- Disconnect classification [B-011 "Stability & session health"]. `cause` is
+// CIG's own internal disconnect-reason code (stable across builds, unlike the
+// human `reason` text which varies in wording) - VERIFIED against the real
+// DeadMan corpus (see the session:disconnect parser rule for tag/hostType
+// provenance). Mapped by cause first; reason text is only mined for extra
+// detail (crash uptime, signal type), never for classification. An unmapped
+// cause returns 'other' rather than guessing. ---
+const DISCONNECT_CAUSES = {
+  '30010': 'teardown',   // "Nub destroyed" - routine local channel close, not a real disconnect
+  '30020': 'shutdown',   // "DGS disconnecting all channels before game shutdown"
+  '30016': 'voluntary',  // player-initiated: "Player requested disconnect" / "DisconnectCmd: ..."
+  '30028': 'idle',       // "Remote Disconnect - player inactive"
+  '30000': 'timeout',    // CNetChannel inactivity timeout
+  '30009': 'server',     // "MissingVehicleLoadout"
+  '30015': 'server',     // "Dup Login"
+  '64004': 'server',     // "Location Resolution Request failed"
+  '64008': 'server',     // "Location Resolution Request failed"
+  '30013': 'crash'       // GeneralSignal / SEGV - a real client crash
+};
+
+function disconnectCategory (cause) {
+  return DISCONNECT_CAUSES[String(cause)] || 'other';
+}
+
+// For a crash record, pull the "after N minutes and M seconds" uptime-to-crash
+// and the signal detail out of the reason text - the ONLY place this figure
+// exists. The sibling `uptime_secs` field measures a different, shorter-lived
+// network-channel clock, not process uptime: confirmed by real examples where
+// the two numbers disagree by orders of magnitude (uptime_secs=4388s / ~73min
+// vs a reason text of "after 340 minutes and 59 seconds" for the SAME event).
+function crashDetail (reason) {
+  const m = String(reason || '').match(/after (\d+) minutes and (\d+) seconds.*?\(([^)]+)\)\s*$/);
+  if (!m) return null;
+  return { uptimeSecs: (+m[1] * 60) + +m[2], signal: m[3] };
+}
+
+module.exports = {
+  parseLine, RULES, shipName, isNPC, NPC_INDICATORS, parseSessionInfo, SESSION_FIELDS,
+  missionType, MISSION_TYPES, FACTION_TYPES, missionFaction, buildPlayerDirectory, resolvePlayerId,
+  DISCONNECT_CAUSES, disconnectCategory, crashDetail
+};
