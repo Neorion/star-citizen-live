@@ -47,16 +47,30 @@ module.exports = {
   // Strippable: leave enable:false and this whole feature costs nothing -
   // services/FabricSync.js is never required, and no @fabric/core dependency
   // is needed. To turn it on: `npm run fabric:install`, then enable:true (or
-  // SC_FABRIC=1). Identity is created on first start and persisted to
+  // SC_FABRIC=1, which also flips startPeer on automatically - see below).
+  // Identity is created on first start and persisted to
   // stores/fabric-identity.json (set SC_FABRIC_PASSPHRASE to encrypt it at rest).
   fabric: {
     enable: false,
+    // Real network transport (WS4) is a SEPARATE opt-in from `enable` above:
+    // enable:true alone only sets up identity + the consent gate + the
+    // outbound queue (all side-effect-free, no socket opened). Only
+    // startPeer:true actually starts a real @fabric/core Peer (dials the
+    // roster below, optionally listens). The CLI (SC_FABRIC=1) turns this
+    // on automatically; library/test callers must ask for it explicitly.
+    startPeer: false,
     port: 7777,
-    // Seed peers as address strings (dialed by WS4) or partial records to
+    // Seed peers as address strings (dialed on start) or partial records to
     // pre-authorize sharing with. Written once to stores/fabric-peers.json
     // on first start and edited/persisted there after (not re-read from
-    // here on later starts).
+    // here on later starts). Leave unset on first boot and two transport-
+    // only seed hubs (hub.fabric.pub, relay.goon.vc - shareLogs:false) are
+    // seeded automatically; pass [] explicitly for an empty roster instead.
     peers: null,   // e.g. ['hub.fabric.pub:7777'] or [{address:'host:7777', shareLogs:true}]
+    // Optional inbound pin: only accept SCEventBatch traffic signed by one
+    // of these pubkeys (any form - full or x-only, both are normalized).
+    // null = accept from any signer whose peer record allows it.
+    allowedKeys: null,
     // Opt-in, off by default either way: broadcast this pilot's events to
     // every connected peer once shareLogsGlobal is true, or leave it false
     // and opt in per-peer via that peer's own shareLogs:true instead.

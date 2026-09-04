@@ -575,8 +575,8 @@ owner wants history convergence; otherwise `npm run backfill` + WS1's
 | Gate | Question | Blocks | Default if unanswered |
 |---|---|---|---|
 | G0 | Owner go-ahead per workstream | all | stop and wait |
-| G1 | Does `@fabric/core#feature/rsi` install and load on the owner's Windows PC with the Node version there? (`npm run fabric:install && node -e "require('@fabric/core/types/peer')"`) | WS4 | If it fails, WS1–WS3 + WS5 still ship; report the failure verbatim |
-| G2 | Contract namespace: interop with GoonCitizen id (A) or private id (B)? | WS4 T4.1 | B (private) |
+| G1 | Does `@fabric/core#feature/rsi` install and load on the owner's Windows PC with the Node version there? (`npm run fabric:install && node -e "require('@fabric/core/types/peer')"`) | WS4 | **✅ Answered 2026-09-04 — passes.** 140 packages, ~96 MB, ~1 min (not the ~400 MB spike number - that was core+hub together, §8 item 1). One benign `EBADENGINE` warning (wants Node 24.15.0, this PC has 24.16.0 - a patch-version mismatch only). `require('@fabric/core/types/peer')` loads; `npm audit` reports 0 vulnerabilities. Pinned to commit `047210f33ff6e3a84528074a0b375bc3c8a3bdc8` (§8 item 3) instead of the moving branch tip. |
+| G2 | Contract namespace: interop with GoonCitizen id (A) or private id (B)? | WS4 T4.1 | **✅ Answered — B (private), the stated default**, unchallenged. `contracts/starcitizenlive.js` defines our own genesis (`messageTypes: ['SCEventBatch']`); `hub.fabric.pub`/`relay.goon.vc` are dialed as transport-only seeds (`shareLogs:false`), never as an app-message peer. |
 | G3 | Identity at rest: plaintext-in-`stores/` by default with optional `SC_FABRIC_PASSPHRASE`, or passphrase mandatory? | WS2 T2.3 | plaintext + loud warning (headless relay; matches "secrets via env") |
 | G4 | Dependency declaration: script-only (`fabric:install`) vs `optionalDependencies` | WS2 T2.7 | script-only |
 
@@ -584,16 +584,18 @@ owner wants history convergence; otherwise `npm run backfill` + WS1's
 
 ## 8. Open risks / unknowns (stated, not guessed)
 
-1. **Install weight of `@fabric/core` alone was not independently measured
-   against this exact target.** Spike numbers (~400 MB, 728 pkgs) were for
-   core+hub together. Core's own manifest (35 deps incl. `zeromq`, `level`,
-   `redis`, `ts-morph`, `node-gyp`, `blessed`) means it is still heavy and
-   includes native prebuilds. Measure at G1.
-2. **Node version compatibility.** Reference pins Node 24; target promises
-   18+. `level@10`, `zeromq@6.5`, `@noble/curves@2` may require ≥ 20.
-   Unverified.
-3. **Git dependency on a moving branch (`#feature/rsi`) with `allow-git`** —
-   reproducibility risk; consider pinning to a commit SHA once G1 passes.
+1. ~~**Install weight of `@fabric/core` alone was not independently measured
+   against this exact target.**~~ **Measured at G1 (2026-09-04): 140
+   packages, ~96 MB, ~1 min install** - much lighter than the ~400 MB/728-pkg
+   spike number, which was core+hub together.
+2. ~~**Node version compatibility.**~~ **Confirmed at G1: works on Node
+   24.16.0** (the manifest wants 24.15.0 - `npm warn EBADENGINE` on the
+   patch-version mismatch only, not a hard failure). Still unverified below
+   Node 20; the project's stated floor (18+) is untested against this
+   dependency specifically.
+3. ~~**Git dependency on a moving branch (`#feature/rsi`) with `allow-git`**~~
+   **Resolved at G1: pinned to commit `047210f33ff6e3a84528074a0b375bc3c8a3bdc8`**
+   in `package.json`'s `fabric:install` script instead of the branch tip.
 4. **Whether public seed hubs (`hub.fabric.pub`, `relay.goon.vc`) relay a
    *private* contract id (G2 option B).** The reference's
    `relayAppMessages` flag and `isKnownAppRelayType` suggest hubs filter by
@@ -601,14 +603,26 @@ owner wants history convergence; otherwise `npm run backfill` + WS1's
    dial each other directly (LAN/port-forward). NAT traversal beyond what
    Fabric's own seed hubs solve is not addressed by this plan — the
    `DESIGN-distributed.md` §7 "honest hard parts" still apply where it does.
-5. **`peersDb: null`** — `types/peer.js:116` requires `level` at load even
-   when `peersDb` is null; confirm the `Peer` constructor tolerates `null`
-   without creating a LevelDB (the reference tests pass `peersDb: null`, so
-   likely yes, but not independently re-confirmed here).
+5. ~~**`peersDb: null`**~~ **Confirmed at WS4's gated two-node test: the
+   `Peer` constructor tolerates `peersDb: null` fine** - no LevelDB file
+   ever appears in either node's tmp store dir across two real runs.
 6. **Directed sends (`{to}`) depend on private Peer internals**
    (`connections[id]._writeFabric`, `_upsertPeerRegistry`, `_connect`) —
    these are underscore-prefixed in `@fabric/core` and could change on the
-   `feature/rsi` branch. Pin the SHA (item 3).
+   `feature/rsi` branch. Pin the SHA (item 3). **Confirmed working at the
+   pinned commit**: WS4's gated test exercises the directed path exactly
+   (a per-peer `shareLogs:true` roster, not global, produces `{to:[addr]}`)
+   and delivery succeeds. **New finding, not anticipated by this plan:**
+   the real `contract:message` event's `ev.signer` is the
+   cryptographically-recovered pubkey in **x-only form** (compressed minus
+   its `02`/`03` prefix byte) - NOT the full compressed key. Attribution
+   must verify the body's claimed `actor.publicKey` against `ev.signer` via
+   x-only-tolerant comparison (`meshIdentity.pubkeysMatch`) before trusting
+   it, falling back to the verified x-only value otherwise - see
+   `FabricSync.js`'s `_onContractMessage`. Caught only because the gated
+   two-node test was actually run against the real library, not assumed
+   from the reference's own (less strict) `ev.signer || actorPubkey(body)`
+   fallback chain, which never byte-exact-compares the two.
 7. **Identity model is heavier than needed** (BIP39 mnemonic + HD xprv)
    because `Peer` derives its key from an xprv. A raw-seed path exists
    (`identity.js:89–108` `looksLikeRawSeedHex`/`xprvFromRawSeedHex`) if the

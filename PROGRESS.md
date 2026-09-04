@@ -147,6 +147,79 @@ the foreground only, never detached, per this plan's own §0 lesson), per
 
 ---
 
+## 🕸️ WS4 — Real Fabric Peer transport, two-node convergence ✅
+**Date:** 2026-09-04 · branch `feature/mesh-peer-transport` · fourth workstream of `BUILD-PLAN-fabric-mesh.md` (D-008)
+
+The one workstream that actually needs `@fabric/core` installed. **Gate G1
+answered first** (owner approved "try the install now"): `npm run
+fabric:install` → 140 packages, ~96 MB, ~1 min (not the ~400 MB spike number
+— that was core+hub together); one benign `EBADENGINE` patch-version
+warning; `require('@fabric/core/types/peer')` loads; `npm audit` clean.
+Pinned to commit `047210f33ff6e3a84528074a0b375bc3c8a3bdc8` instead of the
+moving `#feature/rsi` branch tip, per the plan's own reproducibility
+recommendation. **G2 answered by the stated default** (B — private contract
+namespace, unchallenged).
+
+- New `contracts/starcitizenlive.js` (G2/T4.1): our own deterministic
+  contract id (`new Actor(definition).id`, same mechanism the reference uses
+  for its shared GoonCitizen namespace) — `hub.fabric.pub`/`relay.goon.vc`
+  are dialed as transport-only seed hubs, never as an app-message peer.
+- `services/FabricSync.js` gained the real transport: `_startPeer()` (a real
+  `@fabric/core` Peer, dialing the roster + optionally listening),
+  `_publishContractMessage`/inbound `_onContractMessage` (signed
+  `CONTRACT_MESSAGE`/`SCEventBatch`, broadcast via `peer.relayFrom` or
+  directed via `connections[id]._writeFabric`), `_stopPeer`/`_dialAddresses`
+  (T4.5), and first-boot seed-hub rostering (T4.6, `shareLogs:false` —
+  transport only, never auto-authorized). The real transport satisfies the
+  exact same `network` facade (`ready`/`status()`/`publishEventBatch()`) WS3
+  already built `_flushUplink()` against, so the flush loop needed zero
+  changes. **Real transport is opt-in via a NEW, separate
+  `settings.fabric.startPeer` flag (off by default)** — deliberately kept
+  independent from `fabric.enable` (identity + consent/queue) specifically
+  so every existing WS2/WS3 test stays exactly as side-effect-free as
+  before, even now that `@fabric/core` is actually installed in this
+  environment; only an explicit `startPeer:true` (the production CLI when
+  `SC_FABRIC=1`, and WS4's own gated test) ever opens a real socket.
+- **A real bug, caught only by actually running the gated two-node test
+  against the real library** (not by code review or trusting the
+  reference's own pattern): `contract:message`'s `ev.signer` is the
+  cryptographically-recovered pubkey in **x-only form** (compressed minus
+  its `02`/`03` prefix byte), not the full compressed key the reference's
+  own `ev.signer || actorPubkey(body)` fallback chain assumes. Fixed by
+  verifying the body's claimed `actor.publicKey` against `ev.signer` via
+  `meshIdentity.pubkeysMatch()` (x-only-tolerant) before trusting it, and
+  falling back to the verified x-only value when a body's claim doesn't
+  match — so attribution stays anchored to what the signature actually
+  proved and can never be spoofed by a peer just writing a different key
+  into the message body. See `BUILD-PLAN-fabric-mesh.md` §8 item 6 for the
+  writeup — this is exactly the class of finding G1's "verify before
+  building on it" gate exists to catch.
+- A second, quieter bug: seeding the roster with the default hub addresses
+  (T4.6) when no `peers` setting is given meant several pre-existing WS2/WS3
+  tests (which only isolated `identityFile`, not `peersFile`) started
+  writing a real `stores/fabric-peers.json` into the actual project
+  directory on every `npm test` run once Fabric was actually installed.
+  Fixed by isolating `peersFile` in those tests too, and cleaned up the
+  stray (gitignored, never-committed) file.
+
+Tests: 1 new fast unit test in `test/mesh.test.js` (`_onContractMessage`
+attribution — the x-only/compressed/spoofed-claim cases, gated on
+`@fabric/core` being installed) + a new gated `test/mesh-peer.test.js` (2
+tests, `SC_FABRIC_TEST=1` + `@fabric/core` required): a real two-node death
+event converging A→B with correct attribution, wire idempotency on replay,
+a dead-peer-doesn't-crash-the-flush-loop check, and a `shareLogs:false`
+peer receiving nothing across two flush cycles despite being connected.
+Both gated tests run **in the foreground with a bounded timeout**, per §0's
+rule — never as a detached process. Full suite: **146/146** (144 pass, 2
+gated-skip on plain `npm test`; both gated tests pass for real under
+`SC_FABRIC_TEST=1 node --test test/mesh-peer.test.js`).
+
+Next: WS5 (roster REST + dashboard "Mesh" tab) — can proceed without
+further Fabric gates, since it only touches the roster model + the WS3 fake
+network. Per `BUILD-PLAN-fabric-mesh.md`.
+
+---
+
 ## 👥 Crew/party tracking — PlayerJoined + player_id directory ✅
 **Date:** 2026-08-28 · branch `feature/crew-party`
 

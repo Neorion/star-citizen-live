@@ -987,8 +987,14 @@ if (require.main === module) {
   // constructor is shallow per top-level key, so an explicit `undefined` here
   // would stomp FabricSync's/ingest's own defaults (port, interface, ...).
   const fabricOpts = { enable: !!process.env.SC_FABRIC };
+  // A real relay operator turning the mesh on obviously wants the real
+  // transport (WS4), not just an identity file sitting on disk - opt in to
+  // startPeer automatically here. Tests/library callers get the safe
+  // default (false) unless they ask for it explicitly.
+  if (fabricOpts.enable) fabricOpts.startPeer = true;
   if (process.env.SC_FABRIC_PORT) fabricOpts.port = parseInt(process.env.SC_FABRIC_PORT, 10);
   if (process.env.SC_FABRIC_PEERS) fabricOpts.peers = process.env.SC_FABRIC_PEERS.split(',').map((s) => s.trim()).filter(Boolean);
+  if (process.env.SC_FABRIC_ALLOWED_KEYS) fabricOpts.allowedKeys = process.env.SC_FABRIC_ALLOWED_KEYS.split(',').map((s) => s.trim()).filter(Boolean);
 
   const svc = new StarCitizenService({
     port: process.env.PORT || 3041,

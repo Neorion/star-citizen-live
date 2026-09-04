@@ -119,7 +119,7 @@ test('GET …/mesh reports {enabled:false} when the fabric backbone is off (the 
 
 test('GET …/mesh reports installed/ready status once fabric.enable is turned on', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-mesh-'));
-  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, fabric: { enable: true, identityFile: path.join(dir, 'id.json') } });
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, fabric: { enable: true, identityFile: path.join(dir, 'id.json'), peersFile: path.join(dir, 'peers.json') } });
   await s.start();
   const port = s.server.address().port;
   try {
@@ -176,7 +176,7 @@ test('signEnvelope/verifyEnvelope round-trip and POST …/events accepts a signe
   const tampered = Object.assign({}, envelope, { payload: { events: [] } });
   assert.strictEqual(meshIdentity.verifyEnvelope(tampered), false, 'tampering with the payload invalidates the signature');
 
-  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, ingest: { httpEnable: true }, fabric: { enable: true, identityFile: path.join(dir, 'id.json') } });
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, ingest: { httpEnable: true }, fabric: { enable: true, identityFile: path.join(dir, 'id.json'), peersFile: path.join(dir, 'peers.json') } });
   await s.start();
   const port = s.server.address().port;
   try {
@@ -225,12 +225,14 @@ test('peer roster persists to disk (stripped of lastSeen/lastError) and reloads 
   await f1.stop(); await f2.stop();
 });
 
-test('default (no identity, no roster): real death + mission:end lines queue nothing, _canShareLogs() is false', async () => {
+test('default (no consent granted anywhere): real death + mission:end lines queue nothing, _canShareLogs() is false', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-mesh-'));
   const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, fabric: { enable: true, identityFile: path.join(dir, 'id.json'), peersFile: path.join(dir, 'peers.json') } });
   await s.start();
   try {
-    assert.strictEqual(s.fabric._canShareLogs(), false, 'no identity (no @fabric/core here) -> nothing authorized');
+    // Neither shareLogsGlobal nor any peer's shareLogs is set - true whether
+    // or not @fabric/core happens to be installed (identity alone is not consent).
+    assert.strictEqual(s.fabric._canShareLogs(), false, 'no share path authorized -> nothing queues');
     s.handleLogChange("<2026-09-04T00:01:00.000Z> [Notice] <Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'body_01_noMagicPocket_1 - Class(body_01_noMagicPocket)', Recorded data is: Port Name 'Body_ItemPort' [Team_CoreGameplayFeatures][Unknown]");
     s.handleLogChange('<2026-09-04T00:02:00.000Z> [Notice] <EndMission> Ending mission for player. MissionId[cccc3333-0319-4a6a-8b2b-ece75082c848] Player[LocalPilot] PlayerId[204821711285] CompletionType[Complete] Reason[Mission Ended] [Team_MissionFeatures][Missions]');
     assert.strictEqual(s.fabric._uplinkQueue.length, 0);
@@ -311,4 +313,55 @@ test('_flushUplink requeues on a throw + emits uplink:error, retries clean, and 
   await fabric._flushUplink();
   assert.strictEqual(fabric._uplinkQueue.length, 1, 'held - nothing connected');
   assert.strictEqual(calls, 2, 'network was not called a third time');
+});
+
+// --- WS4: real Peer transport - inbound dispatch + attribution (BUILD-PLAN-fabric-mesh.md) ---
+// Only the two-node network test itself (test/mesh-peer.test.js) is gated
+// on SC_FABRIC_TEST; this one exercises _onContractMessage() directly with
+// a synthetic event shaped exactly like the real one @fabric/core emits
+// (empirically confirmed against a real two-node run: `ev.signer` is the
+// cryptographically-recovered x-only pubkey, NOT the full compressed form -
+// see FabricSync.js's _onContractMessage comment). Still needs @fabric/core
+// only because _contractId() computes our real contract id.
+test('_onContractMessage attributes to the real (x-only) signer, upgrading to the full key only once it matches', { skip: !HAS_FABRIC }, () => {
+  const EE = require('events');
+  const service = new EE();
+  const calls = [];
+  service._ingestEvent = (source, collection, data) => { calls.push({ source, collection, data }); return { id: 'x', created: true }; };
+
+  const fabric = new FabricSync({ service });
+  const identity = meshIdentity.createIdentity();
+  const xOnly = meshIdentity.pubkeyXOnly(identity.pubkey);
+  const contract = fabric._contractId();
+
+  fabric._onContractMessage({
+    contract,
+    signer: xOnly,
+    object: {
+      type: 'SCEventBatch',
+      actor: { publicKey: identity.pubkey, id: identity.pubkey },
+      object: { events: [{ collection: 'deaths', data: { player: 'PeerPilot' } }] }
+    }
+  });
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].source, identity.pubkey, 'upgraded to the full compressed key once it matched the real signer');
+
+  // A body claiming a DIFFERENT key than the real signer must never win -
+  // attribution stays anchored to what the signature actually proved.
+  const other = meshIdentity.createIdentity();
+  fabric._onContractMessage({
+    contract,
+    signer: xOnly,
+    object: {
+      type: 'SCEventBatch',
+      actor: { publicKey: other.pubkey, id: other.pubkey },
+      object: { events: [{ collection: 'deaths', data: { player: 'Spoofed' } }] }
+    }
+  });
+  assert.strictEqual(calls.length, 2);
+  assert.strictEqual(calls[1].source, xOnly, 'mismatched claim rejected - falls back to the verified x-only signer, never the spoofed key');
+
+  // A message under a different contract id (not ours) is ignored entirely.
+  fabric._onContractMessage({ contract: 'someone-elses-contract', signer: xOnly, object: { type: 'SCEventBatch', object: { events: [{ collection: 'deaths', data: {} }] } } });
+  assert.strictEqual(calls.length, 2, 'a foreign contract id is not our traffic');
 });

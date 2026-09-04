@@ -89,8 +89,19 @@ SC_HTTP_INGEST=1 npm start       # also accept POST …/events (WS1's idempotent
 `GET …/mesh` reports identity/roster/queue status (`{enabled:false}` when
 Fabric isn't turned on). `SC_FABRIC_PASSPHRASE` encrypts the identity file at
 rest (scrypt + AES-256-GCM); otherwise it's written plaintext with an explicit
-`warning` field. WS2 only wires up identity + signed-envelope verification —
-there's no real peer transport yet (that's WS4).
+`warning` field.
+
+**WS4 (2026-09-04): real peer transport is live.** `SC_FABRIC=1` now also
+opens a real `@fabric/core` Peer (listens, dials your `SC_FABRIC_PEERS`
+roster or the default seed hubs) — nothing shares your events anywhere until
+you say so: set a peer's `shareLogs:true` (per-peer consent) or turn on
+`shareLogsGlobal` in `settings/local.js`. `SC_FABRIC_ALLOWED_KEYS` optionally
+pins inbound traffic to a comma-separated pubkey allowlist. Two-node
+convergence has its own gated test (needs `@fabric/core` installed):
+
+```bash
+SC_FABRIC_TEST=1 node --test test/mesh-peer.test.js   # always foreground, never detached
+```
 
 Overrides (highest priority first):
 - `SC_LOGFILE=/full/path/to/Game.log` — force an exact file.
