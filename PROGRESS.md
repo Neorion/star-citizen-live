@@ -45,6 +45,57 @@ Next: WS2 (`FabricSync` module skeleton + identity), per
 
 ---
 
+## 🪪 WS2 — Mesh identity + FabricSync skeleton + signed-envelope verification ✅
+**Date:** 2026-09-04 · branch `feature/mesh-identity-fabricsync` (stacked on `feature/mesh-ingest-idempotent`) · second workstream of `BUILD-PLAN-fabric-mesh.md` (D-008)
+
+Ported from the proven reference (`martindale-star-citizen-live @ feat/op-participation`,
+`functions/identity.js` + `@fabric/http`'s `fabricPubkey.js`), read line-for-line
+before writing any of this, per the repo's "verify against real source" rule.
+
+- New `services/meshIdentity.js`: `createIdentity`/`restoreIdentity` (BIP39
+  mnemonic → keypair), `signEnvelope`/`verifyEnvelope` (Schnorr, digest over
+  `canonicalStringify(payload)` so a tampered payload fails verification even
+  with a stale signature), `encryptIdentity`/`decryptIdentity` (scrypt +
+  AES-256-GCM, **Node `crypto` only — no Fabric dependency for this half**),
+  `pubkeyXOnly`/`pubkeysMatch` (inlined from `@fabric/http` — confirmed pure/
+  tiny, so this file never depends on the `@fabric/http` package, which drags
+  puppeteer/express/jsdom), and `available()`/`loadOrCreate()`. Every
+  `@fabric/core` require is **lazy, inside a function body** — `git grep` and
+  a bare `node -e "require('./services/FabricSync')"` both confirm nothing
+  Fabric-related loads until a keypair is actually needed.
+- New `services/FabricSync.js`: strippable exactly like `CargoRouter` —
+  `this.fabric = settings.fabric.enable ? new FabricSync(...) : null`.
+  `start()` creates/loads an identity (`stores/fabric-identity.json`,
+  optionally encrypted via `SC_FABRIC_PASSPHRASE`) and degrades to
+  `installed:false` instead of throwing when `@fabric/core` isn't installed.
+  `checkEnvelope(envelope, allowedKeys)` mirrors the reference's
+  `_checkEnvelope` shape (`{ok, code, error}`) exactly, so `app/server.js`
+  uses it directly with no translation. No real peer transport yet — that's
+  WS4.
+- `app/server.js`: `this.fabric` constructor seam + lifecycle hooks; new
+  `GET …/mesh` status route (`{enabled:false}` when off); `POST …/events`
+  now also accepts a **signed envelope** (`{pubkey, payload:{events},
+  signature}`) — verified via `this.fabric.checkEnvelope()`, with `source`
+  becoming the *verified* sender pubkey — alongside WS1's original unsigned
+  `{source, events}` shape (now refusable via `ingest.requireSigned`).
+  `monitor` snapshot gained `meshEnabled`.
+- `npm run fabric:install` (opt-in `@fabric/core` only — not the whole Fabric
+  stack); `settings/example.js` + `CONTINUE.md` document the new envs
+  (`SC_FABRIC`, `SC_FABRIC_PORT`, `SC_FABRIC_PEERS`, `SC_FABRIC_PASSPHRASE`,
+  `SC_HTTP_INGEST_REQUIRE_SIGNED`, `SC_HTTP_INGEST_ALLOWED_KEYS`).
+
+13 new tests (`test/mesh.test.js`): zero-dep-on-require proof, identity
+round-trips, envelope shape/roster rejection, `/mesh` status with Fabric on
+and off, the WS1-regression check, and a real signed-envelope round trip
+that's conditionally skipped (`{skip: !meshIdentity.available()}`) since
+`@fabric/core` isn't installed in this environment. Full suite: 135/135
+(134 pass, 1 skipped as expected).
+
+Next: WS3 (outbound consent gate + queue + flush), per
+`BUILD-PLAN-fabric-mesh.md`.
+
+---
+
 ## 👥 Crew/party tracking — PlayerJoined + player_id directory ✅
 **Date:** 2026-08-28 · branch `feature/crew-party`
 

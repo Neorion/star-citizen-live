@@ -66,9 +66,14 @@ class StarCitizenService extends EventEmitter {
       discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false },
       missions: { enable: true },
       cargo: { enable: false },   // optional, strippable cargo route-optimizer (services/CargoRouter.js)
-      ingest: { httpEnable: false }   // POST …/events - off by default (BUILD-PLAN-fabric-mesh.md WS1)
+      ingest: { httpEnable: false },   // POST …/events - off by default (BUILD-PLAN-fabric-mesh.md WS1)
+      fabric: { enable: false }   // optional Fabric P2P mesh backbone (BUILD-PLAN-fabric-mesh.md WS2, D-008)
     }, settings);
-    this.settings.ingest = Object.assign({ httpEnable: false }, settings.ingest || {});
+    this.settings.ingest = Object.assign({ httpEnable: false, requireSigned: false, allowedKeys: null }, settings.ingest || {});
+    this.settings.fabric = Object.assign({
+      enable: false, listen: true, port: 7777, interface: '0.0.0.0',
+      peers: null, identityFile: null, shareLogsGlobal: false, uplinkIntervalMs: 5000
+    }, settings.fabric || {});
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false }, settings.discord || {});
 
     this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, crew: {}, disconnects: {}, notifications: {}, logs: {}, startedAt: null };
@@ -107,6 +112,14 @@ class StarCitizenService extends EventEmitter {
     // panel to strip the feature entirely (the core relay is unaffected).
     this.cargoRouter = (this.settings.cargo && this.settings.cargo.enable)
       ? new (require('../services/CargoRouter'))({ file: (this.settings.cargo && this.settings.cargo.file) || require('path').join(__dirname, '..', 'stores', 'cargo.json') })
+      : null;
+
+    // Optional Fabric P2P mesh backbone (D-008). Strippable exactly like
+    // cargoRouter above: require('../services/FabricSync') never touches
+    // @fabric/core at module load, and start()/stop() no-op when disabled
+    // or not installed. See BUILD-PLAN-fabric-mesh.md WS2.
+    this.fabric = (this.settings.fabric && this.settings.fabric.enable)
+      ? new (require('../services/FabricSync'))({ service: this, settings: this.settings.fabric, storeDir: require('path').join(__dirname, '..', 'stores') })
       : null;
 
     if (this.settings.discord.enable) this._wireDiscord();
@@ -283,13 +296,29 @@ class StarCitizenService extends EventEmitter {
       }
       // Bulk idempotent ingest (BUILD-PLAN-fabric-mesh.md WS1) - the seam a
       // future Fabric peer (WS4) or any other relay posts shared events
-      // through. Off by default; set SC_HTTP_INGEST=1 (unsigned/trusted-LAN
-      // use only until WS2 adds envelope verification).
+      // through. Off by default; set SC_HTTP_INGEST=1.
+      //
+      // Two body shapes are accepted (WS2 adds the first on top of WS1):
+      //  - a signed envelope { pubkey, payload: { events }, signature } -
+      //    verified against this.fabric's roster via checkEnvelope(); source
+      //    becomes the VERIFIED sender pubkey, not anything the caller claims.
+      //  - the plain WS1 shape { source, events } - unsigned/trusted-LAN only,
+      //    refused outright when ingest.requireSigned is set.
       if (req.method === 'POST' && path === `${base}/events`) {
         if (!this.settings.ingest.httpEnable) return send(403, { error: 'HTTP ingest not enabled (set SC_HTTP_INGEST=1)' });
         const d = await body();
-        const events = Array.isArray(d.events) ? d.events : [];
-        const source = d.source || `http:${(req.socket && req.socket.remoteAddress) || 'unknown'}`;
+        let events, source;
+        if (d && d.pubkey && d.signature && d.payload !== undefined) {
+          if (!this.fabric) return send(501, { error: 'Signed envelope received but the mesh backbone is not enabled (set SC_FABRIC=1)' });
+          const check = this.fabric.checkEnvelope(d, this.settings.ingest.allowedKeys);
+          if (!check.ok) return send(check.code, { error: check.error });
+          events = Array.isArray(d.payload.events) ? d.payload.events : [];
+          source = `fabric:${d.pubkey}`;
+        } else {
+          if (this.settings.ingest.requireSigned) return send(401, { error: 'Signed envelope required: { pubkey, payload, signature } (ingest.requireSigned is set)' });
+          events = Array.isArray(d.events) ? d.events : [];
+          source = d.source || `http:${(req.socket && req.socket.remoteAddress) || 'unknown'}`;
+        }
         const results = [];
         let created = 0;
         for (const e of events) {
@@ -301,6 +330,12 @@ class StarCitizenService extends EventEmitter {
         }
         this.emit('ingest', { source, received: events.length, created });
         return send(200, { type: 'IngestResult', received: events.length, created, results });
+      }
+      // Mesh status (BUILD-PLAN-fabric-mesh.md WS2) - identity/roster/queue
+      // snapshot for the dashboard's future "Mesh" tab (WS5). Always 200;
+      // { enabled: false } when the backbone isn't turned on.
+      if (req.method === 'GET' && path === `${base}/mesh`) {
+        return send(200, this.fabric ? this.fabric.status() : { enabled: false });
       }
       // ---- Cargo route optimizer (optional; only when enabled) ----
       if (req.method === 'GET' && path === `${base}/route`) {
@@ -415,6 +450,7 @@ class StarCitizenService extends EventEmitter {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
           channel: this.channel, session: this.session, sessions: this.sessions,
           cargoEnabled: !!this.cargoRouter,
+          meshEnabled: !!this.fabric,
           missions: this.missionGroups,
           missionStats: this.missionStats(),
           kills: newest(this.kills),
@@ -911,6 +947,7 @@ class StarCitizenService extends EventEmitter {
   async start () {
     this.state.status = 'STARTING';
     if (this.missionManager) await this.missionManager.start();
+    if (this.fabric) await this.fabric.start();
     // Seed FIRST (replays history), then start the live poller at the current
     // end-of-file so we only stream genuinely new lines and don't double-read.
     if (this.settings.seed) {
@@ -931,6 +968,7 @@ class StarCitizenService extends EventEmitter {
     this.state.status = 'STOPPING';
     if (this._pollTimer) { clearTimeout(this._pollTimer); this._pollTimer = null; }
     if (this.missionManager) await this.missionManager.stop();
+    if (this.fabric) await this.fabric.stop();
     if (this.server) await new Promise((r) => this.server.close(r));
     this.state.status = 'STOPPED';
     this.emit('stopped');
@@ -945,6 +983,13 @@ if (require.main === module) {
   const resolved = resolveLogFile({ explicit: process.env.SC_LOGFILE || null, channel: process.env.SC_CHANNEL || null });
   if (resolved.file) console.log(`[STAR-CITIZEN] log: ${resolved.channel || '?'} channel (${resolved.source}) -> ${resolved.file}`);
   else console.log('[STAR-CITIZEN] no Game.log found across drives/channels - set SC_LOGFILE or SC_CHANNEL');
+  // Only set the pieces an env var actually overrides - Object.assign in the
+  // constructor is shallow per top-level key, so an explicit `undefined` here
+  // would stomp FabricSync's/ingest's own defaults (port, interface, ...).
+  const fabricOpts = { enable: !!process.env.SC_FABRIC };
+  if (process.env.SC_FABRIC_PORT) fabricOpts.port = parseInt(process.env.SC_FABRIC_PORT, 10);
+  if (process.env.SC_FABRIC_PEERS) fabricOpts.peers = process.env.SC_FABRIC_PEERS.split(',').map((s) => s.trim()).filter(Boolean);
+
   const svc = new StarCitizenService({
     port: process.env.PORT || 3041,
     logfile: resolved.file,
@@ -953,7 +998,12 @@ if (require.main === module) {
     missions: { enable: true, dir: process.env.SC_REGISTER_DIR || null, officers: (process.env.SC_OFFICERS || '').split(',').map((s) => s.trim()).filter(Boolean) },
     discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null },
     cargo: { enable: !!process.env.SC_CARGO_ROUTER },   // opt-in cargo route optimizer
-    ingest: { httpEnable: !!process.env.SC_HTTP_INGEST }   // opt-in POST …/events (BUILD-PLAN-fabric-mesh.md WS1)
+    ingest: {
+      httpEnable: !!process.env.SC_HTTP_INGEST,   // opt-in POST …/events (BUILD-PLAN-fabric-mesh.md WS1)
+      requireSigned: !!process.env.SC_HTTP_INGEST_REQUIRE_SIGNED,   // refuse unsigned batches once the mesh is up (WS2)
+      allowedKeys: process.env.SC_HTTP_INGEST_ALLOWED_KEYS ? process.env.SC_HTTP_INGEST_ALLOWED_KEYS.split(',').map((s) => s.trim()).filter(Boolean) : null
+    },
+    fabric: fabricOpts   // opt-in Fabric P2P mesh backbone (BUILD-PLAN-fabric-mesh.md WS2, D-008)
   });
   svc.start();
 }

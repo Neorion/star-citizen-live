@@ -15,6 +15,7 @@
     "audit": "node scripts/audit.js",
     "build-vocab": "node scripts/build-uex-vocab.js   # refresh data/uex-reference.json from UEX (network; run after a game patch)",
     "test": "node --test test/*.test.js",
+    "fabric:install": "npm install --no-save @fabric/core   # opt-in: enables the mesh backbone (SC_FABRIC=1); the core service stays zero-dep without this",
     "start:fabric": "node scripts/node.js   # DEPRECATED original Fabric-based entry (kept for reference)"
   },
   "repository": {
