@@ -97,8 +97,10 @@ mission + role/ship" is a fairer, less-arguable input than memory.
 - ➡️ **The loot split itself** is an org-policy calculation on top of these inputs
   (officers decide the formula); we provide the metrics, not the verdict.
 
-**Prerequisites:** members run the relay; a central service to aggregate multiple
-members (M4); the Discord-Events op window; optional location-name enrichment.
+**Prerequisites:** members run the relay; Fabric mesh sync so member relays
+aggregate each other's opted-in events (M4, per D-008 — replaces the earlier
+central-VPS plan; no central aggregator to build, each relay shares its own
+data directly); the Discord-Events op window; optional location-name enrichment.
 
 **Confidence / honesty:** this is **inferred telemetry** (engagement/presence),
 clearly labelled as such — an *input* to an officer's loot decision, not a

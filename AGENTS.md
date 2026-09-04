@@ -192,8 +192,10 @@ you fetch them. Check `git branch -r` before assuming something doesn't exist.
   officer validate → completed | reject/cancel), officer allowlist, and a
   hash-chained tamper-evident audit log, exposed over REST.
 
-**Next milestones (see `PROGRESS.md` → "Up next" and `DECISIONS.md` → D-005):**
-- **M4** — deploy the central service to a small VPS (+ persistence; `node:sqlite`).
+**Next milestones (see `PROGRESS.md` → "Up next" and `DECISIONS.md` → D-005, D-008):**
+- **M4** — Fabric mesh backbone (not a VPS — see D-008, 2026-09-04): peer
+  identity, consent-gated event sharing, optional/strippable module (mirrors
+  the `services/CargoRouter.js` seam) so the core relay stays zero-dependency.
 - **M5.3** — Discord **bot** (slash commands + Scheduled-Events hook) for two-way
   commands and identity (officer = a Discord role).
 - **M6** — signed audit trail (fold in `types/Mission.js` multisig).
@@ -241,13 +243,13 @@ Discord webhook into a tracked file.**
 | `AGENTS.md` (this file) / `CLAUDE.md` | Canonical AI-assistant context (CLAUDE.md imports this). |
 | `CONTINUE.md` | Quick-start: how to run/replay right now; common commands. |
 | `PROGRESS.md` | Milestone + retrospective trail (newest first). The live status log. |
-| `DECISIONS.md` | ADRs — the *why* (D-001…D-005: Fabric removal, VPS, federation, register). |
+| `DECISIONS.md` | ADRs — the *why* (D-001…D-008: Fabric removal, VPS, federation, register, and D-008's reversal — Fabric mesh is the M4 backbone now, not a VPS). |
 | `SOLUTION-BRIEF.md` | Plain-English product brief for org leadership. |
 | `DESIGN-missions-mvp.md` | Technical design for the mission register (M5). |
-| `DESIGN-distributed.md` | Design-only: optional federated/decentralized future (D-004). |
+| `DESIGN-distributed.md` | Design-only: optional federated/decentralized future (D-004) — read alongside D-008, which supersedes its VPS-stays-as-bridge framing. |
 | `HANDOFF-master.md` | The Fabric-as-transport-swap integration seam, event-vs-register split, and open-seams checklist that D-008 acted on. |
 | `BUILD-PLAN-fabric-mesh.md` | Execution plan for D-008 (the Fabric mesh backbone): workstreams WS1–WS6, acceptance criteria, verification commands — same format as `BUILD-PLAN-rsi.md`, written against a real proven reference implementation. |
-| `DESIGN-event-convergence.md` | How to merge many players' event streams into one org-wide view (transport-agnostic; for M4 + future Fabric). |
+| `DESIGN-event-convergence.md` | How to merge many players' event streams into one org-wide view — now the direct design doc for M4's Fabric backbone (D-008), not a future option. |
 | `REFERENCES.md` | Catalog of reusable SC open-source projects + log-format findings. |
 | `BACKLOG.md` | Idea backlog. |
 | `UPSTREAM-RSI-STATE.md` | **Read before planning features.** Where `martindale/star-citizen-live @ feature/rsi` is (2026-08-17 snapshot), what diverged, and the backlog mapping for StarCitizen Live + Verseview. Self-contained for a future model/session. |

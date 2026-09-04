@@ -5,6 +5,91 @@ understands the direction. Newest at the top.
 
 ---
 
+## D-008 — M4 backbone is Fabric mesh, not a central VPS (amends D-003/D-004)
+**Date:** 2026-09-04 · **Status:** Adopted (direction set; design + build not started)
+
+**Decision:** Retire D-003's plan to host the shared org-wide backbone on a
+central VPS. Instead, M4 stands up a **Fabric P2P mesh** — the same transport
+D-002 removed — as the way member relays exchange org-wide data (crew/party
+sightings, ship usage, presence, mission-register evidence). Discord stays the
+front door (unchanged); the mission register's officer-validated authority
+model stays unchanged (D-005 is not touched by this decision). This finishes
+what D-004 started and stopped short of: D-004 (2026-06-12) explicitly kept
+Fabric's *transport* out ("the fragile part") while wanting its *decentralized
+trust* (signed objects). This decision takes the transport too — matching
+where the upstream fork (`martindale/star-citizen-live @ feature/rsi`)
+independently landed (D-009/D-010 there): Fabric brought back deliberately as
+the mesh, while the relay itself stays local per member. See
+`UPSTREAM-RSI-STATE.md` for that fork's shape.
+
+**Why:**
+- Owner call: no VPS budget/ops burden right now; Fabric mesh removes the
+  single-point-of-failure D-004 already flagged, without taking on hosting.
+- Not a surprise pivot. `HANDOFF-master.md` (2026-06-24) already flagged this
+  exact direction — "lean Fabric/federated as the target transport; the central
+  VPS is an optional bridge, not a requirement" — and its own §4 said the event
+  firehose "can go Fabric-first today." This decision is that direction finally
+  acted on, ~2.5 months later, not a new idea.
+- Not a cold start. This session already built and tested the exact seam this
+  needs — consent-gated Fabric sharing for quantum-travel and ship-use events
+  (branch `feat/op-participation` on the `martindale-star-citizen-live` clone)
+  — reusing the *existing* per-peer `shareLogs` gate (`_canShareLogs()` /
+  `_logSharePublishOpts()`) that already governs every other shared collection
+  there. "Share with chosen members only" needed no new design; it already
+  existed.
+- Fabric brings real Schnorr-signing/identity primitives for free — a head
+  start on M6's signed audit trail (`types/Mission.js` already scoped
+  secp256k1/musig2 for exactly this; Fabric's peer identity can back it
+  instead of hand-rolling it).
+
+**Consequences:**
+- **D-002's reasons for removing Fabric have not gone away** — the ~400 MB
+  dependency tree, SSH-only git deps, and headless-browser requirement from
+  the Tier-0 spike (`SPIKE-LOG-tier0-boot.md`) are exactly as heavy today.
+  Mitigation, already proven in this repo's own conventions: Fabric lands as
+  an **optional, strippable sibling module** — the same seam
+  `services/CargoRouter.js` already uses (`this.cargoRouter = settings.cargo
+  .enable ? new CargoRouter(...) : null`, zero cost when off). The core
+  relay (`app/server.js`) stays zero-dependency by default; only a member who
+  opts into mesh sync pays Fabric's install cost. Do **not** fold Fabric into
+  `app/parser.js` or the core service unconditionally.
+- **M5.3's Discord bot still needs *some* always-on process** — Fabric mesh
+  removes the *central authority* requirement, not the *someone's machine has
+  to hold the Discord gateway connection* requirement. That process becomes
+  one Fabric peer among several (D-004's own framing: "one node among
+  several / a bridge"), not the sole source of truth — but it still needs to
+  run somewhere. Not resolved by this decision; revisit at M5.3.
+- **The web UI (SOLUTION-BRIEF §7) likely still needs a thin HTTP↔Fabric
+  bridge** — browsers don't speak arbitrary P2P protocols natively. Scope
+  unclear until M4's actual shape is designed; flagged, not solved, here.
+- **B-001's "central service to aggregate multiple members" prerequisite is
+  replaced by Fabric sync** — each member's relay shares their own opted-in
+  events directly; no central aggregator to build. If anything this is
+  *simpler* than the VPS plan, and the consent model (per-peer, opt-in) is a
+  better answer to the privacy concern already on record (see the
+  cross-project design assessment, 2026-09-04: default-on org-wide sync in
+  a surveyed community tool was explicitly flagged as something to avoid).
+- **Explicitly declined, staying declined:** Bitcoin/multisig payouts
+  (upstream's D-008-equivalent). Fabric brings that tooling along for the
+  ride; D-005's "rewards are informational only, no real money" stance does
+  not change because the transport did.
+- **Everything else on the backlog is unaffected.** B-010, B-012, B-013,
+  B-014, B-015 (shipped), B-016, B-017, the B-011 sub-items, B-018, B-019 are
+  all single-relay, local-parser work — this decision only touches the
+  org-wide sync layer, not what one member's relay parses or tracks.
+
+**Open items:** peer identity/bootstrap design (seed hubs, likely
+`hub.fabric.pub:7777` / `relay.goon.vc:7777` per upstream's precedent), which
+collections sync by default vs. opt-in, and where the Discord-bot / web-UI
+bridge process actually runs. **Separately, still open and NOT resolved by this
+decision:** the mission register's home node — removing the VPS doesn't remove
+D-005's single-source-of-truth requirement; `HANDOFF-master.md` §4 has the two
+shapes (elected/primary node with replicated audit chain, or fold in M6's
+multisig signing so no node is privileged). Tracked for milestone M4
+(superseding D-003's VPS-shaped version of that milestone) and M6 respectively.
+
+---
+
 ## D-007 — Analytics dashboard + player log backload are adopted project goals
 **Date:** 2026-06-19 · **Status:** Adopted
 
@@ -98,7 +183,10 @@ federation now — keep D-004 as a parallel, opt-in research track.
 ---
 
 ## D-004 — Revisit decentralization: federate first (amends D-002/D-003)
-**Date:** 2026-06-12 · **Status:** Adopted (direction set; design only, no build yet)
+**Date:** 2026-06-12 · **Status:** Partially superseded by D-008 (2026-09-04) —
+this entry's "L1 federated, VPS stays as bridge" plan is superseded; its
+transport/trust distinction and honest-limits reasoning still hold and are
+cited directly in D-008.
 
 **Decision:** Re-open the decentralization question we shelved in D-002. We will
 **not** rip out the central VPS or Discord. Instead we grow a *federated* layer
@@ -162,7 +250,9 @@ on players' PCs.
 ---
 
 ## D-003 — Host on a small VPS
-**Date:** 2026-06-08 · **Status:** Adopted
+**Date:** 2026-06-08 · **Status:** Superseded by D-008 (2026-09-04) — M4 is now a
+Fabric mesh backbone, not a central VPS. Kept below for history; do not build
+against this entry.
 
 **Decision:** Host the shared contracts service on a small, low-cost cloud VPS
 (always-on Linux box). Discord provides identity/interaction. The log relay runs

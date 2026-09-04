@@ -603,14 +603,20 @@ plagued the spike. Everything stays runnable with zero setup.
 
 - **M3-combat (blocked on input):** get a Game.log recorded during combat; confirm
   the kill / vehicle-destruction patterns; turn on a real kills→Discord demo.
-- **M4 — Deploy to the VPS:** stand up the always-on service (provider + DB +
-  deploy). See D-003.
+- **M4 — Fabric mesh backbone (was: deploy to a VPS; see D-008):** wire in
+  Fabric as an optional, strippable sibling module (same seam as
+  `services/CargoRouter.js`) — peer identity, consent-gated event sharing
+  (reusing the per-peer `shareLogs` gate already proven on the
+  `martindale-star-citizen-live` clone's `feat/op-participation` branch), seed
+  hub bootstrap. No VPS, no hosting decision to make first.
 - **M5 — Contracts MVP:** create/list/apply/approve missions via API/Discord,
   backed by a small database.
-- **M6+:** Discord roles for approvals, signed audit trail, polish.
+- **M6+:** Discord roles for approvals, signed audit trail (can lean on
+  Fabric's own signing/identity primitives per D-008), polish.
 - **Packaging (cross-platform) — required:** ship the relay as a one-click install on
   **Windows (.exe, Node SEA)** AND **Linux** (self-contained binary + install script /
-  optional .deb/AppImage; the central service installs as a Linux **systemd** service).
+  optional .deb/AppImage; an always-on peer — Discord bot / web-UI bridge, not
+  "the" central service — can still install as a Linux **systemd** service).
   The Linux relay must add **Proton/Wine `Game.log` detection** (Steam compatdata /
   Lutris prefixes) — `app/locate.js` currently scans Windows drives only (see TODO there).
   Trust: Windows Authenticode signing + Linux GPG signing, VirusTotal, SHA-256 checksums.
