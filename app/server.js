@@ -20,7 +20,7 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const readline = require('readline');
 
-const { parseLine, shipName, parseSessionInfo, missionType, isNPC, missionFaction, resolvePlayerId } = require('./parser');
+const { parseLine, shipName, parseSessionInfo, missionType, isNPC, missionFaction, resolvePlayerId, disconnectCategory, crashDetail } = require('./parser');
 const { resolveLogFile, channelFromPath } = require('./locate');
 
 // Lines worth surfacing in the monitor - combat/death hints AND mission/objective
@@ -50,7 +50,7 @@ class StarCitizenService extends EventEmitter {
     }, settings);
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false }, settings.discord || {});
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, crew: {}, notifications: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, crew: {}, disconnects: {}, notifications: {}, logs: {}, startedAt: null };
     this.state.missionGroups = {};  // missions grouped by MissionId (built from the log)
     this.state.objectives = {};     // objective details keyed by ObjectiveId
     this.state.combatlog = {};      // combat progress inferred from mission objectives
@@ -93,7 +93,7 @@ class StarCitizenService extends EventEmitter {
 
   // Load the backfilled history aggregate (built by `npm run backfill`), if present.
   _loadHistory () {
-    const empty = { missions: [], deaths: [], sessions: [], heat: {}, players: [], crew: [], playerDirectory: {}, meta: {} };
+    const empty = { missions: [], deaths: [], sessions: [], heat: {}, players: [], crew: [], playerDirectory: {}, disconnects: [], meta: {} };
     try {
       const f = this.settings.historyFile || require('path').join(__dirname, '..', 'stores', 'history.json');
       if (fs.existsSync(f)) return Object.assign(empty, JSON.parse(fs.readFileSync(f, 'utf8')));
@@ -150,6 +150,7 @@ class StarCitizenService extends EventEmitter {
   get deaths () { return Object.values(this.state.deaths); }              // local-player deaths (corpse-recovery signal)
   get missionlog () { return Object.values(this.state.missionlog); }
   get crew () { return Object.values(this.state.crew); }                    // raw PlayerJoined sightings
+  get disconnects () { return Object.values(this.state.disconnects); }      // real network disconnects (GameClient-echo excluded)
   get notifications () { return Object.values(this.state.notifications); }  // general HUD/zone notices
   get combatlog () { return Object.values(this.state.combatlog); }          // combat progress via mission objectives
 
@@ -191,6 +192,29 @@ class StarCitizenService extends EventEmitter {
     }
     return s;
   }
+
+  // Stability rollup for the dashboard (B-011): disconnect counts by category,
+  // plus a per-build breakdown ("is 4.8.184.x worse?") keyed on the FileVersion
+  // header field each session is stamped with. 'crash' is the headline signal;
+  // 'teardown' (routine local channel close) is the dominant category by volume
+  // and deliberately excluded from crash/instability framing. Merges the live
+  // session with any backfilled corpus (`npm run backfill`) - per-build
+  // comparison is far more meaningful across many past sessions than one.
+  stabilityStats () {
+    const byCategory = {};
+    const byBuild = {};
+    const crashes = [];
+    const live = this.disconnects.map((d) => ({ cause: d.cause, category: d.category, build: d.build, uptimeSecs: d.uptimeSecs, crashUptimeSecs: d.crashUptimeSecs, signal: d.signal, timestamp: d.timestamp }));
+    const backfilled = (this.history.disconnects || []).map((d) => ({ cause: d.cause, category: d.category, build: d.build, uptimeSecs: d.uptimeSecs, crashUptimeSecs: d.crashUptimeSecs, signal: d.signal, timestamp: d.ts }));
+    for (const d of backfilled.concat(live)) {
+      byCategory[d.category] = (byCategory[d.category] || 0) + 1;
+      const build = d.build || 'unknown';
+      const b = byBuild[build] || (byBuild[build] = { total: 0, crashes: 0 });
+      b.total += 1;
+      if (d.category === 'crash') { b.crashes += 1; crashes.push(d); }
+    }
+    return { byCategory, byBuild, crashes: crashes.slice(-100).reverse() };
+  }
   get logs () { return Object.values(this.state.logs); }
   get missions () { return this.missionManager ? this.missionManager.missions : []; }
   get status () { return this.state.status; }
@@ -225,6 +249,10 @@ class StarCitizenService extends EventEmitter {
       // Combat progress inferred from mission objectives (proxy for kills).
       if (req.method === 'GET' && path === `${base}/combat`) {
         return send(200, { type: 'Collection', data: this.combatlog });
+      }
+      // Stability rollup (B-011): disconnect categories + per-build crash counts.
+      if (req.method === 'GET' && path === `${base}/stability`) {
+        return send(200, this.stabilityStats());
       }
       // Analytics: compact merged dataset (backfilled history + live session) for
       // the "Analyze" dashboard tab. The client slices it by month/year + pilot +
@@ -352,7 +380,7 @@ class StarCitizenService extends EventEmitter {
           counts: {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
             vehicles: this.vehicles.length, kills: this.kills.length, incaps: this.incaps.length, deaths: this.deaths.length,
-            missionlog: this.missionlog.length, missions: this.missionGroups.length, crew: this.crew.length, notifications: this.notifications.length,
+            missionlog: this.missionlog.length, missions: this.missionGroups.length, crew: this.crew.length, disconnects: this.disconnects.length, notifications: this.notifications.length,
             combat: this.combatlog.length,
             logs: this.logs.length, flagged: this.flagged.length
           },
@@ -369,11 +397,11 @@ class StarCitizenService extends EventEmitter {
           logs: this.logs.length, missions: this.missions.length
         }});
       }
-      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, crew: () => this.crew, notifications: () => this.notifications, messages: () => this.logs };
+      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, crew: () => this.crew, disconnects: () => this.disconnects, notifications: () => this.notifications, messages: () => this.logs };
       for (const [name, getter] of Object.entries(collections)) {
         if (path === `${base}/${name}`) {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
-          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths' && name !== 'crew') {
+          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths' && name !== 'crew' && name !== 'disconnects') {
             const data = await body();
             // Players dedupe by handle (distinct roster) rather than per-event.
             if (name === 'players' && data.name) {
@@ -541,6 +569,34 @@ class StarCitizenService extends EventEmitter {
         this.state.crew[id] = c;
         this._indexMission(ev);
         this.emit('mission:crew', c);
+        break;
+      }
+      case 'session:disconnect': {
+        // Real network channel disconnect (see the parser rule for tag/hostType
+        // provenance). hostType="GameClient" is a local-only paired echo of the
+        // same teardown event - excluded here so the headline stats aren't
+        // double-counted, but every line is still kept in this.state.logs/recent
+        // for audit. Tagged with the CURRENT session's FileVersion so "is build
+        // X worse?" can be answered per build, including across a backfilled
+        // multi-session corpus.
+        if (ev.hostType === 'Replicant') {
+          const category = disconnectCategory(ev.cause);
+          const d = {
+            id, cause: ev.cause, category, reason: ev.reason,
+            build: this.session.fileVersion || null, branch: this.session.branch || null,
+            uptimeSecs: ev.uptimeSecs, timestamp: ev.timestamp
+          };
+          // crashDetail() reads a DIFFERENT clock (process uptime-to-crash baked
+          // into the reason text) than the sibling uptimeSecs field above (the
+          // network channel's own, much shorter-lived uptime) - kept as distinct
+          // fields, never merged over uptimeSecs.
+          if (category === 'crash') {
+            const cd = crashDetail(ev.reason);
+            if (cd) { d.crashUptimeSecs = cd.uptimeSecs; d.signal = cd.signal; }
+          }
+          this.state.disconnects[id] = d;
+          this.emit('session:disconnect', d);
+        }
         break;
       }
       case 'hud:notification': {

@@ -263,6 +263,10 @@
     <h2>⚖️ Pilot comparison <span class="sub">— side-by-side over the selected period (ignores the pilot filter)</span></h2>
     <div id="az-cmp" style="padding:12px 14px"></div>
   </section>
+  <section class="panel full">
+    <h2>🛡 Stability <span class="sub">— disconnects &amp; crashes by game build; "teardown" (normal exit) excluded from the crash count. Ignores the time/pilot filters above — spans the full relay + backfilled history.</span></h2>
+    <div id="az-stability" style="padding:12px 14px"></div>
+  </section>
 </main>
 
 <main id="view-cargo" style="display:none">
@@ -923,8 +927,9 @@ poll();
   const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const S={months:null,players:null,types:null,outcomes:null,factions:null};   // null = all (multi-select Sets otherwise)
-  let D=null, loading=false;
+  let D=null, loading=false, ST=null, stLoading=false;
   const g=(id)=>document.getElementById(id);
+  const kpi=(l,v)=>'<div class="mc"><div class="l">'+l+'</div><div class="v">'+v+'</div></div>';
   const ymOf=(ts)=>(typeof ts==='string'&&ts.length>=7)?ts.slice(0,7):'';
   const facOf=(m)=>m.faction||'Unknown';
   const has=(set,v)=>(!set||!set.size)?true:set.has(v);
@@ -941,6 +946,35 @@ poll();
     fetch('/services/star-citizen/analytics')
       .then(r=>r.json()).then(j=>{ D=j; if(!S.months)S.months=new Set(D.availableMonths); loading=false; render(); })
       .catch(()=>{ loading=false; g('az-kpis').innerHTML='<div class="empty" style="grid-column:1/-1">analytics offline</div>'; });
+  }
+
+  function fetchStability(){ stLoading=true; g('az-stability').innerHTML='<div class="empty">loading…</div>';
+    fetch('/services/star-citizen/stability')
+      .then(r=>r.json()).then(j=>{ ST=j; stLoading=false; g('az-stability').innerHTML=rStability(ST); })
+      .catch(()=>{ stLoading=false; g('az-stability').innerHTML='<div class="empty">stability data offline</div>'; });
+  }
+  function rStability(st){
+    const cats=st.byCategory||{}, builds=st.byBuild||{}, crashes=st.crashes||[];
+    const crashTotal=cats.crash||0;
+    const order=Object.keys(builds).sort((a,b)=>(builds[b].crashes-builds[a].crashes)||(builds[b].total-builds[a].total));
+    if(!order.length) return '<div class="empty">no disconnect data yet — run in-game, or `npm run backfill`</div>';
+    let h='<div class="kpis" style="margin-bottom:10px">'
+      +kpi('Crashes',crashTotal)+kpi('Voluntary exits',cats.voluntary||0)+kpi('Timeouts',cats.timeout||0)+kpi('Server-side',cats.server||0)
+      +'</div>';
+    h+='<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="text-align:left;color:var(--muted)">'
+      +'<th style="padding:4px 8px 4px 0">Build</th><th style="padding:4px 8px">Total</th><th style="padding:4px 8px">Crashes</th><th style="padding:4px 8px">Crash rate</th></tr></thead><tbody>'
+      +order.map(b=>{ const r=builds[b]; const rate=r.total?Math.round(1000*r.crashes/r.total)/10:0;
+        return '<tr style="border-top:1px solid var(--line)"><td style="padding:4px 8px 4px 0;font-family:monospace">'+esc(b)+'</td>'
+          +'<td style="padding:4px 8px">'+r.total+'</td>'
+          +'<td style="padding:4px 8px'+(r.crashes?';color:'+KILL+';font-weight:650':'')+'">'+r.crashes+'</td>'
+          +'<td style="padding:4px 8px">'+rate+'%</td></tr>'; }).join('')
+      +'</tbody></table>';
+    if(crashes.length){
+      h+='<div style="margin-top:10px" class="d">Most recent crashes:</div>'
+        +crashes.slice(0,10).map(c=>'<div class="obj" style="padding-left:0">💥 '+shortTime(c.timestamp)+' — build '+esc(c.build||'unknown')
+          +(c.signal?' — '+esc(c.signal):'')+(c.crashUptimeSecs?' — up '+Math.round(c.crashUptimeSecs/60)+'min':'')+'</div>').join('');
+    }
+    return h;
   }
 
   function multi(cid,label,opts,key){
@@ -1112,6 +1146,7 @@ poll();
     g('tab-analyze').classList.toggle('on',v==='analyze');
     g('tab-cargo').classList.toggle('on',v==='cargo');
     if(v==='analyze' && !D) fetchA();
+    if(v==='analyze' && !ST && !stLoading) fetchStability();
     if(v==='cargo'){ runRoute(); loadVocab(); }
   }
   g('tab-live').addEventListener('click',()=>show('live'));

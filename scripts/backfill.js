@@ -21,7 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { parseLine, missionType, missionFaction } = require('../app/parser');
+const { parseLine, missionType, missionFaction, parseSessionInfo, disconnectCategory, crashDetail } = require('../app/parser');
 
 const STORE = path.join(__dirname, '..', 'stores', 'history.json');
 
@@ -53,18 +53,30 @@ function findLogs (dir) {
 }
 
 function newAcc () {
-  return { missions: [], deaths: [], sessions: [], heat: {}, players: new Set(), crew: [], playerDirectory: {}, files: 0, lines: 0 };
+  return { missions: [], deaths: [], sessions: [], heat: {}, players: new Set(), crew: [], playerDirectory: {}, disconnects: [], files: 0, lines: 0 };
 }
 
 function processFile (file, acc) {
   return new Promise((resolve) => {
     let handle = null;
     let sessionTs = null;
+    let build = null;   // FileVersion header field, e.g. "4.7.175.49567" - stamped once per file
     const gen = {};   // missionId -> generator name (for mission-type)
     const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
     rl.on('line', (line) => {
       acc.lines++;
       const ev = parseLine(line);
+      const sinfo = parseSessionInfo(line);
+      if (sinfo && sinfo.key === 'fileVersion') build = sinfo.value;
+      if (ev.kind === 'session:disconnect' && ev.hostType === 'Replicant') {
+        const category = disconnectCategory(ev.cause);
+        const rec = { cause: ev.cause, category, build, uptimeSecs: ev.uptimeSecs, ts: ev.timestamp };
+        if (category === 'crash') {
+          const cd = crashDetail(ev.reason);
+          if (cd) { rec.crashUptimeSecs = cd.uptimeSecs; rec.signal = cd.signal; }
+        }
+        acc.disconnects.push(rec);
+      }
       const t = ev.timestamp ? Date.parse(ev.timestamp) : NaN;
       if (ev.kind === 'player:login') handle = ev.handle;
       if (Number.isNaN(t)) return;
@@ -120,6 +132,7 @@ function toStore (acc, generatedAt) {
     players: [...acc.players],
     crew: acc.crew,
     playerDirectory: acc.playerDirectory,
+    disconnects: acc.disconnects,
     meta: { files: acc.files, lines: acc.lines, generatedAt }
   };
 }
@@ -143,6 +156,7 @@ async function main () {
   console.log(`  ${acc.files} files · ${acc.lines.toLocaleString()} lines`);
   console.log(`  ${acc.missions.length} ended missions · ${acc.deaths.length} deaths · ${acc.sessions.length} sessions`);
   console.log(`  ${acc.crew.length} crew sightings · ${Object.keys(acc.playerDirectory).length} pilots resolvable by player_id`);
+  console.log(`  ${acc.disconnects.length} disconnects (${acc.disconnects.filter((d) => d.category === 'crash').length} crashes)`);
   console.log(`  pilots: ${[...acc.players].join(', ') || '(none)'}`);
 }
 

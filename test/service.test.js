@@ -9,8 +9,8 @@ const StarCitizenService = require('../app/server');
 // defaults. Tests must not depend on this machine's local stores/history.json -
 // `npm run backfill` regenerates it with real, unpredictable corpus data (real
 // pilots, real player_ids), which silently "resolves" things these tests need
-// to start unresolved. Found the hard way when a backfill run made a test
-// start seeing a real handle instead of null.
+// to start unresolved. Found the hard way when a backfill run made a crew-party
+// test start seeing a real handle instead of null.
 const NO_HISTORY = path.join(__dirname, 'fixtures', '__no-history-here.json');
 
 test('service constructs with mission stub and starts STOPPED', () => {
@@ -134,6 +134,52 @@ test('a seeded org-wide player directory (from backfill) resolves crew immediate
   s.handleLogChange('<2026-03-26T03:57:08.915Z> [Notice] <PlayerJoined> Received PlayerJoined push message for: mission_id 82be0365-268b-477b-b905-12b7b8538640 - player_id 1275581349492 [Team_GameServices][Missions]');
   const m = s.missionGroups.find((x) => x.id === '82be0365-268b-477b-b905-12b7b8538640');
   assert.strictEqual(m.crew[0].handle, 'DeadMan1227');
+});
+
+test('session:disconnect folds Replicant events into disconnects, tagged with the current build; GameClient echo is excluded', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  let emitted = null;
+  s.on('session:disconnect', (d) => { emitted = d; });
+  s.handleLogChange('<2026-03-26T02:18:38.147Z> FileVersion: 4.7.175.49567');
+  // The paired local echo (same cause/reason, hostType=GameClient) must NOT be folded.
+  s.handleLogChange('<2026-03-26T02:21:22.825Z> [Notice] <Channel Process Disconnection> cause=30010 reason="Nub destroyed" frame=8467 isRemote=0 map="megamap" gamerules="SC_Frontend" hostType="GameClient" remoteAddr=<local>:16 localAddr=<local>:12300 connection={2, 0} session=367d3d1f0a1315a962e9e1fc45eabdbe node_id=00000000-0000-0000-0000-0000003768d2 nickname="DeadMan1227" playerGEID=1275581349492 uptime_secs=130.061096 [Team_Network][Network][Gateway][Disconnection]');
+  assert.strictEqual(s.disconnects.length, 0, 'GameClient echo excluded');
+  s.handleLogChange('<2026-03-26T02:21:22.825Z> [Notice] <Channel Process Disconnection> cause=30010 reason="Nub destroyed" frame=8467 isRemote=0 map="megamap" gamerules="SC_Frontend" hostType="Replicant" remoteAddr=<local>:12300 localAddr=<local>:16 connection={1, 0} session=367d3d1f0a1315a962e9e1fc45eabdbe node_id=00000000-0000-0000-0000-0000003768d2 nickname="DeadMan1227" playerGEID=1275581349492 uptime_secs=130.061096 [Team_Network][Network][Gateway][Disconnection]');
+  assert.strictEqual(s.disconnects.length, 1);
+  assert.strictEqual(emitted.category, 'teardown');
+  assert.strictEqual(emitted.build, '4.7.175.49567');
+});
+
+test('a real crash line categorizes as crash and carries crashUptimeSecs/signal distinct from uptimeSecs', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  s.handleLogChange('<2026-03-26T02:18:38.147Z> FileVersion: 4.7.175.49567');
+  s.handleLogChange('<2026-03-26T03:34:31.134Z> [Notice] <Channel Process Disconnection> cause=30013 reason="Remote Disconnect - Signal raised on Thu Mar 26 03:34:23 2026 with GeneralSignal after 340 minutes and 59 seconds, si_code = 2 (SEGV_ACCERR: Invalid permissions for mapped object)" frame=275392 isRemote=1 map="megamap" gamerules="SC_Default" hostType="Replicant" remoteAddr=34.145.208.83:64294 localAddr=0.0.0.0:64090 connection={3, 0} session=367d3d1f0a1315a962e9e1fc45eabdbe node_id=e74e6139-40a9-ff9d-7b92-51b470a81088 nickname="DeadMan1227" playerGEID=1275581349492 uptime_secs=4388.191895 [Team_Network][Network][Gateway][Disconnection]');
+  assert.strictEqual(s.disconnects.length, 1);
+  const d = s.disconnects[0];
+  assert.strictEqual(d.category, 'crash');
+  assert.strictEqual(d.uptimeSecs, 4388.191895, 'network-channel uptime kept distinct');
+  assert.strictEqual(d.crashUptimeSecs, 340 * 60 + 59, 'process uptime-to-crash from the reason text');
+  assert.strictEqual(d.signal, 'SEGV_ACCERR: Invalid permissions for mapped object');
+  const stats = s.stabilityStats();
+  assert.strictEqual(stats.byCategory.crash, 1);
+  assert.strictEqual(stats.byBuild['4.7.175.49567'].crashes, 1);
+  assert.strictEqual(stats.crashes.length, 1);
+});
+
+test('stabilityStats merges the live session with a backfilled corpus', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  s.history.disconnects = [
+    { cause: '30013', category: 'crash', build: '4.7.170.11111', uptimeSecs: 900, crashUptimeSecs: 600, signal: 'SEGV_MAPERR', ts: '2026-03-01T00:00:00.000Z' },
+    { cause: '30010', category: 'teardown', build: '4.7.170.11111', uptimeSecs: 60, ts: '2026-03-01T00:01:00.000Z' }
+  ];
+  s.handleLogChange('<2026-03-26T02:18:38.147Z> FileVersion: 4.7.175.49567');
+  s.handleLogChange('<2026-03-26T02:21:22.825Z> [Notice] <Channel Process Disconnection> cause=30010 reason="Nub destroyed" frame=8467 isRemote=0 map="megamap" gamerules="SC_Frontend" hostType="Replicant" remoteAddr=<local>:12300 localAddr=<local>:16 connection={1, 0} session=367d3d1f0a1315a962e9e1fc45eabdbe node_id=00000000-0000-0000-0000-0000003768d2 nickname="DeadMan1227" playerGEID=1275581349492 uptime_secs=130.061096 [Team_Network][Network][Gateway][Disconnection]');
+  const stats = s.stabilityStats();
+  assert.strictEqual(stats.byBuild['4.7.170.11111'].total, 2);
+  assert.strictEqual(stats.byBuild['4.7.170.11111'].crashes, 1);
+  assert.strictEqual(stats.byBuild['4.7.175.49567'].total, 1);
+  assert.strictEqual(stats.byCategory.teardown, 2);
+  assert.strictEqual(stats.byCategory.crash, 1);
 });
 
 test('combat objectives are tracked as combat progress (proxy for kills)', () => {

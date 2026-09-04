@@ -36,3 +36,20 @@ test('backfill also aggregates crew sightings + a player_id -> handle directory'
   assert.deepStrictEqual(store.crew, acc.crew);
   assert.strictEqual(store.playerDirectory['204821711285'], 'Kersa');
 });
+
+test('backfill aggregates disconnects tagged by build, excludes the GameClient echo', async () => {
+  const acc = await ingestFiles([path.join(__dirname, 'fixtures', 'sample-missions.log')]);
+
+  // The fixture has 1 GameClient echo (excluded) + 1 Replicant teardown + 1 Replicant crash.
+  assert.strictEqual(acc.disconnects.length, 2, 'GameClient echo excluded');
+  const teardown = acc.disconnects.find((d) => d.category === 'teardown');
+  const crash = acc.disconnects.find((d) => d.category === 'crash');
+  assert.ok(teardown && crash);
+  assert.strictEqual(teardown.build, '4.8.0.12345');
+  assert.strictEqual(crash.build, '4.8.0.12345');
+  assert.strictEqual(crash.crashUptimeSecs, 5 * 60 + 30);
+  assert.strictEqual(crash.signal, 'SEGV_MAPERR: Address not mapped to object');
+
+  const store = toStore(acc, '2026-06-18T00:00:00.000Z');
+  assert.deepStrictEqual(store.disconnects, acc.disconnects);
+});
