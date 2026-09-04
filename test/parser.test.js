@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseLine, shipName, isNPC, parseSessionInfo, missionType, missionFaction, buildPlayerDirectory, resolvePlayerId } = require('../app/parser');
+const { parseLine, shipName, isNPC, parseSessionInfo, missionType, missionFaction, buildPlayerDirectory, resolvePlayerId, disconnectCategory, crashDetail } = require('../app/parser');
 
 // --- VERIFIED patterns (from a real Game.log hangar session) ---
 
@@ -247,4 +247,51 @@ test('resolvePlayerId returns the known handle, or an anonymous fallback', () =>
   const dir = buildPlayerDirectory([{ player: 'DeadMan1227', playerId: '1275581349492' }]);
   assert.strictEqual(resolvePlayerId(dir, '1275581349492'), 'DeadMan1227');
   assert.strictEqual(resolvePlayerId(dir, '3659022222646'), 'Pilot #2646');  // unresolved - anonymous, not invented
+});
+
+// --- Stability & session health (Channel Process Disconnection) — VERIFIED against
+// the real DeadMan corpus: 2523 lines, 0 misses, 7 real crashes. ---
+
+test('detects a session:disconnect and extracts cause/reason/hostType/playerGEID/uptime', () => {
+  const line = '<2026-03-26T02:21:22.825Z> [Notice] <Channel Process Disconnection> cause=30010 reason="Nub destroyed" frame=8467 isRemote=0 map="megamap" gamerules="SC_Frontend" hostType="Replicant" remoteAddr=<local>:12300 localAddr=<local>:16 connection={1, 0} session=367d3d1f0a1315a962e9e1fc45eabdbe node_id=00000000-0000-0000-0000-0000003768d2 nickname="DeadMan1227" playerGEID=1275581349492 uptime_secs=130.061096 [Team_Network][Network][Gateway][Disconnection]';
+  const r = parseLine(line);
+  assert.strictEqual(r.kind, 'session:disconnect');
+  assert.strictEqual(r.cause, '30010');
+  assert.strictEqual(r.reason, 'Nub destroyed');
+  assert.strictEqual(r.hostType, 'Replicant');
+  assert.strictEqual(r.playerGEID, '1275581349492');
+  assert.strictEqual(r.uptimeSecs, 130.061096);
+  assert.strictEqual(r.verified, true);
+});
+
+test('the narrower <Channel Disconnected> tag is NOT matched by this rule (superseded by Channel Process Disconnection)', () => {
+  const line = '<2026-03-26T02:21:22.815Z> [Notice] <Channel Disconnected> cause=30010 reason="Nub destroyed" frame=8467 isRemote=0 map="megamap" gamerules="SC_Frontend" hostType="Replicant" remoteAddr=<local>:12300 localAddr=<local>:16 connection={1, 0} session=367d3d1f0a1315a962e9e1fc45eabdbe node_id=00000000-0000-0000-0000-0000003768d2 nickname="DeadMan1227" playerGEID=1275581349492 uptime_secs=130.061096 [Team_Network][Network][Gateway][Disconnection]';
+  const r = parseLine(line);
+  assert.notStrictEqual(r.kind, 'session:disconnect');
+});
+
+test('disconnectCategory maps real cause codes to their category', () => {
+  assert.strictEqual(disconnectCategory('30010'), 'teardown');
+  assert.strictEqual(disconnectCategory('30013'), 'crash');
+  assert.strictEqual(disconnectCategory('30016'), 'voluntary');
+  assert.strictEqual(disconnectCategory('30028'), 'idle');
+  assert.strictEqual(disconnectCategory('30000'), 'timeout');
+  assert.strictEqual(disconnectCategory('30009'), 'server');
+  assert.strictEqual(disconnectCategory('30015'), 'server');
+  assert.strictEqual(disconnectCategory('64004'), 'server');
+  assert.strictEqual(disconnectCategory('64008'), 'server');
+  assert.strictEqual(disconnectCategory('30020'), 'shutdown');
+  assert.strictEqual(disconnectCategory('99999'), 'other');   // unmapped - never a guess
+});
+
+test('crashDetail extracts uptime-to-crash + signal from a real crash reason string', () => {
+  const reason = 'Remote Disconnect - Signal raised on Thu Mar 26 03:34:23 2026 with GeneralSignal after 340 minutes and 59 seconds, si_code = 2 (SEGV_ACCERR: Invalid permissions for mapped object)';
+  const d = crashDetail(reason);
+  assert.strictEqual(d.uptimeSecs, 340 * 60 + 59);
+  assert.strictEqual(d.signal, 'SEGV_ACCERR: Invalid permissions for mapped object');
+});
+
+test('crashDetail returns null for a non-crash reason (nothing to extract)', () => {
+  assert.strictEqual(crashDetail('Nub destroyed'), null);
+  assert.strictEqual(crashDetail(''), null);
 });
