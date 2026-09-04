@@ -52,7 +52,15 @@ module.exports = {
   fabric: {
     enable: false,
     port: 7777,
-    peers: null   // e.g. ['hub.fabric.pub:7777'] - seed peers to dial on start (WS4)
+    // Seed peers as address strings (dialed by WS4) or partial records to
+    // pre-authorize sharing with. Written once to stores/fabric-peers.json
+    // on first start and edited/persisted there after (not re-read from
+    // here on later starts).
+    peers: null,   // e.g. ['hub.fabric.pub:7777'] or [{address:'host:7777', shareLogs:true}]
+    // Opt-in, off by default either way: broadcast this pilot's events to
+    // every connected peer once shareLogsGlobal is true, or leave it false
+    // and opt in per-peer via that peer's own shareLogs:true instead.
+    shareLogsGlobal: false
   },
 
   // Initial State

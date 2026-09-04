@@ -96,6 +96,57 @@ Next: WS3 (outbound consent gate + queue + flush), per
 
 ---
 
+## 📤 WS3 — Outbound consent gate + peer roster + queue/flush ✅
+**Date:** 2026-09-04 · branch `feature/mesh-outbound-consent` · third workstream of `BUILD-PLAN-fabric-mesh.md` (D-008)
+
+Ported from the proven reference (`_normalizePeerRecord`, `_logShareTargets`/
+`_canShareLogs`/`_logSharePublishOpts`, `_startFabricFlush`/`_flushUplink` —
+`LiveRelay.js:2711–2775, 10205–10247, 11211–11241`, read before writing this).
+Runs with **no `@fabric/core` installed at all** — the whole point of this
+workstream — driven by an injected `network` test double
+(`{ready, status(), publishEventBatch()}`); WS4 swaps in the real one.
+
+- New `services/fabricAddress.js`: a trimmed, pure port of the reference's
+  `functions/fabricPeerHostLocal.js` — `isFabricAddress`/
+  `normalizeFabricAddress`/`isSelfFabricAddress` and their helpers. Node
+  built-ins only (`os`, `dns`); deliberately doesn't port the hub-alias
+  rewriting or app-relay-type catalog (out of scope for the roster/consent
+  work — pull them in later if a workstream actually needs them).
+- `services/FabricSync.js` gained: a **peer roster** (`_normalizePeerRecord`,
+  persisted to `stores/fabric-peers.json` stripped of the volatile
+  `lastSeen`/`lastError` fields, seeded from `settings.fabric.peers` on first
+  run), the **consent gate** (`_canShareLogs`/`_logShareTargets`/
+  `_logSharePublishOpts` — identity unlocked **and** (global **or** any
+  enabled+consenting peer), ported near-verbatim), the **outbound queue**
+  (subscribes to the service's own `kill`/`player:death`/`player:incap`/
+  `vehicle:destroy`/`mission:event`/`mission:crew`/`session:disconnect`/
+  `player:join` events — deliberately **not** the raw `activity`/`event`/
+  `notification`/`logs` streams, so a raw log line never leaves the
+  machine), and **flush** (`_flushUplink`: no-op until authorized *and*
+  connected, batches 200, requeues + emits `uplink:error` on a publish
+  failure, stamps peer `lastSeen` + emits `uplink:sent` on success).
+  Outbound payload hygiene strips `id`/`raw`/`involves` before queuing (a
+  denylist, not an allowlist, so an unanticipated field still reaches a
+  consenting peer instead of silently vanishing).
+- `status()` now reports live `shareLogsActive`, the real roster, and
+  `connected` from the injected network.
+
+8 new tests in `test/mesh.test.js`: address-helper round trips, roster
+normalization (malformed + self-dial rejection), roster persistence across
+two `FabricSync` instances, the real-log-line default-off case, the
+real-log-line `shareLogsGlobal` broadcast case, a per-peer directed-roster
+case, outbound hygiene, and a fake-network flush test covering
+throw→requeue→retry-clean and a "nothing connected" hold. Full suite:
+**143/143** (142 pass, 1 skipped as expected — the WS2 real-keypair test,
+no `@fabric/core` here).
+
+Next: WS4 (real `@fabric/core` Peer transport, two-node convergence — the
+only phase needing Fabric actually installed; run its gated network test in
+the foreground only, never detached, per this plan's own §0 lesson), per
+`BUILD-PLAN-fabric-mesh.md`.
+
+---
+
 ## 👥 Crew/party tracking — PlayerJoined + player_id directory ✅
 **Date:** 2026-08-28 · branch `feature/crew-party`
 

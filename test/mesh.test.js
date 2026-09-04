@@ -1,12 +1,15 @@
 'use strict';
 
 // BUILD-PLAN-fabric-mesh.md WS2: identity + FabricSync skeleton + the
-// /mesh status route + signed-envelope verification on /events. These
-// tests must stay green with NO Fabric installed (meshIdentity.available()
-// is false in this environment) - that's the whole point of keeping the
-// core service zero-dependency. A couple of tests are conditionally
-// skipped when @fabric/core IS present, to exercise the real keypair path
-// on a machine that has run `npm run fabric:install`.
+// /mesh status route + signed-envelope verification on /events. WS3 adds
+// the peer roster, the outbound consent gate, and the queue + flush loop
+// (see the "--- WS3 ---" section below). These tests must stay green with
+// NO Fabric installed (meshIdentity.available() is false in this
+// environment) - that's the whole point of keeping the core service
+// zero-dependency; WS3 in particular needs no @fabric/core at all, only a
+// `network` test double. A couple of tests are conditionally skipped when
+// @fabric/core IS present, to exercise the real keypair path on a machine
+// that has run `npm run fabric:install`.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -14,8 +17,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
+const EventEmitter = require('events');
 
 const meshIdentity = require('../services/meshIdentity');
+const fabricAddress = require('../services/fabricAddress');
 const FabricSync = require('../services/FabricSync');
 const StarCitizenService = require('../app/server');
 
@@ -181,4 +186,129 @@ test('signEnvelope/verifyEnvelope round-trip and POST …/events accepts a signe
     const deaths = await call(port, 'GET', '/services/star-citizen/deaths');
     assert.strictEqual(deaths.json.data[0].source, `fabric:${identity.pubkey}`);
   } finally { await s.stop(); }
+});
+
+// --- WS3: peer roster, outbound consent gate, queue + flush (BUILD-PLAN-fabric-mesh.md) ---
+// None of this needs @fabric/core - it runs entirely against a stubbed
+// identity and an injected `network` test double, per T3's own scope note.
+
+test('fabricAddress: isFabricAddress/normalizeFabricAddress/isSelfFabricAddress on real-shaped inputs', () => {
+  assert.strictEqual(fabricAddress.isFabricAddress('hub.fabric.pub:7777'), true);
+  assert.strictEqual(fabricAddress.isFabricAddress('not-an-address'), false);
+  assert.strictEqual(fabricAddress.isFabricAddress('https://hub.fabric.pub'), false, 'a URL is not a bare address');
+  assert.strictEqual(fabricAddress.normalizeFabricAddress('https://hub.fabric.pub/', { migrate: true }), 'hub.fabric.pub:7777');
+  assert.strictEqual(fabricAddress.normalizeFabricAddress('garbage'), null);
+  assert.strictEqual(fabricAddress.isSelfFabricAddress('127.0.0.1:7777', { listenPort: 7777 }), true);
+  assert.strictEqual(fabricAddress.isSelfFabricAddress('127.0.0.1:7778', { listenPort: 7777 }), false);
+});
+
+test('_normalizePeerRecord rejects a malformed address and a self-dial (loopback:samePort)', () => {
+  const fabric = new FabricSync({ settings: { enable: true, port: 7777 } });
+  assert.strictEqual(fabric._normalizePeerRecord({ address: 'not-an-address' }), null);
+  assert.strictEqual(fabric._normalizePeerRecord({ address: '127.0.0.1:7777' }), null, 'dialing our own listen port is a self-loop');
+  const rec = fabric._normalizePeerRecord({ address: '127.0.0.1:7778', label: 'friend' });
+  assert.ok(rec && rec.address === '127.0.0.1:7778' && rec.enabled === true && rec.shareLogs === false);
+});
+
+test('peer roster persists to disk (stripped of lastSeen/lastError) and reloads on the next start()', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-mesh-'));
+  const f1 = new FabricSync({ settings: { enable: true, peers: ['127.0.0.1:7801'] }, storeDir: dir });
+  await f1.start();
+  assert.strictEqual(f1.peers.length, 1);
+  const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'fabric-peers.json'), 'utf8'));
+  assert.strictEqual('lastSeen' in onDisk[0], false, 'lastSeen is volatile - not persisted to the roster file');
+
+  const f2 = new FabricSync({ settings: { enable: true }, storeDir: dir }); // no seeds this time - loads from disk
+  await f2.start();
+  assert.strictEqual(f2.peers.length, 1);
+  assert.strictEqual(f2.peers[0].address, '127.0.0.1:7801');
+  await f1.stop(); await f2.stop();
+});
+
+test('default (no identity, no roster): real death + mission:end lines queue nothing, _canShareLogs() is false', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-mesh-'));
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, fabric: { enable: true, identityFile: path.join(dir, 'id.json'), peersFile: path.join(dir, 'peers.json') } });
+  await s.start();
+  try {
+    assert.strictEqual(s.fabric._canShareLogs(), false, 'no identity (no @fabric/core here) -> nothing authorized');
+    s.handleLogChange("<2026-09-04T00:01:00.000Z> [Notice] <Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'body_01_noMagicPocket_1 - Class(body_01_noMagicPocket)', Recorded data is: Port Name 'Body_ItemPort' [Team_CoreGameplayFeatures][Unknown]");
+    s.handleLogChange('<2026-09-04T00:02:00.000Z> [Notice] <EndMission> Ending mission for player. MissionId[cccc3333-0319-4a6a-8b2b-ece75082c848] Player[LocalPilot] PlayerId[204821711285] CompletionType[Complete] Reason[Mission Ended] [Team_MissionFeatures][Missions]');
+    assert.strictEqual(s.fabric._uplinkQueue.length, 0);
+  } finally { await s.stop(); }
+});
+
+test('shareLogsGlobal + a stubbed identity queues real death + mission:end events, broadcast opts', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-mesh-'));
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false }, fabric: { enable: true, shareLogsGlobal: true, identityFile: path.join(dir, 'id.json'), peersFile: path.join(dir, 'peers.json') } });
+  await s.start();
+  s.fabric.identity = { pubkey: 'test' }; // stub - bypass the real @fabric/core keypair this environment doesn't have
+  try {
+    s.handleLogChange("<2026-09-04T00:01:00.000Z> [Notice] <Adding non kept item [CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item 'body_01_noMagicPocket_1 - Class(body_01_noMagicPocket)', Recorded data is: Port Name 'Body_ItemPort' [Team_CoreGameplayFeatures][Unknown]");
+    s.handleLogChange('<2026-09-04T00:02:00.000Z> [Notice] <EndMission> Ending mission for player. MissionId[cccc3333-0319-4a6a-8b2b-ece75082c848] Player[LocalPilot] PlayerId[204821711285] CompletionType[Complete] Reason[Mission Ended] [Team_MissionFeatures][Missions]');
+
+    assert.strictEqual(s.fabric._uplinkQueue.length, 2);
+    assert.strictEqual(s.fabric._uplinkQueue[0].collection, 'deaths');
+    assert.strictEqual(s.fabric._uplinkQueue[1].collection, 'missionlog');
+    assert.deepStrictEqual(s.fabric._logSharePublishOpts(), {}, 'global consent broadcasts to everyone connected');
+  } finally { await s.stop(); }
+});
+
+test('a per-peer roster (not global) restricts _logSharePublishOpts to consenting, enabled peers', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-mesh-'));
+  const fabric = new FabricSync({ settings: { enable: true, peersFile: path.join(dir, 'peers.json') }, storeDir: dir });
+  fabric.identity = { pubkey: 'test' };
+  fabric.peers = [
+    { address: '127.0.0.1:7801', enabled: true, shareLogs: true },
+    { address: '127.0.0.1:7802', enabled: true, shareLogs: false }
+  ];
+  assert.deepStrictEqual(fabric._logSharePublishOpts(), { to: ['127.0.0.1:7801'] });
+
+  fabric.peers[0].enabled = false;
+  assert.strictEqual(fabric._logSharePublishOpts(), null, 'no enabled+consenting peer left -> nothing authorized');
+});
+
+test('queued payloads never carry raw/involves/id (T3.5 outbound hygiene)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-mesh-'));
+  const service = new EventEmitter();
+  const fabric = new FabricSync({ service, settings: { enable: true, shareLogsGlobal: true, peersFile: path.join(dir, 'peers.json') }, storeDir: dir });
+  fabric.identity = { pubkey: 'test' };
+  fabric._wireUplinkQueue();
+  service.emit('kill', { id: 'abc', player: 'X', raw: '<the original log line>', involves: ['a', 'b'], timestamp: 'now' });
+  assert.strictEqual(fabric._uplinkQueue.length, 1);
+  const data = fabric._uplinkQueue[0].data;
+  assert.ok(!('raw' in data) && !('involves' in data) && !('id' in data), 'local-only fields stripped before queuing');
+  assert.strictEqual(data.player, 'X', 'everything else passes through');
+});
+
+test('_flushUplink requeues on a throw + emits uplink:error, retries clean, and holds the queue when nothing is connected', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-mesh-'));
+  const fabric = new FabricSync({ settings: { enable: true, shareLogsGlobal: true, peersFile: path.join(dir, 'peers.json') }, storeDir: dir });
+  fabric.identity = { pubkey: 'test' };
+  fabric._uplinkQueue.push({ collection: 'deaths', data: { player: 'X' } });
+
+  let calls = 0;
+  fabric.network = {
+    ready: true,
+    status: () => ({ fabricConnected: 1 }),
+    publishEventBatch: () => { calls++; if (calls === 1) throw new Error('peer unreachable'); }
+  };
+
+  let errored = false;
+  fabric.once('uplink:error', () => { errored = true; });
+  await fabric._flushUplink();
+  assert.strictEqual(errored, true);
+  assert.strictEqual(fabric._uplinkQueue.length, 1, 'requeued on failure');
+
+  let sent = null;
+  fabric.once('uplink:sent', (e) => { sent = e; });
+  await fabric._flushUplink();
+  assert.strictEqual(fabric._uplinkQueue.length, 0);
+  assert.strictEqual(sent.count, 1);
+
+  // Nothing connected -> queue held, no publish attempted.
+  fabric._uplinkQueue.push({ collection: 'deaths', data: { player: 'Y' } });
+  fabric.network.status = () => ({ fabricConnected: 0 });
+  await fabric._flushUplink();
+  assert.strictEqual(fabric._uplinkQueue.length, 1, 'held - nothing connected');
+  assert.strictEqual(calls, 2, 'network was not called a third time');
 });
