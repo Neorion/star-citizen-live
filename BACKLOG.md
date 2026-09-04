@@ -360,6 +360,50 @@ codenames is not yet verified.
 
 ---
 
+## B-019 — Quantum travel: destination + calibration tracking
+**Added:** 2026-09-04 · evidence-counted via `scripts/audit.js` (B-015)'s first real run
+
+**What:** A `quantum:calibrating` (or similar) rule for
+`Added notification "Quantum Travel Calibration Started By <handle>: "` — the
+zero-MissionId `hud:notification` catch-all currently swallows this text whole.
+`app/parser.js` already has a standing TODO for quantum travel ("re-add only
+with a confirmed `<Quantum Travel>` line format from a real log") — B-015's
+audit ledger is that confirmation.
+
+**Why:** the single highest-volume generic notification in the whole corpus by
+a wide margin (see feasibility) — a real, currently-wasted destination/movement
+signal, and the concrete unblock for B-011's "Ship usage" item and B-001's
+"presence on-site" component (coarse where+when via quantum-travel legs).
+
+**Feasibility (from the log — B-015's first real audit run, 525 files / 54M lines):**
+- ✅ **Real and dominant:** `Quantum Travel Calibration Started By DeadMan#:` /
+  `...Fadingdoughnut#:` — 6,080 + 5,752 = **11,832 combined hits**, more than
+  double the next candidate ("Entering Armistice Zone", 4,048). The handle is
+  embedded in the notification text itself (normalized away by the audit's
+  digit-stripping, but present verbatim in the raw line) — a free, direct
+  handle↔quantum-travel-event tie, no separate resolution needed.
+- ⚠️ **Destination unconfirmed from this line alone** — "Calibration Started"
+  is the *beginning* of a jump, not necessarily the destination. Needs a real
+  log pull (`grep -A/-B` around a calibration line) to confirm whether the
+  destination name is on this line, a paired follow-up line (candidate for
+  B-016's coalescing seam if so), or only recoverable from a separate
+  `quantum:arrive`-style line not yet identified. Do the real-log check before
+  writing the rule, per this repo's own parser-honesty discipline (AGENTS.md §6)
+  — don't guess the destination field from the notification text's shape alone.
+
+**Prerequisites:** none to start (B-015 already ships) — needs one real-log
+read-through to pin the exact line shape before writing a `verified: true` rule.
+
+**Confidence / honesty:** the volume and handle-attribution are validated
+(counted directly from real logs); the destination/route shape is NOT yet
+confirmed — mark accordingly until checked.
+
+**Related:** `app/parser.js` (existing quantum-travel TODO comment) · B-015
+(source of this evidence) · B-011 (ship usage) · B-001 (on-site presence) ·
+B-014 (Movement bucket).
+
+---
+
 ## How to add an idea
 Copy the block below, increment the id, fill it in. Keep the feasibility read honest.
 
