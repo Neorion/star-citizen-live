@@ -108,6 +108,73 @@ name-enrichment (`REFERENCES.md`: unp4k / StarCitizen-GameData).
 
 ---
 
+## B-013 — Re-parse: store raw classified event fields, not just derived summaries
+**Added:** 2026-09-04 · design learning from a cross-project assessment (StarLogs' "Reprocess Log" button)
+
+**What:** `scripts/backfill.js` currently bakes `missionType()`/`missionFaction()`/
+`disconnectCategory()` output directly into `stores/history.json` and discards the
+raw fields the classifiers ran on. Instead, store the raw classified-but-uninterpreted
+event fields (generator name, disconnect cause code, etc.) alongside — or instead
+of — the derived summary, plus a re-derive step that recomputes summaries from
+those stored raw fields without re-reading the original `Game.log` files.
+
+**Why:** every time a classifier improves — real precedent: the faction-fallback
+work that cut type-"Other" from 45% to 14% — the only way to apply it to existing
+history today is a full re-scan of the original log files, which may not even
+still exist on a member's machine anymore. A re-parse step turns that into a
+few-seconds operation over the existing store.
+
+**Feasibility (from the log):**
+- ✅ **The raw fields already exist mid-computation** — `ingestFiles()` already
+  has `gen[ev.missionId]` (the generator name) and `ev.cause` (disconnect cause)
+  in scope right where it calls `missionType()`/`disconnectCategory()`; storing
+  them costs nothing new to parse, only a slightly larger `stores/history.json`.
+- ✅ **A `reparse(store)` function is pure** — feed the raw fields back through
+  the current classifier versions, get fresh `type`/`faction`/`category` values.
+  No file I/O, no corpus access required.
+- ⚠️ **Store size** — raw fields roughly double the per-record footprint; still
+  small relative to the log corpus itself (missions/deaths/disconnects are
+  already a compact summary, not raw lines).
+
+**Prerequisites:** none — self-contained change to `scripts/backfill.js` +
+`app/server.js`'s history loading, plus a `npm run reparse` entry point (or a
+dashboard action) that calls it.
+
+**Confidence / honesty:** an internal-tooling improvement, not a new data source —
+doesn't change what's validated vs. inferred, just how cheaply we can fix
+misclassification after the fact.
+
+**Related:** `missionType`/`missionFaction`/`disconnectCategory` (`app/parser.js`) ·
+the faction-fallback retrospective (`PROGRESS.md`, 2026-06-19) · B-011 (stability).
+
+## B-014 — Event category taxonomy (Lifecycle / Combat / Economy / Movement / Operational)
+**Added:** 2026-09-04 · design learning from a cross-project assessment (StarStats' event taxonomy)
+
+**What:** A thin `category(kind)` pure function, alongside `missionType`/
+`missionFaction`, mapping each existing `kind` value to one of five top-level
+buckets: **Lifecycle** (login/session/disconnect), **Combat** (kills/incap/death),
+**Economy** (wallet/trading — B-011, unbuilt), **Movement** (ship usage/quantum
+travel — B-011, unbuilt), **Operational** (crew/party, op-participation — B-001).
+
+**Why:** purely organizational, but it retroactively explains this backlog's own
+shape — every B-011 item slots into one of these five buckets — and gives the
+dashboard's "recognized events" panel a natural grouping instead of a flat list,
+without touching how any individual rule works.
+
+**Feasibility (from the log):** ✅ mechanical — every `kind` value already exists;
+this is a lookup table over strings we already emit, same shape as `missionType`'s
+`MISSION_TYPES` array. No new parsing, no new data.
+
+**Prerequisites:** none.
+
+**Confidence / honesty:** organizational metadata only — doesn't change what's
+validated vs. inferred for any individual event.
+
+**Related:** `missionType`/`missionFaction` (`app/parser.js`) · B-011 (Economy/
+Movement items still unbuilt) · B-001 (Operational).
+
+---
+
 ## How to add an idea
 Copy the block below, increment the id, fill it in. Keep the feasibility read honest.
 
