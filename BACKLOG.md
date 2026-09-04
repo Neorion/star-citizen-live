@@ -109,7 +109,14 @@ name-enrichment (`REFERENCES.md`: unp4k / StarCitizen-GameData).
 ---
 
 ## B-013 — Re-parse: store raw classified event fields, not just derived summaries
-**Added:** 2026-09-04 · design learning from a cross-project assessment (StarLogs' "Reprocess Log" button)
+**Added:** 2026-09-04 · design learning from a cross-project assessment
+**Correction (2026-09-04):** a follow-up deep-dive found StarLogs' "Reprocess Log"
+does NOT reclassify in place — it clears its store and replays the log file from
+disk (`web_server.py` `/reprocess` → `log_monitor.trigger_reprocess()` →
+`replay_entire_log()`). No surveyed project (StarLogs, SC Bridge Companion,
+all-slain, SCLogReader) actually stores raw fields for in-place reclassification —
+this idea is more advanced than the prior art, not borrowed from it. Kept as our
+own design, credited honestly.
 
 **What:** `scripts/backfill.js` currently bakes `missionType()`/`missionFaction()`/
 `disconnectCategory()` output directly into `stores/history.json` and discards the
@@ -147,8 +154,20 @@ misclassification after the fact.
 **Related:** `missionType`/`missionFaction`/`disconnectCategory` (`app/parser.js`) ·
 the faction-fallback retrospective (`PROGRESS.md`, 2026-06-19) · B-011 (stability).
 
+**Addendum — parser/schema version stamp (from SCLogReader's `Database.cs`):**
+tag `stores/history.json`'s `meta` with a `parserVersion`, and have the dashboard
+nudge "history built with parser vN, current vM — run backfill/reparse" when they
+differ. Answers *when* to re-derive; B-013 above answers *how*, cheaply.
+
 ## B-014 — Event category taxonomy (Lifecycle / Combat / Economy / Movement / Operational)
-**Added:** 2026-09-04 · design learning from a cross-project assessment (StarStats' event taxonomy)
+**Added:** 2026-09-04 · design learning from a cross-project assessment
+**Correction (2026-09-04):** a follow-up deep-dive could not find any real "StarStats"
+project (no Rust Star Citizen log parser exists on GitHub as far as a genuine
+search could confirm) — this taxonomy is our own synthesis, not borrowed from a
+verified source. For context, real surveyed projects' taxonomies are looser:
+StarLogs uses a flat 13-value enum, SCLogReader a ~30-kind enum grouped only by
+code comments, SC Bridge Companion ~30 commented sections over 57 patterns. Our
+5-bucket version is cleaner than any of those — credited as ours, not theirs.
 
 **What:** A thin `category(kind)` pure function, alongside `missionType`/
 `missionFaction`, mapping each existing `kind` value to one of five top-level
@@ -172,6 +191,42 @@ validated vs. inferred for any individual event.
 
 **Related:** `missionType`/`missionFaction` (`app/parser.js`) · B-011 (Economy/
 Movement items still unbuilt) · B-001 (Operational).
+
+## B-015 — Parser audit: per-rule corpus-hit ledger + unmatched-line report
+**Added:** 2026-09-04 · design learning, VERIFIED real (SC Bridge Companion, SCLogReader, all-slain)
+
+**What:** A `scripts/audit.js` (or a `--audit` flag on `scripts/replay.js`) that
+runs every `RULES` entry against `Gamelogs/` and reports three things: per-rule
+hit counts with one example line, which rules got **zero hits** (a rule "verified"
+in a comment but dormant against the current corpus), and the top unmatched
+`Added notification "…"` prefixes (candidate new `hud:notification` → real rules).
+
+**Why:** this mechanises a discipline we already do by hand — rule comments cite
+exact hit counts ("617 occurrences", "417 real kills") and the `verified` flag —
+but nobody currently *runs* anything to check those counts are still true as the
+corpus grows or the game patches. Real precedent, not a guess: SC Bridge
+Companion's `docs/parser-patterns.csv` ships exactly this (Pattern Name / Event
+Type / Output Fields / Corpus Hits / Example Input Line) and their own audit
+against 180 log files found zero-hit rules and duplicate patterns; SCLogReader
+tracks unmatched lines in a live `ConcurrentDictionary<string,int>`; all-slain's
+`tools/new_event_types.py` prints every never-before-seen `<EventType>` tag once.
+
+**Feasibility (from the log):**
+- ✅ **Fully mechanical over what we already have** — `RULES` already carries
+  `kind`/`tag`/`test`; running each against `Gamelogs/` and tallying matches needs
+  no new parsing, no new data, no schema change.
+- ✅ **Directly operationalizes AGENTS.md's own rule** ("a rule can be verified on
+  4.3.0 yet not fire on 4.8.0") — turns a prose caveat into a number you can watch
+  drop to zero across a patch.
+
+**Prerequisites:** none — a read-only script over the existing corpus.
+
+**Confidence / honesty:** tooling, not a data source — makes existing honesty
+claims (hit counts in comments) checkable instead of asserted.
+
+**Related:** `RULES` (`app/parser.js`) · `scripts/replay.js` · AGENTS.md §6
+(parser honesty / `verified` flag) · B-013 (re-parse — a rule audit is the natural
+trigger for "time to re-derive history").
 
 ---
 
