@@ -245,6 +245,8 @@ Discord webhook into a tracked file.**
 | `SOLUTION-BRIEF.md` | Plain-English product brief for org leadership. |
 | `DESIGN-missions-mvp.md` | Technical design for the mission register (M5). |
 | `DESIGN-distributed.md` | Design-only: optional federated/decentralized future (D-004). |
+| `HANDOFF-master.md` | The Fabric-as-transport-swap integration seam, event-vs-register split, and open-seams checklist that D-008 acted on. |
+| `BUILD-PLAN-fabric-mesh.md` | Execution plan for D-008 (the Fabric mesh backbone): workstreams WS1–WS6, acceptance criteria, verification commands — same format as `BUILD-PLAN-rsi.md`, written against a real proven reference implementation. |
 | `DESIGN-event-convergence.md` | How to merge many players' event streams into one org-wide view (transport-agnostic; for M4 + future Fabric). |
 | `REFERENCES.md` | Catalog of reusable SC open-source projects + log-format findings. |
 | `BACKLOG.md` | Idea backlog. |
