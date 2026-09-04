@@ -3,11 +3,13 @@
 > **Status:** Core feature set is complete and green; handed to the lead dev to
 > integrate the **communication/transport layer**. The codebase is deliberately
 > shaped so that layer is a **transport swap, not a rewrite** (see §3).
-> **Direction for this phase (owner, 2026-06-24):** lean **Fabric / federated**
-> (D-004) as the target transport; the central VPS (D-005/M4) is an optional
-> bridge, not a requirement.
+> **Direction for this phase (owner, 2026-06-24, confirmed and finalized
+> 2026-09-04 as `DECISIONS.md` → D-008):** Fabric / federated (D-004) **is** M4 —
+> not an optional bridge alongside a VPS, there is no VPS. This handoff's own §4
+> called this out back in June ("this can go Fabric-first today"); D-008 is that
+> call finally made.
 > **Read order:** this file → `DESIGN-event-convergence.md` → `DESIGN-distributed.md`
-> → `DECISIONS.md` (D-002, D-004, D-005). Canonical project context: `AGENTS.md`.
+> → `DECISIONS.md` (D-002, D-004, D-005, D-008). Canonical project context: `AGENTS.md`.
 
 ---
 
@@ -86,27 +88,33 @@ The current service was built with the **same event interface the original Fabri
 
 ---
 
-## 4. Stripping the VPS (Fabric-first)
+## 4. No VPS (Fabric-first, D-008)
 
-The two data planes are **separable** (`DESIGN-event-convergence.md` §2):
+The two data planes are **separable** (`DESIGN-event-convergence.md` §2) — and
+that separability is exactly why one of them can move today and the other can't:
 
 - **Event firehose** (deaths/missions/sessions → analytics): append-only,
-  eventually consistent, **union-merged**. Transport-agnostic — replace VPS-POST
-  with Fabric gossip and the fold is untouched. **This can go Fabric-first today.**
+  eventually consistent, **union-merged**. Transport-agnostic — replace
+  central-POST with Fabric gossip and the fold is untouched. **This is Fabric-
+  first today, and a consent-gated reference implementation already exists**
+  (see `DESIGN-distributed.md` §6) — porting it onto this fork's `app/server.js`
+  is integration work, not open design.
 - **Mission register** (officer-validated, audited): strongly consistent, single
-  source of truth (D-005). Today it lives in one process. **This is the one piece
-  that blocks full VPS removal.**
+  source of truth (D-005). Today it lives in one process. **This is the one
+  piece D-008 does not resolve** — removing the VPS doesn't remove the register's
+  need for *a* home.
 
-**The decision Fabric-first forces:** give the register a federated home. Two
-options, both already scaffolded —
+**The open decision (not yet made — needs the owner):** give the register a
+federated home. Two options, both already scaffolded —
 1. **Elected/primary node** holds the authoritative register; others replicate its
    signed audit chain (smallest change).
 2. **Fold in `types/Mission.js` multisig signing (M6)** so officer validations are
    signed Entities that any node can verify — the register becomes a signed,
    replicable log with no privileged host. This is the D-004 end-state.
 
-Until one of those lands, keep a single node (it need not be a paid VPS — any
-always-on org machine) as the register's home while the firehose federates.
+Until one of those lands, keep a single node (any always-on org machine — a
+Fabric peer, not a hosted VPS) as the register's home while the firehose
+federates.
 
 ---
 

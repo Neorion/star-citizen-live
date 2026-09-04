@@ -15,8 +15,9 @@ missions and fleet actions (in-game *or* out-of-game), members apply and do the
 work, and an **officer validates** that it was completed. Alongside it runs a
 **live relay** that watches each player's Star Citizen game log and shares
 activity (logins, missions, combat progress) to Discord and the register as
-*supporting evidence*. **Discord is the front door** members already use; a small
-always-on server in the cloud holds the shared record.
+*supporting evidence*. **Discord is the front door** members already use; member
+relays share activity directly with each other over a peer-to-peer network
+(Fabric) instead of a rented server — see §7 (updated 2026-09-04).
 
 ---
 
@@ -31,17 +32,30 @@ it reports it. Because the game log only exists on the player's own machine, thi
 piece *must* run locally — it can't be done from the cloud.
 
 **Half B — the Mission Register (what we build next).**
-A small always-on service in the cloud holds the org's missions, applications, and
-validations. Officers and members interact with it through **Discord** (and a web
-view). This is the high-value part, and it barely depends on the game log at all —
-so we can build it now without waiting for log-reading to be "perfect."
+The org's missions, applications, and validations live in a shared record.
+Officers and members interact with it through **Discord** (and, later, a web
+view). This is the high-value part, and it barely depends on the game log at
+all — so we can build it now without waiting for log-reading to be "perfect."
+
+*Updated 2026-09-04:* we're no longer renting a cloud server for this. Member
+relays exchange activity directly with each other over a peer-to-peer network
+(Fabric) — no monthly bill, no single machine that's a single point of failure.
+The one open question this leaves (not yet decided): which node holds the
+Mission Register's one "official" copy day-to-day, since officer validation
+needs a definite record to validate *against*. Two shapes are on the table —
+one member's machine holds it and the rest keep synced copies, or (further out)
+the register itself becomes a signed record any node can verify with no single
+host at all. Either way, Discord stays the front door — nothing here changes
+what members and officers actually see or do.
 
 ```
-   Each member's PC                     Cloud (one small server)         People
-  ┌────────────────┐   activity        ┌───────────────────────┐
-  │  Game.log  →   │ ───────────────►  │   Mission Register     │ ◄──► Discord
-  │  Live Relay    │  (evidence)       │  + Live Feed + Audit   │      (members
-  └────────────────┘                   └───────────────────────┘       & officers)
+   Each member's PC              Peer-to-peer network            People
+  ┌────────────────┐  activity  ┌───────────────────────┐
+  │  Game.log  →   │ ─────────► │  Member relays share    │ ◄──► Discord
+  │  Live Relay    │ (evidence) │  directly; Mission      │      (members
+  └────────────────┘            │  Register + Audit live  │       & officers)
+                                 │  on one agreed node     │
+                                 └───────────────────────┘
 ```
 
 ---
@@ -95,10 +109,10 @@ tamper-evident record — not from trusting the game or the software.
 | Auto-detects game install & channel (LIVE/PTU/HOTFIX…) | ✅ Built |
 | Groups missions with objectives; "combat progress" proxy | ✅ Built |
 | **Mission register: post / apply / validate** | 🔜 **Next (M5)** |
-| Always-on cloud hosting | 🔜 Next (M4) |
+| Peer-to-peer backbone (Fabric) for shared activity — *no cloud server* | 🔜 Next (M4, decided 2026-09-04) |
 | Officer roles + signed/tamper-evident audit | 🔜 After M5 (M6) |
 | Detecting individual kills | ❌ Not possible (game doesn't log them) |
-| Fully decentralized / no-central-server | 🔬 Optional research, later (not needed) |
+| Mission register with no single host at all | 🔬 Optional, further out — the *activity feed* is peer-to-peer now, but the register keeps one agreed home until M6's signing lands (see §7) |
 
 ---
 
@@ -109,20 +123,23 @@ money or need an account/decision from you:
 
 | Dependency | What it's for | Who provides it | Rough cost / effort |
 |---|---|---|---|
-| **A small cloud server (VPS)** | Hosts the always-on Mission Register so the whole org shares one record | A hosting provider (e.g. Hetzner, DigitalOcean, Linode) | ~**$5–10/month**; we pick & set up |
+| **No cloud server needed** *(changed 2026-09-04, see `DECISIONS.md` D-008)* | Relays share activity directly with each other over a peer-to-peer network (Fabric), relayed through free public connector nodes when needed | Nobody — it's peer-to-peer | **$0/month.** The one thing this removes: a monthly hosting bill. Still open: where the shared Mission Register's one "official record" lives day-to-day (a design question, not a cost) |
 | **A Discord bot** | Lets members/officers use the register *inside* Discord (post, apply, validate); also posts the live feed. A *webhook* alone can only post out — a **bot** is needed for two-way commands. | Discord (free) — you create an app & invite the bot to your server | Free; ~30 min one-time setup with your admin rights |
 | **Discord server + an "Officer" role** | Identity (who's who) and permissions (who can validate) | Your existing org Discord | Free; you decide who gets the role |
 | **Each player runs the Live Relay** | Reads their local game log (the only place it exists) | The player's own PC | Free; a small download per player |
-| **Players' internet connection** | Relays report activity to the cloud server | The players | Already have it |
-| **(Optional later) a domain name** | A friendly web address for the dashboard | A registrar | ~$10–15/year; optional |
+| **Players' internet connection** | Relays exchange activity with each other over the peer-to-peer network | The players | Already have it |
+| **(Optional later) a domain name** | A friendly web address for the dashboard, if/when there's a web UI | A registrar | ~$10–15/year; optional |
 
 **Things we do *not* need** (deliberately, to keep it simple and cheap): no
-blockchain, no cryptocurrency, no heavyweight peer-to-peer network, no paid
-database service (we use a built-in lightweight one), no app-store apps.
+blockchain, no cryptocurrency, no paid database service (we use a built-in
+lightweight one), no app-store apps, and — as of 2026-09-04 — **no monthly
+hosting bill**, because the peer-to-peer network replaces what the cloud server
+used to do for the activity feed.
 
-**Your decisions as product owner will be:** which hosting provider/budget is OK;
-approving creation of the Discord bot; deciding who holds the Officer role; and
-whether the live feed posts to a public or private channel.
+**Your decisions as product owner will be:** approving creation of the Discord
+bot; deciding who holds the Officer role; whether the live feed posts to a
+public or private channel; and, when it comes up, which node holds the Mission
+Register's day-to-day copy (§9).
 
 ---
 
@@ -132,6 +149,9 @@ whether the live feed posts to a public or private channel.
   shared publicly — already enforced in how we handle configuration.
 - **Members' game logs** stay on their own PCs; only the *summarized activity*
   (e.g. "took mission X", "objective progressed") is shared, not the raw file.
+- **Sharing is opt-in and per-member** — the peer-to-peer network (2026-09-04)
+  shares nothing by default; a member chooses whether to share, and can choose
+  who with, rather than everything going to one central place automatically.
 - **The audit trail** means even an officer can't silently rewrite history — every
   approval is recorded, and (in a later step) cryptographically signed.
 
@@ -139,15 +159,15 @@ whether the live feed posts to a public or private channel.
 
 ## 9. Where we are and the suggested order
 
-1. **M4 — Stand up the cloud server** (so the register has a home). *Your input:
-   hosting choice/budget.*
+1. **M4 — Wire up the peer-to-peer backbone (Fabric)** so member relays share
+   activity directly, no cloud server to stand up. *Decided 2026-09-04 — no input
+   needed from you on hosting; the one open question is which node the Mission
+   Register calls home day-to-day, which surfaces at M5.*
 2. **M5 — Build the Mission Register MVP** (post → apply → validate, in Discord +
    web). *Your input: create the Discord bot, define the Officer role.*
 3. **M6 — Officer roles + tamper-evident (signed) audit trail.**
 4. **Ongoing — keep improving what the live relay can recognize** (it gets better
    over time, but never blocks the register).
-5. **Later/optional — decentralization** for resilience, *only if* the org ever
-   wants to remove reliance on the single cloud server. Not needed for the product.
 
 > **The headline:** we can deliver the mission register you described — officers
 > posting missions and fleet actions, members applying, officers validating —

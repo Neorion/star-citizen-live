@@ -25,6 +25,11 @@ the mesh, while the relay itself stays local per member. See
 **Why:**
 - Owner call: no VPS budget/ops burden right now; Fabric mesh removes the
   single-point-of-failure D-004 already flagged, without taking on hosting.
+- Not a surprise pivot. `HANDOFF-master.md` (2026-06-24) already flagged this
+  exact direction — "lean Fabric/federated as the target transport; the central
+  VPS is an optional bridge, not a requirement" — and its own §4 said the event
+  firehose "can go Fabric-first today." This decision is that direction finally
+  acted on, ~2.5 months later, not a new idea.
 - Not a cold start. This session already built and tested the exact seam this
   needs — consent-gated Fabric sharing for quantum-travel and ship-use events
   (branch `feat/op-participation` on the `martindale-star-citizen-live` clone)
@@ -76,8 +81,12 @@ the mesh, while the relay itself stays local per member. See
 **Open items:** peer identity/bootstrap design (seed hubs, likely
 `hub.fabric.pub:7777` / `relay.goon.vc:7777` per upstream's precedent), which
 collections sync by default vs. opt-in, and where the Discord-bot / web-UI
-bridge process actually runs. Tracked for milestone M4 (superseding D-003's
-VPS-shaped version of that milestone).
+bridge process actually runs. **Separately, still open and NOT resolved by this
+decision:** the mission register's home node — removing the VPS doesn't remove
+D-005's single-source-of-truth requirement; `HANDOFF-master.md` §4 has the two
+shapes (elected/primary node with replicated audit chain, or fold in M6's
+multisig signing so no node is privileged). Tracked for milestone M4
+(superseding D-003's VPS-shaped version of that milestone) and M6 respectively.
 
 ---
 
