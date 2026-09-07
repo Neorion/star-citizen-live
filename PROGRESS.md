@@ -326,8 +326,19 @@ prefix so the L22 Alpha Wolf et al. resolve. End-to-end replay of a real Apr-202
 16,707 lines → 9 collisions (1 ship-vs-ship, 8 terrain), fully enriched. **+2 tests,
 suite green (59).** This is the **first real current-build "ship destroyed" signal**,
 filling the gap left by kill / vehicle-destruction removal (alongside `player:death`).
-Branch is a **proposal for owner review — not merged**; a dashboard UI panel is the
-remaining follow-up.
+
+**Update (2026-06-26) — the follow-up landed:** a **💥 Collisions** live dashboard
+panel + header count (`renderCollisions`, fed by `/monitor`'s `collisions` list),
+verified end-to-end against a real Apr-2026 log (9 collisions rendered). Same
+branch also broke **Refueling** out of the generic "Support" mission-type bucket
+into its own type (`UnitedWayfarersClub` + refuel/wayfarer activity verbs),
+grounded in real corpus contract names — historical `stores/history.json` entries
+already classified as "Support" need `npm run backfill` to re-classify; live +
+new backfills pick it up immediately. Suite green (59 at the time; folded into
+the main suite since). Branch rebased onto current `master` 2026-09-06 — clean,
+tests green — and is queued as a candidate contribution back to the upstream
+`martindale/star-citizen-live` project (`feature/rsi`), which has no equivalent
+`FatalCollision` rule (see `UPSTREAM-RSI-STATE.md` §3).
 
 ---
 
