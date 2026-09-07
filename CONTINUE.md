@@ -103,6 +103,16 @@ convergence has its own gated test (needs `@fabric/core` installed):
 SC_FABRIC_TEST=1 node --test test/mesh-peer.test.js   # always foreground, never detached
 ```
 
+**WS5: the "🕸 Mesh" dashboard tab is the actual consent UI.** Open it (once
+`SC_FABRIC=1`) to add/remove peers and tick each one's **"share my events"**
+checkbox — that tick is what actually authorizes sharing with that peer;
+nothing goes out otherwise. `GET/POST …/peers`, `GET/POST/DELETE …/peers/:id`,
+`POST …/mesh/settings` back it (503 `{enabled:false}` when the mesh is off).
+
+⚠️ Ticking "share my events" (or the global toggle) on a relay that already
+has real seeded history is exactly the action that starts sending that
+history to whichever peer you just authorized — there's no dry-run mode.
+
 Overrides (highest priority first):
 - `SC_LOGFILE=/full/path/to/Game.log` — force an exact file.
 - `SC_CHANNEL=HOTFIX` — force a channel (e.g. after a hotfix drops and auto-detect

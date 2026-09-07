@@ -137,6 +137,7 @@
     <button class="tab on" id="tab-live">Live feed</button>
     <button class="tab" id="tab-analyze">Analyze</button>
     <button class="tab" id="tab-cargo" style="display:none">🚚 Cargo</button>
+    <button class="tab" id="tab-mesh" style="display:none">🕸 Mesh</button>
     <span class="sub" id="az-scope" style="color:var(--muted);font-size:12px"></span>
     <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
       <label class="hbtn" title="show one-line hints under panels"><input type="checkbox" id="tips-toggle" style="margin-right:5px">💡 Tips</label>
@@ -334,6 +335,27 @@
   </section>
 </main>
 
+<main id="view-mesh" style="display:none">
+  <section class="panel full">
+    <h2>🕸 Fabric mesh <span class="sub">— peers this relay shares your events with (D-008). Nothing is sent anywhere until you say so, below.</span></h2>
+    <div id="mesh-status" style="padding:10px 14px;display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--line)"></div>
+    <div class="tip" style="padding:8px 14px 0">💡 <b>Share with all connected peers</b> broadcasts every event this relay sees to anyone connected. For most people, per-peer sharing below (tick "share my events" on just the peers you trust) is the safer choice.</div>
+    <div style="padding:10px 14px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <label style="font-size:12.5px;display:flex;gap:6px;align-items:center">
+        <input type="checkbox" id="mesh-global"> share with <b>all</b> connected peers
+        <span class="badge b-warn" style="font-size:10px">broadcasts everything, no per-peer control</span>
+      </label>
+    </div>
+    <div style="padding:10px 14px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="mesh-add-addr" placeholder="host:port" autocomplete="off" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:180px">
+      <input id="mesh-add-label" placeholder="label (optional)" autocomplete="off" style="background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;width:150px">
+      <button class="btn" id="mesh-add-btn">＋ Add peer</button>
+      <span class="mid" id="mesh-add-err" style="color:#e5484d"></span>
+    </div>
+    <div id="mesh-body" style="padding:12px 14px"><div class="empty">No peers on the roster yet — add one above, or wait for the default seed hubs to appear.</div></div>
+  </section>
+</main>
+
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script src="/ocr-parse.js"></script>
 <script>
@@ -414,9 +436,12 @@ function renderMissions(el, missions){
     // Crew: other players who joined this mission (resolved to a handle where the
     // relay has seen it via mission:end, org-wide once backfilled; else anonymous).
     const crewHTML = (m.crew && m.crew.length) ? `<div class="obj muted">👥 with ${m.crew.map(c=>esc(c.display)).join(', ')}</div>` : '';
+    // Honesty rule (WS5 T5.2): a mesh peer's mission must never look local.
+    const sharedLabel = meshSourceLabel(m.source);
+    const sharedHTML = sharedLabel ? ` <span class="badge b-raw" title="received over the Fabric mesh, not from your own log">📡 shared by ${esc(sharedLabel)}</span>` : '';
     return `<div class="mission">
       <div class="mhead"><span class="badge b-good">${esc(m.type || 'mission')}</span>
-        ${statusHTML}
+        ${statusHTML}${sharedHTML}
         <span class="mtitle">${esc(m.title || '(mission)')}</span>
         <span class="time">${shortTime(m.endedAt || m.lastSeen)}</span></div>
       <div class="mid">${esc(m.id)}</div>
@@ -462,6 +487,7 @@ async function poll(){
     $('build').textContent = parts.join(' · ');
     $('updated').textContent = 'updated ' + shortTime(d.now);
     $('tab-cargo').style.display = d.cargoEnabled ? '' : 'none';
+    $('tab-mesh').style.display = d.meshEnabled ? '' : 'none';
     last = { flagged: d.flagged, recent: d.recent, missions: d.missions || [], kills: d.kills || [] };
     paint();
   }catch(e){
@@ -483,6 +509,87 @@ $('copyAll').addEventListener('click', ()=>{
   $('copyAll').textContent='copied!'; setTimeout(()=>$('copyAll').textContent='Copy all',1200);
 });
 ['filter','hideKnown'].forEach(id=>$(id).addEventListener('input',paint));
+
+// ---- Fabric mesh: peer roster + consent UI (BUILD-PLAN-fabric-mesh.md WS5) ----
+let meshPeers=[], meshPubkeyLabels={}, meshTimer=null;
+async function fetchMesh(){
+  try{
+    const [statusR, peersR] = await Promise.all([
+      fetch('/services/star-citizen/mesh').then(r=>r.json()),
+      fetch('/services/star-citizen/peers').then(r=>r.json())
+    ]);
+    meshPeers = (peersR && peersR.data) || [];
+    meshPubkeyLabels = {};
+    meshPeers.forEach(p=>{ if(p.expectedPubkey) meshPubkeyLabels[p.expectedPubkey]=p.label||p.address; });
+    renderMesh(statusR);
+  }catch(e){ /* mesh not enabled, or a transient fetch error - next poll retries */ }
+}
+// Resolves a stored event's `source` (e.g. missionGroups[].source) to a
+// short display label for the "shared by …" badge - honesty rule (WS5 T5.2):
+// a peer-sourced row must never look indistinguishable from a local one.
+function meshSourceLabel(source){
+  if(!source) return null;
+  if(source.startsWith('fabric:')){
+    const pk=source.slice(7);
+    return meshPubkeyLabels[pk] || ('peer '+pk.slice(0,10)+'…');
+  }
+  if(source.startsWith('http:')) return 'peer '+source.slice(5);
+  return null;   // local (undefined/'manual'/etc.) - no badge
+}
+function renderMesh(status){
+  if(!status || status.enabled===false){
+    $('mesh-status').innerHTML='<span>mesh backbone is off — set <code>SC_FABRIC=1</code> to enable it</span>';
+    return;
+  }
+  $('mesh-status').innerHTML = `
+    <span>identity: <b>${status.pubkey ? esc(status.pubkey.slice(0,16))+'…' : (status.installed ? '(not started)' : '⚠ @fabric/core not installed')}</b></span>
+    <span>listen port: <b>${status.listenPort}</b></span>
+    <span>connected: <b>${status.connected}</b></span>
+    <span>queued: <b>${status.uplinkQueued}</b></span>
+    <span>sharing: <b>${status.shareLogsActive?'active':'off'}</b></span>
+    ${status.startError?`<span style="color:#e5484d">⚠ ${esc(status.startError)}</span>`:''}
+  `;
+  $('mesh-global').checked = !!status.shareLogsGlobal;
+  const el=$('mesh-body');
+  if(!meshPeers.length){ el.innerHTML='<div class="empty">No peers on the roster yet — add one above, or wait for the default seed hubs to appear.</div>'; return; }
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="text-align:left;color:var(--muted)">
+      <th style="padding:4px 8px 4px 0">address</th><th style="padding:4px 8px">label</th><th style="padding:4px 8px">enabled</th><th style="padding:4px 8px">share my events</th><th style="padding:4px 8px">last seen</th><th style="padding:4px 8px"></th>
+    </tr></thead><tbody>
+    ${meshPeers.map(p=>`<tr data-id="${esc(p.id)}" style="border-top:1px solid var(--line)">
+      <td style="padding:4px 8px 4px 0;font-family:monospace">${esc(p.address)}${p.lastError?` <span title="${esc(p.lastError)}" style="color:#e5484d">⚠</span>`:''}</td>
+      <td style="padding:4px 8px">${esc(p.label||'')}</td>
+      <td style="padding:4px 8px"><input type="checkbox" data-act="enabled" ${p.enabled?'checked':''}></td>
+      <td style="padding:4px 8px"><input type="checkbox" data-act="shareLogs" ${p.shareLogs?'checked':''} title="authorize this peer to receive your events"></td>
+      <td style="padding:4px 8px" class="mid">${p.lastSeen?shortTime(p.lastSeen):'never'}</td>
+      <td style="padding:4px 8px"><button class="micro no" data-act="remove">🗑</button></td>
+    </tr>`).join('')}
+    </tbody></table>`;
+}
+$('mesh-add-btn').addEventListener('click', async ()=>{
+  $('mesh-add-err').textContent='';
+  const address=$('mesh-add-addr').value.trim(), label=$('mesh-add-label').value.trim();
+  if(!address) return;
+  const r=await fetch('/services/star-citizen/peers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address,label:label||null})}).then(r=>r.json());
+  if(r.error){ $('mesh-add-err').textContent=r.error; return; }
+  $('mesh-add-addr').value=''; $('mesh-add-label').value='';
+  fetchMesh();
+});
+$('mesh-global').addEventListener('change', async (e)=>{
+  await fetch('/services/star-citizen/mesh/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shareLogsGlobal:e.target.checked})});
+  fetchMesh();
+});
+$('mesh-body').addEventListener('change', async (e)=>{
+  const t=e.target; if(!t.matches('[data-act]')) return;
+  const id=t.closest('tr').dataset.id;
+  await fetch('/services/star-citizen/peers/'+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({[t.dataset.act]:t.checked})});
+  fetchMesh();
+});
+$('mesh-body').addEventListener('click', async (e)=>{
+  const t=e.target; if(t.dataset.act!=='remove') return;
+  const id=t.closest('tr').dataset.id;
+  await fetch('/services/star-citizen/peers/'+encodeURIComponent(id),{method:'DELETE'});
+  fetchMesh();
+});
 
 // In-app help: a toggleable guide + persistent inline tips.
 $('help-btn').addEventListener('click', ()=>{ const h=$('help'); h.classList.toggle('show'); $('help-btn').classList.toggle('on', h.classList.contains('show')); });
@@ -1141,17 +1248,21 @@ poll();
     g('view-live').style.display=v==='live'?'':'none';
     g('view-analyze').style.display=v==='analyze'?'':'none';
     g('view-cargo').style.display=v==='cargo'?'':'none';
+    g('view-mesh').style.display=v==='mesh'?'':'none';
     g('live-filter').style.display=v==='live'?'':'none';
     g('tab-live').classList.toggle('on',v==='live');
     g('tab-analyze').classList.toggle('on',v==='analyze');
     g('tab-cargo').classList.toggle('on',v==='cargo');
+    g('tab-mesh').classList.toggle('on',v==='mesh');
     if(v==='analyze' && !D) fetchA();
     if(v==='analyze' && !ST && !stLoading) fetchStability();
     if(v==='cargo'){ runRoute(); loadVocab(); }
+    if(v==='mesh'){ fetchMesh(); if(!meshTimer) meshTimer=setInterval(()=>{ if($('view-mesh').style.display!=='none') fetchMesh(); }, 4000); }
   }
   g('tab-live').addEventListener('click',()=>show('live'));
   g('tab-analyze').addEventListener('click',()=>show('analyze'));
   g('tab-cargo').addEventListener('click',()=>show('cargo'));
+  g('tab-mesh').addEventListener('click',()=>show('mesh'));
   const tog=(key,v)=>{ if(!S[key])S[key]=new Set(); if(S[key].has(v))S[key].delete(v); else S[key].add(v); if(!S[key].size)S[key]=null; };
   g('view-analyze').addEventListener('click',(e)=>{
     const t=e.target.closest('[data-all],[data-multi],[data-clear],[data-reset],[data-oc],[data-ty],[data-fac],[data-pl],[data-ym],[data-allmonths],[data-nomonths]'); if(!t)return;
