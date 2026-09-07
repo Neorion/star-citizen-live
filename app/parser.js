@@ -191,6 +191,36 @@ const RULES = [
       driver: m[10], driverId: m[11], fromLevel: m[12], toLevel: m[13],
       attacker: m[14], cause: m[14], attackerId: m[15], damageType: m[16]
     })
+  },
+  {
+    // --- CURRENT-BUILD ship collision / destruction. The ONE combat-destruction
+    // signal that still fires on live builds: unlike <Vehicle Destruction> (gone
+    // after 4.3.0), <FatalCollision> IS logged today. VERIFIED across 236 real
+    // lines in builds 4.6/4.7/4.8.0 (Apr 2026 corpus). Client-involved + FATAL
+    // collisions only; most hit 'UNKNOWN' (terrain/structure). The line names the
+    // crashing vehicle, whether a player flew it (PlayerPilot), what it hit (a
+    // named player/ship, or UNKNOWN), the hit ship's Class, and the closing
+    // velocity (impact severity). NOTE: CIG's typo "occured" is in the real line. ---
+    kind: 'vehicle:collision', tag: 'FatalCollision',
+    test: /Fatal Collision occured for vehicle (\S+) \[Part:[^\]]*?Zone: ([^,\]]+), PlayerPilot: ([01])\] after hitting entity: (\S+?)(?: \[([^\]]*)\])?\. Hit Pos:.*?Distance: ([-\d.]+)(?:, Relative Vel: x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+))?/,
+    fields: (m) => {
+      const bracket = m[5] || '';
+      const hitId = (bracket.match(/Zone:\s*(\S+)/) || [])[1] || null;
+      const relVel = m[7] != null ? { x: +m[7], y: +m[8], z: +m[9] } : null;
+      return {
+        vehicle: m[1], vehicleName: shipName(m[1]),
+        zone: m[2],
+        playerPiloted: m[3] === '1',
+        hitEntity: m[4] === 'UNKNOWN' ? null : m[4],
+        hitClass: (bracket.match(/Class\(([^)]*)\)/) || [])[1] || null,
+        hitShip: shipName(hitId),
+        hitTerrain: m[4] === 'UNKNOWN',
+        distance: Number(m[6]),
+        relVel,
+        // Magnitude of the relative velocity = closing speed (m/s) → crash severity.
+        closingSpeed: relVel ? Math.round(Math.sqrt(relVel.x ** 2 + relVel.y ** 2 + relVel.z ** 2)) : null
+      };
+    }
   }
   // TODO (UNVERIFIED): quantum:travel removed - 'Quantum' appears in ~15k lines
   // (component names), so a naive pattern produced false positives. Re-add only
@@ -217,7 +247,7 @@ function parseLine (raw) {
 // --- Ship-name extraction [VERIFIED: 1166 hits in real 4.8.0 log] ---
 // IDs look like MANUFACTURER_ShipName_<bigid>, e.g. RSI_Aurora_Mk2_480167582679,
 // AEGS_Avenger_Titan_487288078845, ARGO_MPUV_1T_490286587822.
-const SHIP_PREFIXES = ['ORIG', 'AEGS', 'ANVL', 'CRUS', 'MISC', 'RSI', 'DRAK', 'ARGO', 'ESPR', 'KLWE', 'GRIN', 'XNAA', 'XIAN', 'BANU', 'GAMA', 'TMBL', 'VNCL', 'CNOU'];
+const SHIP_PREFIXES = ['ORIG', 'AEGS', 'ANVL', 'CRUS', 'MISC', 'RSI', 'DRAK', 'ARGO', 'ESPR', 'KLWE', 'GRIN', 'XNAA', 'XIAN', 'BANU', 'GAMA', 'TMBL', 'VNCL', 'CNOU', 'KRIG'];
 const SHIP_ID = new RegExp(`(?:${SHIP_PREFIXES.join('|')})_([A-Za-z0-9_]+?)_\\d{6,}`);
 
 function shipName (id) {
@@ -274,6 +304,7 @@ function parseSessionInfo (line) {
 // friendly category. Order matters (first match wins). Editable - CIG adds
 // content every patch, same as the NPC list. ---
 const MISSION_TYPES = [
+  [/refuel|refueling|wayfarer/i, 'Refueling'],   // UnitedWayfarersClub refuel runs (new in 4.8.0)
   [/killship|killnpc|fpskill|bountyhunter|assassinat|stationassault|shipwaveattack|headhunters|\bhunt/i, 'Bounty'],
   [/mercenary|enforcement|security|patrol|ambush|defend|escort|protect/i, 'Mercenary/Defense'],
   [/haul|cargo|deliver|recovercargo|courier/i, 'Hauling'],
@@ -300,7 +331,7 @@ const FACTION_TYPES = {
   hockrow: 'Recovery', hockrowagency: 'Recovery',   // investigation / locate-missing-person
   adagio: 'Recovery', tarpits: 'Recovery',          // salvage contractors (folded into Recovery)
   ftl: 'Hauling',                             // FTL Courier Service
-  unitedwayfarersclub: 'Support', wayfarers: 'Support'  // refuelling giver (new in 4.8.0)
+  unitedwayfarersclub: 'Refueling', wayfarers: 'Refueling'  // refuelling giver (new in 4.8.0)
 };
 
 function missionType (name) {

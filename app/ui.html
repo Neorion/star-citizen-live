@@ -123,6 +123,7 @@
       <span>sessions <b id="c-sessions">0</b></span>
       <span>missions <b id="c-missions">0</b></span>
       <span id="chip-players" title="distinct players">players <b id="c-players">0</b></span>
+      <span class="k" title="ship collisions — current-build &lt;FatalCollision&gt; (fires live on 4.8.0, unlike kills)">collisions <b id="c-collisions">0</b></span>
       <span>vehicles <b id="c-vehicles">0</b></span>
       <span>activity <b id="c-flagged">0</b></span>
       <span>lines <b id="c-logs">0</b></span>
@@ -209,6 +210,11 @@
     <h2>💀 Kills <span class="sub">— kills involving the running player (yours + your deaths). Third-party kills are not logged.</span></h2>
     <div class="tip" style="padding:0 14px">💡 This stays empty on current game builds — CIG stopped logging kills after 4.3.0. It only fills on older (≤4.3.0) logs.</div>
     <div class="feed" id="kills"></div>
+  </section>
+
+  <section class="panel full">
+    <h2>💥 Collisions <span class="sub">— ship collisions on the current build (&lt;FatalCollision&gt;): who crashed, what they hit, closing speed</span></h2>
+    <div class="feed" id="collisions"></div>
   </section>
 
   <section class="panel full">
@@ -360,7 +366,7 @@
 <script src="/ocr-parse.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-let last = { flagged: [], recent: [], missions: [], kills: [] };
+let last = { flagged: [], recent: [], missions: [], kills: [], collisions: [] };
 
 function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
@@ -420,6 +426,22 @@ function renderKills(el, kills){
   }).join('');
 }
 
+function renderCollisions(el, cols){
+  if(!cols || !cols.length){ el.innerHTML = '<div class="empty">no collisions yet — appear live the moment a ship fatally crashes</div>'; return; }
+  el.innerHTML = cols.slice().reverse().map(c=>{
+    const ship = esc(c.vehicleName || c.vehicle || 'a ship');
+    const hit = c.hitTerrain ? '<span class="mid">terrain / structure</span>'
+      : esc(c.hitShip || c.hitEntity || 'something') + (c.hitEntity && !c.hitTerrain ? ' <span class="mid">('+esc(c.hitEntity)+')</span>' : '');
+    const sev = c.closingSpeed != null ? c.closingSpeed + ' m/s' : '';
+    const pilot = c.playerPiloted ? '' : ' <span class="mid">(NPC/empty)</span>';
+    return `<div class="line">
+      <span class="time">${shortTime(c.timestamp)}</span>
+      <span class="badge b-warn">💥 collision</span>
+      <span class="raw">${ship}${pilot} → ${hit} <span class="mid">${esc(c.zone||'')}${sev?' · '+sev:''}</span></span>
+    </div>`;
+  }).join('');
+}
+
 const MISSION_STATUS = {
   Complete:   ['b-good','✅ complete'],
   Abandon:    ['b-warn','⤺ abandoned'],
@@ -458,6 +480,7 @@ function paint(){
   if(hideKnown) flagged = flagged.filter(ev=>!ev.recognized);
   render($('flagged'), flagged, kws);
   renderKills($('kills'), last.kills);
+  renderCollisions($('collisions'), last.collisions);
   renderMissions($('missions'), last.missions);
   render($('recognized'), last.recent.filter(ev=>ev.recognized).filter(ev=>matches(ev.raw,kws)), kws);
   render($('recent'), last.recent.filter(ev=>matches(ev.raw,kws)), kws);
@@ -480,6 +503,7 @@ async function poll(){
     $('c-players').textContent = d.counts.players;
     $('chip-players').title = `distinct players · ${d.counts.logins} login event${d.counts.logins === 1 ? '' : 's'}`;
     $('c-vehicles').textContent = d.counts.vehicles;
+    $('c-collisions').textContent = d.counts.collisions || 0;
     $('c-flagged').textContent = d.counts.flagged;
     $('c-logs').textContent = d.counts.logs.toLocaleString();
     const s = d.session || {};
@@ -488,7 +512,7 @@ async function poll(){
     $('updated').textContent = 'updated ' + shortTime(d.now);
     $('tab-cargo').style.display = d.cargoEnabled ? '' : 'none';
     $('tab-mesh').style.display = d.meshEnabled ? '' : 'none';
-    last = { flagged: d.flagged, recent: d.recent, missions: d.missions || [], kills: d.kills || [] };
+    last = { flagged: d.flagged, recent: d.recent, missions: d.missions || [], kills: d.kills || [], collisions: d.collisions || [] };
     paint();
   }catch(e){
     $('status').textContent = 'OFFLINE';
