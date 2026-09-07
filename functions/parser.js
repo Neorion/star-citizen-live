@@ -368,6 +368,47 @@ const RULES = [
       driver: m[10], driverId: m[11], fromLevel: m[12], toLevel: m[13],
       attacker: m[14], cause: m[14], attackerId: m[15], damageType: m[16]
     })
+  },
+  // --- Ship collision/destruction, independent of the version caveat above. Unlike
+  // <Actor Death>/<Vehicle Destruction> (confirmed gone after 4.3.0), <FatalCollision>
+  // fires across every build sampled: 4.3.0 through 4.8.0, predominantly 4.6-4.8.0 -
+  // VERIFIED across 236 real lines, 2 players, zero misses (Aug 2025-Jun 2026 corpus).
+  // NOT yet confirmed against 4.9.0 (this repo's current live build, per other rules
+  // in this file already observing 4.9.0 lines) - the corpus available here tops
+  // out at 4.8.0.
+  //
+  // Client-involved + FATAL collisions only. The line names the crashing vehicle,
+  // whether a player flew it (PlayerPilot), what it hit, the hit entity's Class, and
+  // the relative velocity (closing speed -> impact severity). "What it hit" is NOT
+  // simply "a named ship or UNKNOWN" - of 61 named hits in the corpus, only 37 are
+  // ships; the rest are static structures/debris (race rings, habitation modules,
+  // storage tanks - Class LocationObjectContainer/OrbitingObjectContainer/SolarSystem)
+  // or NPC pilots. `hitTerrain` below is really "hitEntity === 'UNKNOWN'", not a
+  // guarantee the target was actual terrain - treat `hitClass`/`hitShip` as the
+  // reliable signal for what was actually hit, not the hitTerrain flag alone.
+  // NOTE: CIG's own typo "occured" is in the real line, not a transcription error.
+  {
+    kind: 'vehicle:collision', tag: 'FatalCollision',
+    verified: true,
+    test: /Fatal Collision occured for vehicle (\S+) \[Part:[^\]]*?Zone: ([^,\]]+), PlayerPilot: ([01])\] after hitting entity: (\S+?)(?: \[([^\]]*)\])?\. Hit Pos:.*?Distance: ([-\d.]+)(?:, Relative Vel: x: ([-\d.]+), y: ([-\d.]+), z: ([-\d.]+))?/,
+    fields: (m) => {
+      const bracket = m[5] || '';
+      const hitId = (bracket.match(/Zone:\s*(\S+)/) || [])[1] || null;
+      const relVel = m[7] != null ? { x: +m[7], y: +m[8], z: +m[9] } : null;
+      return {
+        vehicle: m[1], vehicleName: shipName(m[1]),
+        zone: m[2],
+        playerPiloted: m[3] === '1',
+        hitEntity: m[4] === 'UNKNOWN' ? null : m[4],
+        hitClass: (bracket.match(/Class\(([^)]*)\)/) || [])[1] || null,
+        hitShip: shipName(hitId),
+        hitTerrain: m[4] === 'UNKNOWN',
+        distance: Number(m[6]),
+        relVel,
+        // Magnitude of the relative velocity = closing speed (m/s) -> crash severity.
+        closingSpeed: relVel ? Math.round(Math.sqrt(relVel.x ** 2 + relVel.y ** 2 + relVel.z ** 2)) : null
+      };
+    }
   }
 ];
 
@@ -394,7 +435,7 @@ function parseLine (raw) {
 const SHIP_PREFIXES = [
   'ORIG', 'AEGS', 'ANVL', 'CRUS', 'MISC', 'RSI', 'DRAK', 'ARGO', 'ESPR', 'KLWE',
   'GRIN', 'XNAA', 'XIAN', 'BANU', 'GAMA', 'TMBL', 'VNCL', 'CNOU', 'MRAI', 'KRIG',
-  'GAMA', 'MIRAI', 'AOPOA', 'UBEE'
+  'GAMA', 'MIRAI', 'AOPOA', 'UBEE', 'GLSN'
 ];
 const SHIP_ID = new RegExp(`(?:${SHIP_PREFIXES.join('|')})_([A-Za-z0-9_]+?)_\\d{6,}`);
 
