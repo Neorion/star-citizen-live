@@ -131,6 +131,32 @@ test('GET …/quantum exposes route/select/arrive events, and …/monitor counts
   }
 });
 
+test('GET …/insurance exposes deduped claims, and …/monitor counts + surfaces them (B-011)', async () => {
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false } });
+  await s.start();
+  PORT = s.server.address().port;
+  try {
+    // Two re-polls of the SAME claim, plus one genuinely different claim.
+    s.handleLogChange('<2026-03-26T02:41:26.065Z> [Notice] <CWallet::ProcessClaimToNextStep> New Insurance Claim Request - entitlementURN: urn:sc:entitygraph:ltp:geid:7445428829319, requestId : 1 [Team_GameServices][Transaction]');
+    s.handleLogChange('<2026-03-26T02:41:27.557Z> [Notice] <CWallet::ProcessClaimToNextStep> New Insurance Claim Request - entitlementURN: urn:sc:entitygraph:ltp:geid:7445428829319, requestId : 2 [Team_GameServices][Transaction]');
+    s.handleLogChange('<2026-04-30T18:10:15.268Z> [Notice] <CWallet::ProcessClaimToNextStep> New Insurance Claim Request - entitlementURN: urn:sc:entitygraph:ltp:geid:9615252140669, requestId : 1 [Team_GameServices][Transaction]');
+
+    let r = await call('GET', `${BASE}/insurance`);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.data.length, 2, 'deduped to 2 distinct claims over the wire');
+
+    r = await call('GET', `${BASE}/monitor`);
+    assert.strictEqual(r.json.counts.insurance, 2);
+    assert.strictEqual(r.json.insurance.length, 2);
+
+    // insurance is log-derived only (no POST), same as collisions/quantum.
+    r = await call('POST', `${BASE}/insurance`, { foo: 1 });
+    assert.notStrictEqual(r.status, 200);
+  } finally {
+    await s.stop();
+  }
+});
+
 test('analytics endpoint aggregates missions, deaths and a heatmap for the Analyze tab', async () => {
   const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false } });
   await s.start();

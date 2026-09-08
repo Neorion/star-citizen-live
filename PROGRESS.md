@@ -10,6 +10,47 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 📋 B-011 — Insurance claims: fleet-attrition timeline ✅
+**Date:** 2026-09-08 · branch `feature/insurance-claims`
+
+Re-scoped process this time, applying the lesson from B-019: checked upstream's
+`functions/parser.js` for `ProcessClaimToNextStep`/`insurance` FIRST, confirmed
+still genuinely absent, *then* invested in the real-log verification work — no
+wasted effort this round.
+
+`<CWallet::ProcessClaimToNextStep> New Insurance Claim Request` turned out to
+be genuinely noisy at the log-line level, the same shape of problem the
+quantum-calibration notification had: the SAME real claim re-fires this exact
+line up to **200+ times** while the client polls its status (a `requestId`
+that keeps incrementing, plus a sibling "Existing Active Claim Found" line not
+parsed here). **1,815 raw real lines resolve to only 191 distinct claims** —
+verified by grouping on `entitlementURN`, which comes in two real shapes
+(`urn:sc:entitygraph:ltp:geid:<n>` and `urn:sc:global:entitlement:uuid:<uuid>`
+— found the second one only by chasing down every regex miss to zero, not by
+assuming one shape). Corrects `BACKLOG.md`'s original "328 files" estimate,
+which wasn't reproducible against the corpus actually available (189 files).
+
+Dedup happens server-side (`app/server.js`), first-sighting-wins by
+`entitlementURN` — the exact same idiom this codebase already uses for
+`_playerDirectory`, not a new heuristic invented for this. Neither
+`entitlementURN` shape names the ship type, so this ships as a claim
+**count + timeline** (cost-of-ops signal, pairs naturally with the existing
+deaths/collisions panels), not a per-ship-type fleet breakdown — that would
+need a join this project has no evidence for yet.
+
+Shipped: 1 new parser rule (`insurance:claim`, `verified: true`) + service
+wiring (`insurance` collection deduped by `entitlementURN`, `GET …/insurance`,
+`monitor.counts.insurance` + `monitor.insurance`) + 6 new tests (3 parser, 1
+service, 1 API — plus a fourth negative-case parser test confirming the
+"Existing Active Claim Found" sibling line under the same tag is correctly
+*not* parsed as a new claim). Full suite: **164/164** (162 pass, 2 gated-skip).
+
+Confirmed genuinely absent upstream too — this one is a real, evidence-backed
+candidate to offer `martindale/star-citizen-live` once reviewed, same as the
+collision rule.
+
+---
+
 ## 🚀 B-019 — Quantum travel: destination + route tracking ✅
 **Date:** 2026-09-07 · branch `feature/quantum-travel`
 

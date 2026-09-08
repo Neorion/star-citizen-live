@@ -56,8 +56,17 @@ so the core stays lean. Priority order noted.
 - **🛡 Stability & session health** — `Channel Disconnected cause=…` + crash/restart
   (already detected). **492 files.** Disconnects/crashes per build ("is 4.8.184.x worse?").
   Cheap, log-only, unique. *(Priority 1 — cheapest unique value.)*
-- **📋 Insurance / fleet attrition** — `CWallet::ProcessClaimToNextStep New Insurance
-  Claim Request`. **328 files.** Claims over time vs deaths/collisions = cost-of-ops.
+- ✅ **Insurance / fleet attrition** — `CWallet::ProcessClaimToNextStep New Insurance
+  Claim Request`. **189 files** in the corpus available at ship time (the original
+  "328 files" estimate wasn't reproducible against it — corrected here rather than
+  left standing). Claims over time vs deaths/collisions = cost-of-ops. **Shipped**
+  on `feature/insurance-claims` (2026-09-08) — see `PROGRESS.md`. Turned out to be
+  genuinely noisy at the log-line level: the same real claim re-fires its line up
+  to 200+ times while the client polls status (1,815 raw lines → only **191
+  distinct claims**, deduped server-side by `entitlementURN`, first-sighting wins).
+  No per-ship-type breakdown — the entitlementURN doesn't name the ship, only a raw
+  entity/UUID id — so this ships as a claim count + timeline, not a fleet-composition
+  view.
 - ✅ **Crew / party** — `<PlayerJoined> mission_id … player_id …`. **165 files.** Who you
   flew with + shared missions; directly feeds the M4 org-wide convergence model.
   **Shipped** on `feature/crew-party` (merged 2026-08-29) — see `PROGRESS.md`.

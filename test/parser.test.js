@@ -103,6 +103,27 @@ test('detects quantum arrival (no destination on this line - correlate by vehicl
   assert.strictEqual(r.vehicleName, 'Mantis');
 });
 
+// --- VERIFIED: insurance claims (B-011, 525 real files / ~54M lines) ---
+
+test('detects an insurance claim (geid-shaped entitlementURN)', () => {
+  const r = parseLine('<2026-03-26T02:41:26.065Z> [Notice] <CWallet::ProcessClaimToNextStep> New Insurance Claim Request - entitlementURN: urn:sc:entitygraph:ltp:geid:7445428829319, requestId : 1 [Team_GameServices][Transaction]');
+  assert.strictEqual(r.kind, 'insurance:claim');
+  assert.strictEqual(r.verified, true);
+  assert.strictEqual(r.entitlementURN, 'urn:sc:entitygraph:ltp:geid:7445428829319');
+  assert.strictEqual(r.requestId, '1');
+});
+
+test('detects an insurance claim (the other real entitlementURN shape - global/uuid, not geid)', () => {
+  const r = parseLine('<2026-03-26T04:24:57.659Z> [Notice] <CWallet::ProcessClaimToNextStep> New Insurance Claim Request - entitlementURN: urn:sc:global:entitlement:uuid:2d700988-8e01-5526-8c90-c5d410111356, requestId : 2 [Team_GameServices][Transaction]');
+  assert.strictEqual(r.kind, 'insurance:claim');
+  assert.strictEqual(r.entitlementURN, 'urn:sc:global:entitlement:uuid:2d700988-8e01-5526-8c90-c5d410111356');
+});
+
+test('a sibling "Existing Active Claim Found" re-poll line under the same tag is NOT parsed as a new claim', () => {
+  const r = parseLine('<2026-03-26T19:27:54.248Z> [Notice] <CWallet::ProcessClaimToNextStep> Existing Active Claim Found - Entitilement URN: urn:sc:entitygraph:ltp:geid:2143798000971 [Team_GameServices][Transaction]');
+  assert.notStrictEqual(r.kind, 'insurance:claim');
+});
+
 // --- UNVERIFIED patterns (documented SC 4.x format; pending real combat log) ---
 
 test('parses a player kill (Actor Death) — VERIFIED on real member data', () => {
