@@ -79,7 +79,7 @@ class StarCitizenService extends EventEmitter {
     }, settings.fabric || {});
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false, announceCollisions: false }, settings.discord || {});
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, collisions: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, crew: {}, disconnects: {}, notifications: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, collisions: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, crew: {}, disconnects: {}, quantum: {}, notifications: {}, logs: {}, startedAt: null };
     this.state.missionGroups = {};  // missions grouped by MissionId (built from the log)
     this.state.objectives = {};     // objective details keyed by ObjectiveId
     this.state.combatlog = {};      // combat progress inferred from mission objectives
@@ -189,6 +189,7 @@ class StarCitizenService extends EventEmitter {
   get missionlog () { return Object.values(this.state.missionlog); }
   get crew () { return Object.values(this.state.crew); }                    // raw PlayerJoined sightings
   get disconnects () { return Object.values(this.state.disconnects); }      // real network disconnects (GameClient-echo excluded)
+  get quantum () { return Object.values(this.state.quantum); }             // quantum:route/select/arrive (B-019)
   get notifications () { return Object.values(this.state.notifications); }  // general HUD/zone notices
   get combatlog () { return Object.values(this.state.combatlog); }          // combat progress via mission objectives
 
@@ -512,10 +513,11 @@ class StarCitizenService extends EventEmitter {
           kills: newest(this.kills),
           deaths: newest(this.deaths),
           collisions: newest(this.collisions),
+          quantum: newest(this.quantum),
           counts: {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
             vehicles: this.vehicles.length, collisions: this.collisions.length, kills: this.kills.length, incaps: this.incaps.length, deaths: this.deaths.length,
-            missionlog: this.missionlog.length, missions: this.missionGroups.length, crew: this.crew.length, disconnects: this.disconnects.length, notifications: this.notifications.length,
+            missionlog: this.missionlog.length, missions: this.missionGroups.length, crew: this.crew.length, disconnects: this.disconnects.length, quantum: this.quantum.length, notifications: this.notifications.length,
             combat: this.combatlog.length,
             logs: this.logs.length, flagged: this.flagged.length
           },
@@ -532,11 +534,11 @@ class StarCitizenService extends EventEmitter {
           logs: this.logs.length, missions: this.missions.length
         }});
       }
-      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, collisions: () => this.collisions, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, crew: () => this.crew, disconnects: () => this.disconnects, notifications: () => this.notifications, messages: () => this.logs };
+      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, collisions: () => this.collisions, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, crew: () => this.crew, disconnects: () => this.disconnects, quantum: () => this.quantum, notifications: () => this.notifications, messages: () => this.logs };
       for (const [name, getter] of Object.entries(collections)) {
         if (path === `${base}/${name}`) {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
-          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths' && name !== 'crew' && name !== 'disconnects' && name !== 'collisions') {
+          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths' && name !== 'crew' && name !== 'disconnects' && name !== 'collisions' && name !== 'quantum') {
             const data = await body();
             // 'activities' is a local pass-through record, not part of the
             // peer-ingest model (see INGEST_COLLECTIONS) - keep its old,
@@ -693,6 +695,22 @@ class StarCitizenService extends EventEmitter {
         };
         this.state.collisions[id] = col;
         this.emit('vehicle:collision', col);
+        break;
+      }
+      case 'quantum:route':
+      case 'quantum:select':
+      case 'quantum:arrive': {
+        // B-019: a route calculation, a destination lock-in, or an arrival - kept
+        // flat (one collection, three kinds), same pattern as missionlog. No
+        // vehicle-based trip correlation yet (that's a natural follow-up, same
+        // shape as _indexMission for missionId) - each event stands alone today.
+        const q = {
+          id, kind: ev.kind, vehicle: ev.vehicle, vehicleId: ev.vehicleId, vehicleName: ev.vehicleName,
+          origin: ev.origin || null, destination: ev.destination || null, timestamp: ev.timestamp
+        };
+        this.state.quantum[id] = q;
+        this.emit(ev.kind, q);
+        this.emit('quantum:event', q);
         break;
       }
       case 'mission:contract':

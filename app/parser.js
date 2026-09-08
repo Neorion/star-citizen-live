@@ -221,10 +221,53 @@ const RULES = [
         closingSpeed: relVel ? Math.round(Math.sqrt(relVel.x ** 2 + relVel.y ** 2 + relVel.z ** 2)) : null
       };
     }
+  },
+  // --- Quantum travel (B-019). The naive 'Quantum' pattern this repo tried before
+  // produced ~15k false positives (component names) - these three tags are the
+  // real, specific signals, confirmed against 525 real log files / ~54M lines:
+  //   <Calculate Route>  - a route is calculated: human-readable ORIGIN + a raw
+  //     destination codename. VERIFIED across 5589 real lines, 2 players, zero
+  //     misses (Dec 2025-Jun 2026 corpus). Fires once per calculation - may repeat
+  //     as the player adjusts course before committing.
+  //   <Player Selected Quantum Target - Local> - the destination is locked in.
+  //     VERIFIED across 5149 real lines, zero misses. destination is a RAW
+  //     codename (object-container/nav-point/rest-stop id, or
+  //     PartyMemberMarker_<id> when routing to a party member rather than a
+  //     place) - NOT prettified; that needs a generated zone/location reference
+  //     table (BACKLOG.md B-018), not built here.
+  //   <Quantum Drive Arrived - Arrived at Final Destination> - VERIFIED across
+  //     1614 real lines, zero misses. No destination on this line - correlate
+  //     with the prior route/select by vehicleId to know where it arrived.
+  // All three: vehicle is usually present ('NOT AUTH | VEHICLE[id]'), but ~1 in
+  // 5000 select events fire with no vehicle attached ('NULL ENTITY' - on foot,
+  // or the vehicle wasn't resolved yet) - vehicle/vehicleId/vehicleName are null
+  // in that case, never a guessed/fabricated value. ---
+  {
+    kind: 'quantum:route', tag: 'Calculate Route',
+    verified: true,
+    test: /\| (?:NOT AUTH \| (\S+?)\[(\d+)\]|NULL ENTITY)\|CSCItemNavigation::CalculateRoute\|Projected Start Location is (.+?) for route to destination (\S+)/,
+    fields: (m) => ({
+      vehicle: m[1] || null, vehicleId: m[2] || null, vehicleName: m[1] ? shipName(m[1]) : null,
+      origin: m[3].trim(), destination: m[4]
+    })
+  },
+  {
+    kind: 'quantum:select', tag: 'Player Selected Quantum Target - Local',
+    verified: true,
+    test: /\| (?:NOT AUTH \| (\S+?)\[(\d+)\]|NULL ENTITY)\|CSCItemNavigation::OnPlayerSelectedQuantumTarget\|Player has selected point (\S+) as their destination/,
+    fields: (m) => ({
+      vehicle: m[1] || null, vehicleId: m[2] || null, vehicleName: m[1] ? shipName(m[1]) : null,
+      destination: m[3]
+    })
+  },
+  {
+    kind: 'quantum:arrive', tag: 'Quantum Drive Arrived - Arrived at Final Destination',
+    verified: true,
+    test: /\| (?:NOT AUTH \| (\S+?)\[(\d+)\]|NULL ENTITY)\|CSCItemNavigation::OnQuantumDriveArrived\|/,
+    fields: (m) => ({
+      vehicle: m[1] || null, vehicleId: m[2] || null, vehicleName: m[1] ? shipName(m[1]) : null
+    })
   }
-  // TODO (UNVERIFIED): quantum:travel removed - 'Quantum' appears in ~15k lines
-  // (component names), so a naive pattern produced false positives. Re-add only
-  // with a confirmed <Quantum Travel> line format from a real log.
 ];
 
 function parseLine (raw) {

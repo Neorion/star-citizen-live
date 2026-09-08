@@ -10,6 +10,43 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 🚀 B-019 — Quantum travel: destination + route tracking ✅
+**Date:** 2026-09-07 · branch `feature/quantum-travel`
+
+Started from B-019's own evidence anchor (`Quantum Travel Calibration Started
+By <handle>:`, claimed "11,832 combined hits") — a real log pull (required by
+this repo's own parser-honesty discipline before writing `verified: true`)
+found that line carries **no destination at all**, and the original evidence
+count was wrong by ~55× (real `scripts/audit.js` output: Kersa 81,618 ·
+DeadMan# 6,083 · Fadingdoughnut# 5,810 — a third handle the ticket never
+counted). The real destination signal turned out to be three different,
+previously-undiscovered `CSCItemNavigation` tags: `<Calculate Route>`
+(human-readable origin + destination), `<Player Selected Quantum Target -
+Local>` (destination locked in), and `<Quantum Drive Arrived>` (arrival, no
+destination — correlate by `vehicleId`). All three verified against the real
+`parseLine()` across the full local corpus: **12,352/12,352 real lines, zero
+misses**, 2 players, Dec 2025–Jun 2026.
+
+Shipped as `quantum:route`/`quantum:select`/`quantum:arrive` parser rules
+(all `verified: true`) + service wiring: one flat `quantum` collection
+(matches `missionlog`'s multi-kind-in-one-collection pattern), `GET
+…/quantum`, and `monitor.counts.quantum`/`monitor.quantum`. 9 new tests
+(4 parser, 1 service, 1 API — spanning 3 test files). Full suite: **159/159**
+(157 pass, 2 gated-skip). No UI panel yet — same two-step shape the
+`<FatalCollision>` collision rule shipped in (parser+service now, panel as a
+fast-follow).
+
+Also discovered mid-build: `martindale/star-citizen-live @ feature/rsi`
+already has its own `quantum:select`/`quantum:arrive`/`quantum:route` rules —
+independent confirmation these are the right tags, but it also means **this
+one isn't upstream-portable** (nothing to contribute that they don't already
+have) — unlike the collision rule, this stays fork-only.
+
+`BACKLOG.md`'s B-019 entry rewritten in place with the corrected numbers, so
+the wrong "11,832" isn't left standing as if it were still true.
+
+---
+
 ## 🔗 WS1 — Idempotent, source-attributed ingest ✅
 **Date:** 2026-09-04 · branch `feature/mesh-ingest-idempotent` · first workstream of `BUILD-PLAN-fabric-mesh.md` (D-008)
 

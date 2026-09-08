@@ -67,6 +67,42 @@ test('detects a ship collision into terrain (entity UNKNOWN)', () => {
   assert.strictEqual(r.playerPiloted, true);
 });
 
+// --- VERIFIED: quantum travel (B-019, 525 real files / ~54M lines) ---
+
+test('detects a quantum route calculation (human-readable origin + raw destination codename)', () => {
+  const r = parseLine('<2026-03-26T02:48:33.114Z> [Notice] <Calculate Route> [ItemNavigation][CL][8364] | NOT AUTH | AEGS_Sabre_Firebird_9733647520573[9733647520573]|CSCItemNavigation::CalculateRoute|Projected Start Location is microTech for route to destination Area18_City_objectContainer [Team_CGP4][QuantumTravel]');
+  assert.strictEqual(r.kind, 'quantum:route');
+  assert.strictEqual(r.verified, true);
+  assert.strictEqual(r.vehicle, 'AEGS_Sabre_Firebird_9733647520573');
+  assert.strictEqual(r.vehicleName, 'Sabre Firebird');
+  assert.strictEqual(r.origin, 'microTech');
+  assert.strictEqual(r.destination, 'Area18_City_objectContainer');
+});
+
+test('detects a quantum destination selection (raw codename, not prettified)', () => {
+  const r = parseLine('<2026-04-10T20:11:32.203Z> [Notice] <Player Selected Quantum Target - Local> [ItemNavigation][CL][10560] | NOT AUTH | ANVL_Lightning_F8C_Exec_Military_9842432843925[9842432843925]|CSCItemNavigation::OnPlayerSelectedQuantumTarget|Player has selected point RegionC_1base_ab_pyro_final_set_encounter-002 as their destination, routing locally [Team_CGP4][QuantumTravel]');
+  assert.strictEqual(r.kind, 'quantum:select');
+  assert.strictEqual(r.vehicleName, 'Lightning F8C Exec Military');
+  assert.strictEqual(r.destination, 'RegionC_1base_ab_pyro_final_set_encounter-002');
+});
+
+test('a quantum selection with no vehicle attached (NULL ENTITY - on foot, or unresolved) has null vehicle fields, not a guess', () => {
+  const r = parseLine('<2026-03-13T20:20:46.966Z> [Notice] <Player Selected Quantum Target - Local> [CL][17808] | NULL ENTITY|CSCItemNavigation::OnPlayerSelectedQuantumTarget|Player has selected point LOC_RR_S3_L4 as their destination, routing locally [Team_CGP4][QuantumTravel]');
+  assert.strictEqual(r.kind, 'quantum:select');
+  assert.strictEqual(r.vehicle, null);
+  assert.strictEqual(r.vehicleId, null);
+  assert.strictEqual(r.vehicleName, null);
+  assert.strictEqual(r.destination, 'LOC_RR_S3_L4');
+});
+
+test('detects quantum arrival (no destination on this line - correlate by vehicleId)', () => {
+  const r = parseLine('<2026-06-12T03:23:14.829Z> [Notice] <Quantum Drive Arrived - Arrived at Final Destination> [ItemNavigation][CL][26556] | NOT AUTH | RSI_Mantis_486025832736[486025832736]|CSCItemNavigation::OnQuantumDriveArrived|Quantum Drive has arrived at final destination [Team_CGP4][QuantumTravel]');
+  assert.strictEqual(r.kind, 'quantum:arrive');
+  assert.strictEqual(r.vehicle, 'RSI_Mantis_486025832736');
+  assert.strictEqual(r.vehicleId, '486025832736');
+  assert.strictEqual(r.vehicleName, 'Mantis');
+});
+
 // --- UNVERIFIED patterns (documented SC 4.x format; pending real combat log) ---
 
 test('parses a player kill (Actor Death) — VERIFIED on real member data', () => {
