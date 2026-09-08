@@ -28,6 +28,28 @@ test('handleLogChange routes a kill into the kills collection and emits', () => 
   assert.strictEqual(emitted.killer, 'K');
 });
 
+test('handleLogChange routes a quantum route/select/arrive triple into the quantum collection, emitting both the specific kind and quantum:event', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  const specific = [];
+  const generic = [];
+  s.on('quantum:route', (q) => specific.push(q));
+  s.on('quantum:select', (q) => specific.push(q));
+  s.on('quantum:arrive', (q) => specific.push(q));
+  s.on('quantum:event', (q) => generic.push(q));
+
+  s.handleLogChange('<2026-03-26T02:48:33.114Z> [Notice] <Calculate Route> [ItemNavigation][CL][8364] | NOT AUTH | AEGS_Sabre_Firebird_9733647520573[9733647520573]|CSCItemNavigation::CalculateRoute|Projected Start Location is microTech for route to destination Area18_City_objectContainer [Team_CGP4][QuantumTravel]');
+  s.handleLogChange('<2026-04-10T20:11:32.203Z> [Notice] <Player Selected Quantum Target - Local> [ItemNavigation][CL][10560] | NOT AUTH | AEGS_Sabre_Firebird_9733647520573[9733647520573]|CSCItemNavigation::OnPlayerSelectedQuantumTarget|Player has selected point Area18_City_objectContainer as their destination, routing locally [Team_CGP4][QuantumTravel]');
+  s.handleLogChange('<2026-06-12T03:23:14.829Z> [Notice] <Quantum Drive Arrived - Arrived at Final Destination> [ItemNavigation][CL][26556] | NOT AUTH | AEGS_Sabre_Firebird_9733647520573[9733647520573]|CSCItemNavigation::OnQuantumDriveArrived|Quantum Drive has arrived at final destination [Team_CGP4][QuantumTravel]');
+
+  assert.strictEqual(s.quantum.length, 3);
+  assert.deepStrictEqual(s.quantum.map((q) => q.kind), ['quantum:route', 'quantum:select', 'quantum:arrive']);
+  assert.strictEqual(s.quantum[0].origin, 'microTech');
+  assert.strictEqual(s.quantum[1].destination, 'Area18_City_objectContainer');
+  assert.strictEqual(s.quantum[2].vehicleName, 'Sabre Firebird');
+  assert.strictEqual(specific.length, 3, 'each specific kind emitted once');
+  assert.strictEqual(generic.length, 3, 'quantum:event emitted for every kind, same as mission:event');
+});
+
 test('replays a sample combat log: detects kills, classifies kill vs death + NPC', async () => {
   const path = require('node:path');
   const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });

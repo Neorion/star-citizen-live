@@ -363,47 +363,61 @@ codenames is not yet verified.
 
 ---
 
-## B-019 — Quantum travel: destination + calibration tracking
+## B-019 — Quantum travel: destination + route tracking ✅ Shipped
 **Added:** 2026-09-04 · evidence-counted via `scripts/audit.js` (B-015)'s first real run
+**Shipped:** 2026-09-07 · branch `feature/quantum-travel`
 
-**What:** A `quantum:calibrating` (or similar) rule for
-`Added notification "Quantum Travel Calibration Started By <handle>: "` — the
-zero-MissionId `hud:notification` catch-all currently swallows this text whole.
-`app/parser.js` already has a standing TODO for quantum travel ("re-add only
-with a confirmed `<Quantum Travel>` line format from a real log") — B-015's
-audit ledger is that confirmation.
+**What actually shipped is not what this ticket originally guessed.** The real
+log pull this ticket itself demanded (per AGENTS.md §6 — do it before writing a
+`verified: true` rule) found that `Quantum Travel Calibration Started By
+<handle>:` — this ticket's original evidence anchor — carries **no destination
+at all**, ever; it's a bare per-pilot notification (fires for whoever's
+piloting, not necessarily the local player). The real destination signal lives
+in three completely different, previously-undiscovered `CSCItemNavigation`
+tags:
+- `<Calculate Route>` → `quantum:route` — human-readable **origin** (e.g.
+  "microTech", "Crusader") + a raw destination codename. **5,589/5,589** real
+  lines matched, zero misses.
+- `<Player Selected Quantum Target - Local>` → `quantum:select` — destination
+  locked in. **5,149/5,149** matched (1 in ~5,000 fires with no vehicle
+  attached — `NULL ENTITY`, on foot or unresolved — handled as `null`, never
+  guessed). Destination is a **raw codename**, deliberately not prettified —
+  see B-018.
+- `<Quantum Drive Arrived - Arrived at Final Destination>` → `quantum:arrive`
+  — arrival confirmation (no destination on this line; correlate by
+  `vehicleId` with the prior route/select). **1,614/1,614** matched.
 
-**Why:** the single highest-volume generic notification in the whole corpus by
-a wide margin (see feasibility) — a real, currently-wasted destination/movement
-signal, and the concrete unblock for B-011's "Ship usage" item and B-001's
-"presence on-site" component (coarse where+when via quantum-travel legs).
+All three verified against the full local corpus (525 files) via the real
+`parseLine()`, not a standalone regex — zero misses across 12,352 combined
+real lines, 2 players (Deadman, Fadingdougnut), spanning Dec 2025–Jun 2026.
 
-**Feasibility (from the log — B-015's first real audit run, 525 files / 54M lines):**
-- ✅ **Real and dominant:** `Quantum Travel Calibration Started By DeadMan#:` /
-  `...Fadingdoughnut#:` — 6,080 + 5,752 = **11,832 combined hits**, more than
-  double the next candidate ("Entering Armistice Zone", 4,048). The handle is
-  embedded in the notification text itself (normalized away by the audit's
-  digit-stripping, but present verbatim in the raw line) — a free, direct
-  handle↔quantum-travel-event tie, no separate resolution needed.
-- ⚠️ **Destination unconfirmed from this line alone** — "Calibration Started"
-  is the *beginning* of a jump, not necessarily the destination. Needs a real
-  log pull (`grep -A/-B` around a calibration line) to confirm whether the
-  destination name is on this line, a paired follow-up line (candidate for
-  B-016's coalescing seam if so), or only recoverable from a separate
-  `quantum:arrive`-style line not yet identified. Do the real-log check before
-  writing the rule, per this repo's own parser-honesty discipline (AGENTS.md §6)
-  — don't guess the destination field from the notification text's shape alone.
+**Correcting this ticket's own original evidence claim:** "11,832 combined
+hits" for the Calibration notification undercounted by ~55×, and missed a
+third handle entirely — `scripts/audit.js`'s real output is **Kersa: 81,618 ·
+DeadMan#: 6,083 · Fadingdoughnut#: 5,810**. That notification was never built
+into its own rule (no destination to offer, and — per this repo's own
+"raw log lines never leave the machine" mesh-sharing rule — a very
+high-volume per-pilot signal isn't obviously worth a dedicated rule on its
+own); the correction is recorded here so the number isn't repeated.
 
-**Prerequisites:** none to start (B-015 already ships) — needs one real-log
-read-through to pin the exact line shape before writing a `verified: true` rule.
+**Also learned mid-build:** upstream (`martindale/star-citizen-live @
+feature/rsi`) already ships its own `quantum:select`/`quantum:arrive`/
+`quantum:route` rules — independently confirming these are the right tags —
+so **this is not an upstream-portable contribution** (nothing to offer that
+they don't already have); built for this fork's own benefit only.
 
-**Confidence / honesty:** the volume and handle-attribution are validated
-(counted directly from real logs); the destination/route shape is NOT yet
-confirmed — mark accordingly until checked.
+**Shipped:** parser rules (3, all `verified: true`) + `app/server.js` wiring
+(`quantum` collection, `GET …/quantum`, `monitor.counts.quantum` +
+`monitor.quantum`) + 9 new tests (4 parser, 1 service, 1 API — 3 test files
+touched). No UI panel yet — a natural fast-follow, same two-step pattern the
+`<FatalCollision>` collision rule shipped in (parser+service first, panel
+after).
 
-**Related:** `app/parser.js` (existing quantum-travel TODO comment) · B-015
-(source of this evidence) · B-011 (ship usage) · B-001 (on-site presence) ·
-B-014 (Movement bucket).
+**Related:** `app/parser.js` (`quantum:route`/`quantum:select`/`quantum:arrive`
+rules) · B-015 (source of the original, corrected evidence) · B-011 (ship
+usage — still open) · B-001 (on-site presence — still open, this is its
+concrete unblock) · B-014 (Movement bucket) · B-018 (destination-name
+prettification — still deferred, deliberately not done here).
 
 ---
 

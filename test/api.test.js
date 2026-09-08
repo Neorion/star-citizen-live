@@ -104,6 +104,33 @@ test('monitor + deaths endpoints expose death + mission-lifecycle data', async (
   }
 });
 
+test('GET …/quantum exposes route/select/arrive events, and …/monitor counts + surfaces them (B-019)', async () => {
+  const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false } });
+  await s.start();
+  PORT = s.server.address().port;
+  try {
+    s.handleLogChange('<2026-03-26T02:48:33.114Z> [Notice] <Calculate Route> [ItemNavigation][CL][8364] | NOT AUTH | AEGS_Sabre_Firebird_9733647520573[9733647520573]|CSCItemNavigation::CalculateRoute|Projected Start Location is microTech for route to destination Area18_City_objectContainer [Team_CGP4][QuantumTravel]');
+    s.handleLogChange('<2026-04-10T20:11:32.203Z> [Notice] <Player Selected Quantum Target - Local> [ItemNavigation][CL][10560] | NOT AUTH | AEGS_Sabre_Firebird_9733647520573[9733647520573]|CSCItemNavigation::OnPlayerSelectedQuantumTarget|Player has selected point Area18_City_objectContainer as their destination, routing locally [Team_CGP4][QuantumTravel]');
+
+    let r = await call('GET', `${BASE}/quantum`);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.data.length, 2);
+    assert.strictEqual(r.json.data[0].kind, 'quantum:route');
+    assert.strictEqual(r.json.data[0].origin, 'microTech');
+    assert.strictEqual(r.json.data[1].destination, 'Area18_City_objectContainer');
+
+    r = await call('GET', `${BASE}/monitor`);
+    assert.strictEqual(r.json.counts.quantum, 2);
+    assert.strictEqual(r.json.quantum.length, 2);
+
+    // quantum is log-derived only (no POST), same as collisions/deaths.
+    r = await call('POST', `${BASE}/quantum`, { foo: 1 });
+    assert.notStrictEqual(r.status, 200);
+  } finally {
+    await s.stop();
+  }
+});
+
 test('analytics endpoint aggregates missions, deaths and a heatmap for the Analyze tab', async () => {
   const s = new StarCitizenService({ port: 0, logfile: null, discord: { enable: false } });
   await s.start();
