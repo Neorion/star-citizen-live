@@ -267,6 +267,26 @@ const RULES = [
     fields: (m) => ({
       vehicle: m[1] || null, vehicleId: m[2] || null, vehicleName: m[1] ? shipName(m[1]) : null
     })
+  },
+  // --- Insurance claim (B-011). VERIFIED across 1815 real lines, 189 files, 2
+  // players, zero misses (Aug 2025-May 2026 corpus). Genuinely noisy at the
+  // log-line level: the SAME real claim re-fires this exact line (and the
+  // sibling "Existing Active Claim Found"/"Claim Complete" lines, not parsed
+  // here) dozens to 200+ times while the client polls its status - 1815 raw
+  // lines resolve to only 191 DISTINCT entitlementURNs. Dedup by
+  // entitlementURN (first-sighting wins) happens in app/server.js, the same
+  // idiom as _playerDirectory - this rule stays a plain, stateless per-line
+  // extraction; no cross-line state here. entitlementURN comes in two real
+  // shapes (urn:sc:entitygraph:ltp:geid:<n> and
+  // urn:sc:global:entitlement:uuid:<uuid>) - kept as an opaque string, not
+  // parsed further. NEITHER form names the ship type/model, so this signal is
+  // a claim COUNT + TIMELINE ("fleet attrition over time"), not a per-ship
+  // breakdown - that would need a join this project has no evidence for yet.
+  {
+    kind: 'insurance:claim', tag: 'CWallet::ProcessClaimToNextStep',
+    verified: true,
+    test: /New Insurance Claim Request - entitlementURN: (\S+?), requestId\s*:\s*(\d+)/,
+    fields: (m) => ({ entitlementURN: m[1], requestId: m[2] })
   }
 ];
 

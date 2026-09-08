@@ -79,7 +79,7 @@ class StarCitizenService extends EventEmitter {
     }, settings.fabric || {});
     this.settings.discord = Object.assign({ enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false, announceCollisions: false }, settings.discord || {});
 
-    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, collisions: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, crew: {}, disconnects: {}, quantum: {}, notifications: {}, logs: {}, startedAt: null };
+    this.state = { status: 'STOPPED', activities: {}, players: {}, logins: {}, vehicles: {}, collisions: {}, kills: {}, incaps: {}, deaths: {}, missionlog: {}, crew: {}, disconnects: {}, quantum: {}, insurance: {}, notifications: {}, logs: {}, startedAt: null };
     this.state.missionGroups = {};  // missions grouped by MissionId (built from the log)
     this.state.objectives = {};     // objective details keyed by ObjectiveId
     this.state.combatlog = {};      // combat progress inferred from mission objectives
@@ -190,6 +190,7 @@ class StarCitizenService extends EventEmitter {
   get crew () { return Object.values(this.state.crew); }                    // raw PlayerJoined sightings
   get disconnects () { return Object.values(this.state.disconnects); }      // real network disconnects (GameClient-echo excluded)
   get quantum () { return Object.values(this.state.quantum); }             // quantum:route/select/arrive (B-019)
+  get insurance () { return Object.values(this.state.insurance); }         // distinct insurance claims, deduped by entitlementURN (B-011)
   get notifications () { return Object.values(this.state.notifications); }  // general HUD/zone notices
   get combatlog () { return Object.values(this.state.combatlog); }          // combat progress via mission objectives
 
@@ -514,10 +515,11 @@ class StarCitizenService extends EventEmitter {
           deaths: newest(this.deaths),
           collisions: newest(this.collisions),
           quantum: newest(this.quantum),
+          insurance: newest(this.insurance),
           counts: {
             activities: this.activities.length, players: this.players.length, logins: this.logins.length,
             vehicles: this.vehicles.length, collisions: this.collisions.length, kills: this.kills.length, incaps: this.incaps.length, deaths: this.deaths.length,
-            missionlog: this.missionlog.length, missions: this.missionGroups.length, crew: this.crew.length, disconnects: this.disconnects.length, quantum: this.quantum.length, notifications: this.notifications.length,
+            missionlog: this.missionlog.length, missions: this.missionGroups.length, crew: this.crew.length, disconnects: this.disconnects.length, quantum: this.quantum.length, insurance: this.insurance.length, notifications: this.notifications.length,
             combat: this.combatlog.length,
             logs: this.logs.length, flagged: this.flagged.length
           },
@@ -534,11 +536,11 @@ class StarCitizenService extends EventEmitter {
           logs: this.logs.length, missions: this.missions.length
         }});
       }
-      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, collisions: () => this.collisions, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, crew: () => this.crew, disconnects: () => this.disconnects, quantum: () => this.quantum, notifications: () => this.notifications, messages: () => this.logs };
+      const collections = { activities: () => this.activities, players: () => this.players, logins: () => this.logins, vehicles: () => this.vehicles, collisions: () => this.collisions, kills: () => this.kills, incaps: () => this.incaps, deaths: () => this.deaths, missionlog: () => this.missionlog, crew: () => this.crew, disconnects: () => this.disconnects, quantum: () => this.quantum, insurance: () => this.insurance, notifications: () => this.notifications, messages: () => this.logs };
       for (const [name, getter] of Object.entries(collections)) {
         if (path === `${base}/${name}`) {
           if (req.method === 'GET') return send(200, { type: 'Collection', data: getter() });
-          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths' && name !== 'crew' && name !== 'disconnects' && name !== 'collisions' && name !== 'quantum') {
+          if (req.method === 'POST' && name !== 'messages' && name !== 'logins' && name !== 'notifications' && name !== 'incaps' && name !== 'deaths' && name !== 'crew' && name !== 'disconnects' && name !== 'collisions' && name !== 'quantum' && name !== 'insurance') {
             const data = await body();
             // 'activities' is a local pass-through record, not part of the
             // peer-ingest model (see INGEST_COLLECTIONS) - keep its old,
@@ -711,6 +713,19 @@ class StarCitizenService extends EventEmitter {
         this.state.quantum[id] = q;
         this.emit(ev.kind, q);
         this.emit('quantum:event', q);
+        break;
+      }
+      case 'insurance:claim': {
+        // B-011: the same real claim re-fires this line up to 200+ times while
+        // the client polls its status (see the parser rule's comment) - dedupe
+        // by entitlementURN, first sighting wins, same idiom as
+        // _playerDirectory. A later re-poll of an already-recorded claim never
+        // overwrites its original timestamp, and is never re-emitted.
+        if (!this.state.insurance[ev.entitlementURN]) {
+          const c = { id: ev.entitlementURN, entitlementURN: ev.entitlementURN, timestamp: ev.timestamp };
+          this.state.insurance[ev.entitlementURN] = c;
+          this.emit('insurance:claim', c);
+        }
         break;
       }
       case 'mission:contract':

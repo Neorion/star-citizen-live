@@ -50,6 +50,25 @@ test('handleLogChange routes a quantum route/select/arrive triple into the quant
   assert.strictEqual(generic.length, 3, 'quantum:event emitted for every kind, same as mission:event');
 });
 
+test('handleLogChange dedupes repeated insurance-claim re-polls by entitlementURN, first sighting wins', () => {
+  const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
+  const emitted = [];
+  s.on('insurance:claim', (c) => emitted.push(c));
+
+  // The real corpus shows the SAME claim re-firing this exact line up to 200+
+  // times (requestId incrementing) while the client polls status - simulate
+  // that with 3 re-polls of the same entitlementURN, plus one genuinely
+  // different claim.
+  s.handleLogChange('<2026-03-26T02:41:26.065Z> [Notice] <CWallet::ProcessClaimToNextStep> New Insurance Claim Request - entitlementURN: urn:sc:entitygraph:ltp:geid:7445428829319, requestId : 1 [Team_GameServices][Transaction]');
+  s.handleLogChange('<2026-03-26T02:41:27.557Z> [Notice] <CWallet::ProcessClaimToNextStep> New Insurance Claim Request - entitlementURN: urn:sc:entitygraph:ltp:geid:7445428829319, requestId : 2 [Team_GameServices][Transaction]');
+  s.handleLogChange('<2026-03-26T02:41:28.001Z> [Notice] <CWallet::ProcessClaimToNextStep> New Insurance Claim Request - entitlementURN: urn:sc:entitygraph:ltp:geid:7445428829319, requestId : 3 [Team_GameServices][Transaction]');
+  s.handleLogChange('<2026-04-30T18:10:15.268Z> [Notice] <CWallet::ProcessClaimToNextStep> New Insurance Claim Request - entitlementURN: urn:sc:entitygraph:ltp:geid:9615252140669, requestId : 1 [Team_GameServices][Transaction]');
+
+  assert.strictEqual(s.insurance.length, 2, 'deduped to 2 distinct claims, not 4 raw lines');
+  assert.strictEqual(emitted.length, 2, 'only emitted once per distinct claim');
+  assert.strictEqual(s.insurance[0].timestamp, '2026-03-26T02:41:26.065Z', 'kept the FIRST sighting, not a later re-poll');
+});
+
 test('replays a sample combat log: detects kills, classifies kill vs death + NPC', async () => {
   const path = require('node:path');
   const s = new StarCitizenService({ discord: { enable: false }, historyFile: NO_HISTORY });
