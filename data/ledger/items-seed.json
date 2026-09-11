@@ -1,0 +1,7 @@
+{
+  "_comment": "Seed item-class dictionary for services/TransactionLedger.js resolveItem(). Keyed by the raw itemClassGUID/class-name string from the log. Extracted once from the game's Data.p4k localization table (global.ini) or a community item database — never invented. An unresolved class falls back to the raw class name, never a guess.",
+
+  "items": {
+    "crlf_consumable_healing_01": "Hemozal"
+  }
+}
