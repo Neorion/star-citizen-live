@@ -6,12 +6,14 @@
   "exports": {
     ".": "./app/server.js",
     "./parser": "./app/parser.js",
-    "./types/Mission": "./types/Mission.js"
+    "./types/Mission": "./types/Mission.js",
+    "./ledger": "./services/TransactionLedger.js"
   },
   "scripts": {
     "start": "node app/server.js",
     "replay": "node scripts/replay.js",
     "backfill": "node scripts/backfill.js",
+    "ledger": "node scripts/ledger-ingest.js",
     "audit": "node scripts/audit.js",
     "build-vocab": "node scripts/build-uex-vocab.js   # refresh data/uex-reference.json from UEX (network; run after a game patch)",
     "test": "node --test test/*.test.js",

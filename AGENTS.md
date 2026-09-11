@@ -163,6 +163,14 @@ you fetch them. Check `git branch -r` before assuming something doesn't exist.
   `DESIGN-cargo-planning.md`. Tests: `test/cargo.test.js`, `test/ocr-parse.test.js`.
   Separable by design (one module + one flag + one panel). Still WIP — see the branch
   and `BACKLOG.md` for open phases.
+- **Game.log transaction ledger** → branch **`feature/ledger`**. Resolves the log's
+  unreadable shop/kiosk transactions (price, quantity, item) into a real spend/income
+  ledger: `services/TransactionLedger.js` (self-contained, zero repo-specific imports —
+  portable to other local tools by design, per the drafted feature brief), seed
+  resolution dictionaries in `data/ledger/`, REST at `/services/star-citizen/ledger*`
+  (flag `SC_TXN_LEDGER`), and a standalone CLI (`npm run ledger` →
+  `scripts/ledger-ingest.js`). No dashboard panel yet. See `PROGRESS.md` (top entry) for
+  the full writeup and `test/ledger.test.js` for coverage.
 
 ---
 

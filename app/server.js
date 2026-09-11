@@ -69,6 +69,7 @@ class StarCitizenService extends EventEmitter {
       discord: { enable: false, webhook: null, announceKills: true, announcePlayerJoins: true, announceActivities: false, announceMissions: false, announceCombat: false, announceIncaps: false, announceCollisions: false },
       missions: { enable: true },
       cargo: { enable: false },   // optional, strippable cargo route-optimizer (services/CargoRouter.js)
+      ledger: { enable: false },   // optional, strippable Game.log transaction ledger (services/TransactionLedger.js)
       ingest: { httpEnable: false },   // POST …/events - off by default (BUILD-PLAN-fabric-mesh.md WS1)
       fabric: { enable: false }   // optional Fabric P2P mesh backbone (BUILD-PLAN-fabric-mesh.md WS2, D-008)
     }, settings);
@@ -115,6 +116,14 @@ class StarCitizenService extends EventEmitter {
     // panel to strip the feature entirely (the core relay is unaffected).
     this.cargoRouter = (this.settings.cargo && this.settings.cargo.enable)
       ? new (require('../services/CargoRouter'))({ file: (this.settings.cargo && this.settings.cargo.file) || require('path').join(__dirname, '..', 'stores', 'cargo.json') })
+      : null;
+
+    // Optional Game.log transaction ledger. Self-contained (its own extraction,
+    // its own resolution dictionaries, its own persistence) — see the
+    // "SEPARABLE BY DESIGN" header in services/TransactionLedger.js. Fed raw
+    // lines via observe() in handleLogChange, same seam as cargoRouter above.
+    this.txnLedger = (this.settings.ledger && this.settings.ledger.enable)
+      ? new (require('../services/TransactionLedger').TransactionLedger)({ file: (this.settings.ledger && this.settings.ledger.file) || require('path').join(__dirname, '..', 'stores', 'ledger.json') })
       : null;
 
     // Optional Fabric P2P mesh backbone (D-008). Strippable exactly like
@@ -494,6 +503,65 @@ class StarCitizenService extends EventEmitter {
         } catch (e) { return send(400, { error: e.message }); }
       }
 
+      // ---- Transaction ledger (optional; only when enabled) ----
+      // Every route mirrors the cargo router's shape above: 503 when the
+      // feature is off, otherwise a thin pass-through to services/TransactionLedger.js.
+      if (req.method === 'GET' && path === `${base}/ledger`) {
+        if (!this.txnLedger) return send(503, { enabled: false, error: 'Transaction ledger not enabled (set SC_TXN_LEDGER=1)' });
+        const q = {
+          from: url.searchParams.get('from') || undefined,
+          to: url.searchParams.get('to') || undefined,
+          system: url.searchParams.get('system') || undefined,
+          locationId: url.searchParams.get('locationId') || undefined,
+          direction: url.searchParams.get('direction') || undefined,
+          kind: url.searchParams.get('kind') || undefined,
+          includeNonSuccess: url.searchParams.get('includeNonSuccess') === '1'
+        };
+        return send(200, { type: 'Collection', enabled: true, data: this.txnLedger.query(q) });
+      }
+      if (req.method === 'GET' && path === `${base}/ledger/summary`) {
+        if (!this.txnLedger) return send(503, { enabled: false });
+        return send(200, this.txnLedger.summary({
+          from: url.searchParams.get('from') || undefined,
+          to: url.searchParams.get('to') || undefined
+        }));
+      }
+      if (req.method === 'GET' && path === `${base}/ledger/export.csv`) {
+        if (!this.txnLedger) return send(503, { enabled: false });
+        const rows = this.txnLedger.query({ includeNonSuccess: url.searchParams.get('includeNonSuccess') === '1' });
+        const csv = this.txnLedger.toCSV(rows);
+        res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="ledger.csv"' });
+        return res.end(csv);
+      }
+      if (req.method === 'GET' && path === `${base}/ledger/stats`) {
+        if (!this.txnLedger) return send(503, { enabled: false });
+        return send(200, this.txnLedger.stats());
+      }
+      // Ingest saved logbackups (or any explicit paths) into the ledger — the
+      // portable core's batch path, exposed here for convenience. Read-only on
+      // the logs; writes only the ledger's own store.
+      if (req.method === 'POST' && path === `${base}/ledger/ingest`) {
+        if (!this.txnLedger) return send(503, { enabled: false });
+        const d = await body();
+        const dirs = Array.isArray(d.paths) && d.paths.length ? d.paths : require('../scripts/backfill').defaultDirs();
+        try { return send(200, await this.txnLedger.ingestPaths(dirs)); }
+        catch (e) { return send(400, { error: e.message }); }
+      }
+      // Operator corrections for the resolution dictionaries (§4.1/§4.3) —
+      // persisted and re-applied to every existing row, never silently guessed.
+      if (req.method === 'POST' && path === `${base}/ledger/action`) {
+        if (!this.txnLedger) return send(503, { enabled: false });
+        const d = await body(); const r = this.txnLedger;
+        try {
+          switch (d.action) {
+            case 'learnLocation': r.learnLocation(d.id, d.display); break;
+            case 'learnItem': r.learnItem(d.id, d.display); break;
+            default: return send(400, { error: 'unknown action' });
+          }
+          return send(200, { ok: true });
+        } catch (e) { return send(400, { error: e.message }); }
+      }
+
       // Snapshot for the monitor UI: counts + recent + combat candidates (newest first).
       if (req.method === 'GET' && path === `${base}/monitor`) {
         const limit = Math.min(parseInt(url.searchParams.get('limit'), 10) || 250, 1000);
@@ -502,6 +570,7 @@ class StarCitizenService extends EventEmitter {
           status: this.status, startedAt: this.state.startedAt, now: new Date().toISOString(),
           channel: this.channel, session: this.session, sessions: this.sessions,
           cargoEnabled: !!this.cargoRouter,
+          ledgerEnabled: !!this.txnLedger,
           meshEnabled: !!this.fabric,
           mesh: (() => {
             if (!this.fabric) return { enabled: false };
@@ -623,6 +692,10 @@ class StarCitizenService extends EventEmitter {
     // Optional cargo router: observe every line (does its own extraction; only
     // reads ev to drop a mission's cargo when it ends). Strippable seam.
     if (this.cargoRouter) { try { this.cargoRouter.observe(entry, ev); } catch (_) { /* never break the relay */ } }
+
+    // Optional transaction ledger: same strippable seam as cargoRouter (does
+    // its own extraction from the raw line; never reads ev).
+    if (this.txnLedger) { try { this.txnLedger.observe(entry); } catch (_) { /* never break the relay */ } }
 
     // Stamp session build/hardware from header lines (one-shot, additive).
     const sinfo = parseSessionInfo(entry);
@@ -1106,6 +1179,7 @@ if (require.main === module) {
     missions: { enable: true, dir: process.env.SC_REGISTER_DIR || null, officers: (process.env.SC_OFFICERS || '').split(',').map((s) => s.trim()).filter(Boolean) },
     discord: { enable: !!process.env.DISCORD_WEBHOOK_URL, webhook: process.env.DISCORD_WEBHOOK_URL || null },
     cargo: { enable: !!process.env.SC_CARGO_ROUTER },   // opt-in cargo route optimizer
+    ledger: { enable: !!process.env.SC_TXN_LEDGER },   // opt-in Game.log transaction ledger
     ingest: {
       httpEnable: !!process.env.SC_HTTP_INGEST,   // opt-in POST …/events (BUILD-PLAN-fabric-mesh.md WS1)
       requireSigned: !!process.env.SC_HTTP_INGEST_REQUIRE_SIGNED,   // refuse unsigned batches once the mesh is up (WS2)

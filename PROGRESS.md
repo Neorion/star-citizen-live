@@ -10,6 +10,61 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## 💰 Game.log transaction ledger ✅
+**Date:** 2026-09-11 · branch `feature/ledger`
+
+New feature, from a drafted brief (`Feature Brief: Game.log Transaction
+Ledger`, 2026-09-11): `Game.log` records every kiosk/terminal transaction —
+price, quantity, item — but every identifier in it is unreadable (shop
+archetypes reused at every outlet of a chain, engine location IDs, item-class
+and commodity GUIDs). There is no in-game spend history; the data is on disk
+and unreadable.
+
+Shipped as `services/TransactionLedger.js` — a single self-contained module
+(zero repo-specific imports, Node built-ins only) that parses the five
+transaction event shapes (kiosk buy, standard buy, commodity buy/sell,
+refinery order) plus their outcome (`RmShopFlowResponse`), pairs request →
+outcome **by arrival order, not field match** (the standard-item response
+omits shopId/kioskId entirely), and attaches the *location* from the nearest
+preceding `RequestLocationInventory` — the shop archetype string is **not**
+a place (it repeats at every outlet of a chain). Location IDs decode via a
+documented grammar (`<body><planet><moon>_<class>_<style>_<size>_<function>
+_<faction>_<instance>`) against a small seed dictionary that's honest about
+confidence: `exact` only when one real place is pinned, `inferred` with every
+real candidate listed when it isn't, `unresolved` with a reason when there's
+no seed entry at all — never a guessed name presented as fact. Same honesty
+split on `verified`: only the event shapes with a literal captured log line
+in the brief (`buy_commodity`, the outcome line, the location line) are
+`verified:true`; the other three request shapes are documented-but-unconfirmed
+and marked `verified:false` until seen in a real log.
+
+Built the same "separable by design" way as `services/CargoRouter.js`: one
+module + one settings flag (`SC_TXN_LEDGER`) + a handful of `/ledger*` routes
+in `app/server.js`, strippable without touching the core relay. Explicitly
+kept **portable beyond this app** per the brief's ask — the module does its
+own extraction, its own file-cursor idempotent ingestion (`ingestFile`/
+`ingestPaths`, streamed via `readline`, never loads a whole log into memory),
+and its own JSON persistence, so it can be copied into another local tool
+wholesale. `scripts/ledger-ingest.js` (`npm run ledger`) is the standalone CLI
+path, reusing `scripts/backfill.js`'s `defaultDirs()` only for "where are SC's
+logs on this machine" — the ledger logic itself never depends on it.
+
+20 new tests (`test/ledger.test.js`): pure-helper coverage (token extraction,
+location-grammar decode, exact/inferred/unresolved resolution), the
+worked §9 example end-to-end through `observe()`, non-Success exclusion from
+the default query/summary, unpaired-request flush-to-Unknown, idempotent
+replay and idempotent file re-ingestion, operator-correction re-resolution,
+and CSV round-trip. Full suite: **179/179** (177 pass, 2 pre-existing
+gated-skip).
+
+Not yet done: no dashboard panel (REST + CSV export only so far — cheap
+fast-follow, same shape as the `<FatalCollision>` collision rule's two-step
+ship). Seed dictionaries are intentionally tiny (only the brief's own worked
+examples) — real coverage grows from an operator's own corpus via
+`learnLocation`/`learnItem`, not from guessing more entries into the seed.
+
+---
+
 ## 🚀 B-019 — Quantum travel: destination + route tracking ✅
 **Date:** 2026-09-07 · branch `feature/quantum-travel`
 
