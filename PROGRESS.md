@@ -9,6 +9,63 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## Death reports (local-player death incidents from Game.log)
+**Date:** 2026-09-30 · branch `feat/death-report` (off `feature/rsi`)
+
+A new **Deaths** tab rebuilds each local-player death from `Game.log` into a
+report: headline ("Crashed Anvil Asgard tail-first into terrain on Pyro IV at
+17.8 m/s — incapacitated, no revive, died after 30 s"), cause, impact physics,
+timeline, position, and the gear left on the corpse, with Markdown/JSON export
+and a toast when a death is confirmed. Works on the live tail and on saved logs
+(**Rescan logs**), idempotently — a death is keyed by its corpse body id.
+
+- **Where:** `functions/deathSignatures.js` (regexes) → `functions/deathDetector.js`
+  (pure state machine) → `functions/deathReport.js` (cause, headline, export) →
+  `functions/deathReportStore.js` (`death-reports.json` beside `history.json`) →
+  `functions/deathReportHttp.js` (`…/deathreports*`) → `components/DeathReports.js`.
+  `LiveRelay` only feeds lines in and mounts the routes. Parser kinds and the
+  existing cumulative `deaths` count are untouched.
+- **Verified on:** ONE real log slice, build **12660092** (client 2026-09-27),
+  one player, one death (pilot fatal collision → incapacitated → corpse →
+  respawn). Fixture: `tests/relay/fixtures/death-fatal-collision-pilot.log`,
+  scrubbed of identifiers by `scripts/scrub-log-fixture.js`. Every signature in
+  the table has a real line there; no other death type is verified on that build.
+- **Honest limits:** reports are **inferred**, never officer-validated. Builds
+  after 4.3.0 do not log who/what killed you, so an on-foot death is
+  `cause: unknown` (the corpse line is the only signal). The kill-based causes
+  only fire on ≤ 4.3.0 logs, via the existing parser rules. `unconfirmed` =
+  a crash/ejection with no corpse logged — survived, revived, or the body was
+  lost with the ship; the log cannot tell which.
+- **Sanity run on real data (one player's corpus, counts only):** 1,646 log
+  files, 52.9M lines, 32 builds (10989003 → 12660092), ~75–110 s. 577
+  incidents: **498 confirmed** (498 distinct corpse body ids; a second scan
+  created 0), 79 unconfirmed. Causes: 479 `unknown` (on-foot, cause not
+  logged), 51 pilot collisions (only 5 with a corpse), 47 ejections from a
+  destroyed ship with **no** collision line — reported as
+  `vehicle_destroyed_unknown`, never as a collision. Respawn time was captured
+  for only ~1 in 10 confirmed deaths on recent builds (4 of 37 on 12660092)
+  and for none before build 11875683, so `respawnedAt` is optional. The
+  "Incapacitated" notice preceded only 7 of 498 deaths in this corpus.
+  This is a consistency check on one player's logs, **not** verification of
+  those other death shapes — no one checked the reports against what happened.
+- **Privacy:** reports are local only — own file, never in `history.json`, never
+  published to Fabric/Discord. They store no raw log lines, GEIDs, item instance
+  ids or filesystem paths (log file basename only).
+
+**Learned from the fixture (now encoded in the detector):** timestamps are not
+monotonic (order by line); the "Incapacitated" notice is **replayed** after
+respawn (it never opens an incident — which also means the existing
+`player:incap` count likely over-counts; not changed here); the corpse manifest
+burst is **not contiguous**; `Spawned!` alone is not a respawn; and the
+inventory-location line lands *before* `Spawned!`, not after.
+
+**Not done:** rebuilt `assets/index.html` (run `npm run build:browser` with
+current deps), overlay toast in the in-game HUD, "show on map", fixtures for
+other death types. `npm run deaths:preview` serves the tab standalone, without
+the Fabric packages, for a quick look.
+
+---
+
 ## When you fly on own profile
 **Date:** 2026-08-21 · branch `feature/rsi`
 

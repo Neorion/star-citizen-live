@@ -37,6 +37,7 @@ const ShipPicker = require('./ShipPicker');
 const LocationPicker = require('./LocationPicker');
 const StarMap = require('./StarMap');
 const MapPage = require('./MapPage');
+const DeathReports = require('./DeathReports');
 const missionCharts = require('../functions/missionCharts');
 
 const { FEATURES } = require('../constants');
@@ -115,6 +116,7 @@ function isCumulativeAnalytics (j) {
 const TABS = [
   ['home', 'Home'],
   ['missions', 'Missions'],
+  ['deaths', 'Deaths'],
   ['map', 'Map'],
   ['documents', 'Files'],
   ['groups', 'Groups'],
@@ -674,6 +676,7 @@ class Dashboard extends React.Component {
       showIdentity: false,
       chatUnread: 0,
       notifyPending: 0,
+      deathToast: null, // newest confirmed death report row (auto-dismissed)
       voiceJoined: false,
       nickname: null,
       presenceOnline: false,
@@ -906,6 +909,7 @@ class Dashboard extends React.Component {
     if (this._onHash) window.removeEventListener('hashchange', this._onHash);
     if (this._onDocClick) document.removeEventListener('click', this._onDocClick);
     if (this._onStorageAuth) window.removeEventListener('storage', this._onStorageAuth);
+    if (this._deathToastTimer) clearTimeout(this._deathToastTimer);
     if (this._identityUnsub) this._identityUnsub();
     if (this._timer) clearInterval(this._timer);
     if (this._analyticsTimer) clearInterval(this._analyticsTimer);
@@ -1283,6 +1287,32 @@ class Dashboard extends React.Component {
     );
   }
 
+  /**
+   * Toast a death the relay confirmed since the last poll. The first poll only
+   * records the newest id, so reloading the page never replays an old death.
+   * @param {{ latest: Object|null }|undefined} deathReports Monitor payload slice.
+   * @returns {Object|null} Report row to toast (or the one already showing).
+   */
+  nextDeathToast (deathReports) {
+    const latest = (deathReports && deathReports.latest) || null;
+    const id = latest ? latest.id : null;
+    const first = this._lastDeathId === undefined;
+    const changed = !first && id && id !== this._lastDeathId;
+    this._lastDeathId = id;
+    if (!changed || !featureEnabled('deaths')) return this.state.deathToast || null;
+    if (this._deathToastTimer) clearTimeout(this._deathToastTimer);
+    this._deathToastTimer = setTimeout(() => this.setState({ deathToast: null }), 15000);
+    return latest;
+  }
+
+  openDeathReport (id) {
+    if (this._deathToastTimer) clearTimeout(this._deathToastTimer);
+    this.setState({ deathToast: null });
+    const { setAppHash } = require('../functions/appHash');
+    setAppHash('deaths', { id });
+    this.showTab('deaths', { fromHash: true });
+  }
+
   async poll () {
     try {
       const r = await fetch('/services/star-citizen/monitor?limit=300', {
@@ -1318,7 +1348,8 @@ class Dashboard extends React.Component {
         loginfo: d.loginfo || null,
         corpus: d.corpus || this.state.corpus,
         reparse: d.reparse || null,
-        historySync: d.historySync || this.state.historySync
+        historySync: d.historySync || this.state.historySync,
+        deathToast: this.nextDeathToast(d.deathReports)
       }, () => {
         if (pinnedTop && this._feedRef.current) {
           this._feedRef.current.scrollTop = 0;
@@ -3152,7 +3183,8 @@ class Dashboard extends React.Component {
     const visitor = this.isPublicVisitor();
     const sessionTabs = new Set([
       'home', 'live', 'network', 'peers', 'messages', 'missions', 'wallet', 'documents',
-      'library', 'fleet', 'chat', 'groups', 'notifications', 'keys', 'devices', 'security', 'privacy'
+      'library', 'fleet', 'chat', 'groups', 'notifications', 'keys', 'devices', 'security', 'privacy',
+      'deaths'
     ]);
     if (visitor && sessionTabs.has(this.state.tab) && this.state.tab !== 'map') {
       return this.renderSignInPrompt();
@@ -3211,6 +3243,9 @@ class Dashboard extends React.Component {
         authToken: this.state.siteToken
       });
       case 'map': return React.createElement(MapPage, null);
+      case 'deaths': return featureEnabled('deaths')
+        ? React.createElement(DeathReports, { authToken: this.state.siteToken })
+        : this.renderHome();
       case 'notifications': return React.createElement(Notifications, {
         authToken: this.state.siteToken,
         onPendingCount: (n) => {
@@ -3504,6 +3539,17 @@ class Dashboard extends React.Component {
         ),
       ),
       this.renderTab(),
+      this.state.deathToast
+        ? React.createElement('div', { className: 'dr-toast', role: 'status' },
+          React.createElement('span', { className: 'dr-toast-text' }, '💀 ' + this.state.deathToast.summary),
+          React.createElement('button', {
+            className: 'dr-btn',
+            onClick: () => this.openDeathReport(this.state.deathToast.id)
+          }, 'Open report'),
+          React.createElement('button', {
+            className: 'dr-chip', 'aria-label': 'Dismiss', onClick: () => this.setState({ deathToast: null })
+          }, '×'))
+        : null,
       React.createElement(ActiveVoicePanel, {
         identityPubkey: this.state.identityPubkey,
         onVoice: (voice) => {
@@ -3555,7 +3601,8 @@ Dashboard.TITLE = TITLE;
 Dashboard.CHROME_CSS = CHROME_CSS;
 Dashboard.CSS = CSS + '\n' + (SiteLogin.CSS || '') + '\n' + (LogBrowser.CSS || '') + '\n' +
   (AppSearch.CSS || '') + '\n' + (Account.CSS || '') + '\n' + (DataSyncStatus.CSS || '') + '\n' +
-  (LinkedDevices.CSS || '') + '\n' + (Settings.CSS || '') + '\n' + (ActiveVoicePanel.CSS || '') + '\n' + CHROME_CSS;
+  (LinkedDevices.CSS || '') + '\n' + (Settings.CSS || '') + '\n' + (ActiveVoicePanel.CSS || '') + '\n' +
+  (DeathReports.CSS || '') + '\n' + CHROME_CSS;
 Dashboard.resolveHash = resolveHash;
 Dashboard.offerPassportDeviceLink = offerPassportDeviceLink;
 

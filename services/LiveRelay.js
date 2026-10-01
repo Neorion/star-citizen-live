@@ -47,6 +47,10 @@ try {
   };
 }
 const cumulativeHistory = require('../functions/cumulativeHistory');
+const deathReportStore = require('../functions/deathReportStore');
+const deathReportHttp = require('../functions/deathReportHttp');
+const deathReport = require('../functions/deathReport');
+const { createDeathDetector } = require('../functions/deathDetector');
 const gameLogMissionRegister = require('../functions/gameLogMissionRegister');
 const logCorpus = require('../functions/logCorpus');
 const historyLogShare = require('../functions/historyLogShare');
@@ -568,6 +572,14 @@ class StarCitizenService extends EventEmitter {
     this._historyFlushTimer = null;
     this._historyApplyLive = false; // true only after startup sync (avoids double heat on seed)
     this._historyGenerators = {}; // missionId → generator (for live mission:end typing)
+    // Death reports: local-player death incidents reconstructed from Game.log
+    // (functions/deathDetector.js). Durable under settingsDir/death-reports.json,
+    // deliberately NOT part of history — reports are never shared with peers.
+    this.deathReports = this._loadDeathReports();
+    this._deathReportsDirty = false;
+    this._deathReportsFlushTimer = null;
+    this._deathLine = 0; // lines fed to the live detector (stream order, not file line numbers)
+    this._deathDetector = this._newDeathDetector();
     this._sessionQueues = Object.create(null);
     this._historySync = {
       status: 'idle', files: 0, fileIndex: 0, lines: 0, startedAt: null, finishedAt: null
@@ -5185,6 +5197,94 @@ class StarCitizenService extends EventEmitter {
     }
   }
 
+  // ---- Death reports (local only; see functions/deathReportStore.js) ----
+
+  _deathReportsFile () {
+    if (this.settings.deathReportsFile) return this.settings.deathReportsFile;
+    if (this.settings.settingsDir) return deathReportStore.storePath(this.settings.settingsDir);
+    return null;
+  }
+
+  _loadDeathReports () {
+    try {
+      return deathReportStore.loadStore(this._deathReportsFile());
+    } catch (e) {
+      console.error('[STAR-CITIZEN] death reports load failed:', e.message);
+      return deathReportStore.emptyStore();
+    }
+  }
+
+  /** Detector options shared by the live tail and file rescans. */
+  _deathDetectorOptions () {
+    return {
+      handle: this._sessionHandle || null,
+      // Catalog name when it knows the zone; the detector's own fallback otherwise.
+      zoneName: (zone) => {
+        try {
+          const name = locationCatalog.displayName(zone);
+          return name && name !== zone ? name : deathReport.zoneDisplayName(zone);
+        } catch (_) { return deathReport.zoneDisplayName(zone); }
+      }
+    };
+  }
+
+  _newDeathDetector () {
+    return createDeathDetector(Object.assign(this._deathDetectorOptions(), {
+      logFile: this.settings.logfile ? path.basename(this.settings.logfile) : null
+    }));
+  }
+
+  _markDeathReportsDirty () {
+    this._deathReportsDirty = true;
+    if (this._deathReportsFlushTimer || this.settings.mode === 'server') return;
+    this._deathReportsFlushTimer = setTimeout(() => {
+      this._deathReportsFlushTimer = null;
+      this._flushDeathReports();
+    }, 2000);
+    if (this._deathReportsFlushTimer.unref) this._deathReportsFlushTimer.unref();
+  }
+
+  _flushDeathReports () {
+    if (!this._deathReportsDirty) return;
+    try {
+      deathReportStore.saveStore(this._deathReportsFile(), this.deathReports);
+      this._deathReportsDirty = false;
+    } catch (e) {
+      console.error('[STAR-CITIZEN] death reports flush failed:', e.message);
+    }
+  }
+
+  /**
+   * Feed one live/replayed Game.log line to the death detector and store what
+   * it reports. Line numbers here count lines since this relay attached, so
+   * live reports are stamped `lineBasis: 'stream'` (a rescan gives file lines).
+   * @param {string} entry Raw log line.
+   */
+  _feedDeathDetector (entry) {
+    if (this._sessionHandle) this._deathDetector.setHandle(this._sessionHandle);
+    const events = this._deathDetector.feed(++this._deathLine, entry);
+    for (const e of events) {
+      const report = Object.assign({}, e.report, { lineBasis: 'stream' });
+      if (e.type !== 'death.opened' && deathReportStore.upsertReport(this.deathReports, report) !== 'skipped') {
+        this._markDeathReportsDirty();
+      }
+      this.emit('death:report', { phase: e.type.slice('death.'.length), report });
+    }
+  }
+
+  /**
+   * Run the death detector over whole log files and merge what it finds.
+   * Idempotent: a death already on record is skipped (or upgraded when the
+   * rescan carries more evidence than the live capture did).
+   * @param {Array<string>} files Absolute log file paths (already vetted by the caller).
+   * @returns {Promise<{ files: number, lines: number, created: number, updated: number, skippedDuplicates: number }>}
+   */
+  async _rescanDeathReports (files) {
+    const out = await deathReportStore.rescanFiles(this.deathReports, files, this._deathDetectorOptions());
+    if (out.created || out.updated) this._markDeathReportsDirty();
+    return out;
+  }
+
   /**
    * Startup (and catch-up): fold every locatable Game.log + logbackup into
    * durable history using byte cursors. Only new bytes are read. Does not
@@ -7620,6 +7720,17 @@ class StarCitizenService extends EventEmitter {
         if (!this._requireSession(req, send)) return;
         return send(200, this._analyticsDataset());
       }
+      // ---- Death reports: local-player death incidents rebuilt from Game.log.
+      // Routes live in functions/deathReportHttp.js; local only (D-017). ----
+      if (await deathReportHttp.tryHandleDeathReports({
+        store: this.deathReports,
+        hosted: this.settings.mode === 'server',
+        requireSession: (r, s) => this._requireSession(r, s),
+        needsAuth: (r) => this._enforceRemoteAuth(r) && !this._authPubkey(r),
+        knownLogFiles: () => this._discoverCorpusFileList().concat(this.settings.logfile ? [this.settings.logfile] : []),
+        rescan: (files) => this._rescanDeathReports(files),
+        markDirty: () => this._markDeathReportsDirty()
+      }, req, res, { pathname, url, base, send, body, cors })) return;
       // Player log corpus: every Game.log + logbackup feeding cumulative Analyze.
       if (req.method === 'GET' && pathname === `${base}/corpus`) {
         if (!this._requireSession(req, send)) return;
@@ -7738,6 +7849,11 @@ class StarCitizenService extends EventEmitter {
           missionStats: this.missionStats(),
           kills: newest(this.kills),
           deaths: newest(this.deaths),
+          // Newest death report (list row) so the dashboard can toast a fresh death.
+          deathReports: (() => {
+            const page = deathReportStore.listReports(this.deathReports, { limit: 1, status: 'confirmed' });
+            return { total: this.deathReports.reports.length, latest: page.rows[0] || null };
+          })(),
           feed,
           sharing: {
             logs: this._shareLogsGlobal === true,
@@ -10539,6 +10655,9 @@ class StarCitizenService extends EventEmitter {
   handleLogChange (entry) {
     const ev = parseLine(entry);
     const id = idFor(entry);
+
+    // Death reports use their own signatures over the raw line (parser kinds untouched).
+    try { this._feedDeathDetector(entry); } catch (e) { this.emit('error', e); }
 
     if (ev.timestamp) this._lastLogEventAt = ev.timestamp;
     else this._lastLogEventAt = new Date().toISOString();
@@ -13798,6 +13917,8 @@ class StarCitizenService extends EventEmitter {
     if (this._pollTimer) { clearTimeout(this._pollTimer); this._pollTimer = null; }
     if (this._historyFlushTimer) { clearTimeout(this._historyFlushTimer); this._historyFlushTimer = null; }
     this._flushHistory();
+    if (this._deathReportsFlushTimer) { clearTimeout(this._deathReportsFlushTimer); this._deathReportsFlushTimer = null; }
+    this._flushDeathReports();
     if (this.snapshotManager) this.snapshotManager.stop();
     if (this.discordBot) {
       try { await this.discordBot.stop(); } catch (_) { /* ignore */ }

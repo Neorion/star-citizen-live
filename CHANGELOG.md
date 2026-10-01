@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] — Fabric-free rebuild (`feature/fabric-free-m1`)
 ### Added
+- **Death reports:** new **Deaths** tab rebuilds each local-player death from
+  `Game.log` (cause, impact, timeline, position, gear left on the corpse) with
+  Markdown/JSON export and log rescan. Inferred and local only — never shared
+  with peers. `GET …/deathreports`; `npm run deaths:preview` for a standalone view.
 - **Group voice:** Opt-in Federation-group voice with push-to-talk (**Shift+Tab**,
   rebindable from Chat ⚙ → Voice or Settings → Voice). Uncheck Push-to-talk for
   voice activity. Desktop captures the bind while another app is focused (hold
