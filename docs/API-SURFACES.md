@@ -243,6 +243,10 @@ use `:id` (pubkey, hash, slug, snowflake — as implemented).
 | `POST` | `/corpus/sync` | Local-player; hosted 400. |
 | `POST` | `/corpus/import` | Local-player; hosted 400. |
 | `POST` | `/corpus/remove` | Local-player. |
+| `GET` | `/deathreports` | **also /**. Session. Death report list (`limit`, `offset`, `cause`, `status`, `player`). Local only — never published to peers. |
+| `POST` | `/deathreports/rescan` | **also /**. Local-player; hosted 400. Body `{ path }` (a known log file) or `{ all: true }`. Idempotent. |
+| `GET` `DELETE` | `/deathreports/:id` | **also /**. Session. Full report / remove one. |
+| `GET` | `/deathreports/:id/export` | **also /**. Session. `?format=md\|json` download. |
 | `GET` | `/fs` | Directory listing; hosted 400. Session. |
 | `GET` | `/activity-tree` | Session. |
 | `POST` | `/activity-tree/publish` | |
