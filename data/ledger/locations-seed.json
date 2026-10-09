@@ -1,0 +1,29 @@
+{
+  "_comment": "Seed location dictionary for services/TransactionLedger.js resolveLocation(). Keyed off the decoded location-ID grammar (<body><class>_Outpost_<style>_<size>_<function>_<faction>_<instance>). Grow this by adding entries, not by guessing in code. 'confidence' is exact only when a bodyToken+function+faction combination pins exactly one named place; otherwise list every real candidate and mark it inferred so the UI never presents a guess as fact.",
+
+  "bodies": {
+    "_comment": "bodyToken -> human display for the celestial body. bodyToken is the <system><planetRoman><moonLetter> prefix, e.g. Pyro5d = Pyro V, moon d.",
+    "Pyro5d": "Fairo (Pyro V d)",
+    "Pyro5a": "Ignis (Pyro V a)"
+  },
+
+  "outposts": [
+    {
+      "_comment": "Worked example from the feature brief §9 / §4.1 — Fairo has exactly one depot, so function+faction+instance pins it uniquely.",
+      "bodyToken": "Pyro5d",
+      "function": "dpt",
+      "faction": "otlw",
+      "instance": "001",
+      "name": "FEO Canyon Depot",
+      "confidence": "exact"
+    },
+    {
+      "_comment": "Ignis has two outlaw trading posts of this shape; function+faction alone doesn't disambiguate. List both candidates rather than guessing.",
+      "bodyToken": "Pyro5a",
+      "function": "trdpst",
+      "faction": "otlw",
+      "candidates": ["Ashland", "Kabir's Post"],
+      "confidence": "inferred"
+    }
+  ]
+}

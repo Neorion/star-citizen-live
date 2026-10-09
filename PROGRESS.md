@@ -9,6 +9,52 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## Ledger (kiosk / terminal spend & income from Game.log)
+**Date:** 2026-10-08 · branch `feat/ledger` (off `feature/rsi`)
+
+A new **Ledger** tab rebuilds every kiosk/terminal transaction — item buys,
+commodity buys and sells, refinery orders — with price, quantity, outcome and
+**where it happened**, from `Game.log`. Ported from the Neorion fork's
+`feature/ledger` (2026-09-11) onto the RSI patterns: the self-contained
+`services/TransactionLedger.js` (Node built-ins only, own `ledger.json`
+beside `history.json`, own per-file cursor so re-scans are free) +
+`functions/ledgerHttp.js` (`…/ledger*`) + `components/Ledger.js` +
+`scripts/ledger-ingest.js` (`npm run ledger`). `LiveRelay` only feeds raw
+lines in and mounts the routes; parser kinds are untouched.
+
+- **Where** is honest by construction: the shop name in the log is a reusable
+  archetype (same string at every outlet of a chain), so the location is the
+  kiosk opened just before the purchase, decoded through the location-id
+  grammar and looked up in `data/ledger/locations-seed.json` — `exact` when
+  one real place is pinned, `inferred` with every candidate listed, otherwise
+  the raw id (`unresolved`) with a one-click **name it** correction that is
+  persisted and re-applied. The seed is deliberately tiny (two Pyro bodies,
+  two outposts), so `functions/ledgerLocationNames.js` adds a second opinion
+  from the wiki-backed `functions/locationCatalog.js`: Lagrange R&R station
+  ids (`RR_ARC_L1` → "ARC-L1 Wide Forest Station") and landing zones
+  (`Stanton2_Orison` → "Orison") resolve `exact`; low-orbit and jump-point
+  stations list candidates as `inferred`; Pyro station tokens (`RR_P1_L1`) and
+  asteroid bases stay unresolved. Rows carry `locationSource`
+  (`seed` / `catalog` / `operator`).
+- **Sanity run on real data (one player, counts only, 2026-10-08):** 1,676 log
+  files → **1,933 transactions** in ~35–65 s (1,052 kiosk item buys, 426
+  standard buys, 272 commodity sells, 173 commodity buys, 10 refinery orders;
+  1,472 `Success`, 456 never answered → `Unknown`). Location names: 624 exact,
+  262 inferred, 586 unresolved (47 distinct ids). The three request shapes
+  the fork had marked unverified all occur with every field present, so they
+  are now `verified:true`; the refinery-order line still carries no price
+  under the documented field name and stays unverified.
+- **Verified:** only the commodity-buy request, the kiosk outcome line and the
+  kiosk location line were confirmed against real log lines; the other three
+  request shapes are built from the documented field list and are marked
+  `verified:false` — the tab labels such rows "unverified shape".
+- **Privacy:** local only (own file, never in history, never published to
+  peers). Test fixtures carry placeholder handle/ids.
+- **Not done:** no per-location or per-item roll-ups yet; no map link; the
+  item-class dictionary has one entry.
+
+---
+
 ## When you fly on own profile
 **Date:** 2026-08-21 · branch `feature/rsi`
 

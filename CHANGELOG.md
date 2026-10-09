@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] — Fabric-free rebuild (`feature/fabric-free-m1`)
 ### Added
+- **Ledger:** new **Ledger** tab rebuilds kiosk/terminal buys, sells and
+  refinery orders (price, quantity, outcome, location with honest name
+  confidence) from `Game.log`, with CSV export, saved-log scan and operator
+  location corrections. Local only. `GET …/ledger*`; `npm run ledger`.
 - **Group voice:** Opt-in Federation-group voice with push-to-talk (**Shift+Tab**,
   rebindable from Chat ⚙ → Voice or Settings → Voice). Uncheck Push-to-talk for
   voice activity. Desktop captures the bind while another app is focused (hold

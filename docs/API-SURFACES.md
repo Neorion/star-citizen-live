@@ -243,6 +243,12 @@ use `:id` (pubkey, hash, slug, snowflake — as implemented).
 | `POST` | `/corpus/sync` | Local-player; hosted 400. |
 | `POST` | `/corpus/import` | Local-player; hosted 400. |
 | `POST` | `/corpus/remove` | Local-player. |
+| `GET` | `/ledger` | **also /**. Session. Transaction rows (`from`, `to`, `system`, `locationId`, `direction`, `kind`, `includeNonSuccess=1`). Local only — never published to peers. |
+| `GET` | `/ledger/summary` | **also /**. Session. Spend / income / net, per system. |
+| `GET` | `/ledger/stats` | **also /**. Session. |
+| `GET` | `/ledger/export.csv` | **also /**. Session. CSV download. |
+| `POST` | `/ledger/ingest` | **also /**. Local-player; hosted 400. Body `{ path }` (a known log file) or `{ all: true }`. Idempotent per file. |
+| `POST` | `/ledger/action` | **also /**. `{ action: learnLocation or learnItem, id, display }` operator correction. |
 | `GET` | `/fs` | Directory listing; hosted 400. Session. |
 | `GET` | `/activity-tree` | Session. |
 | `POST` | `/activity-tree/publish` | |
