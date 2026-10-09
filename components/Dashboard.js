@@ -37,6 +37,7 @@ const ShipPicker = require('./ShipPicker');
 const LocationPicker = require('./LocationPicker');
 const StarMap = require('./StarMap');
 const MapPage = require('./MapPage');
+const Ledger = require('./Ledger');
 const missionCharts = require('../functions/missionCharts');
 
 const { FEATURES } = require('../constants');
@@ -115,6 +116,7 @@ function isCumulativeAnalytics (j) {
 const TABS = [
   ['home', 'Home'],
   ['missions', 'Missions'],
+  ['ledger', 'Ledger'],
   ['map', 'Map'],
   ['documents', 'Files'],
   ['groups', 'Groups'],
@@ -3152,7 +3154,8 @@ class Dashboard extends React.Component {
     const visitor = this.isPublicVisitor();
     const sessionTabs = new Set([
       'home', 'live', 'network', 'peers', 'messages', 'missions', 'wallet', 'documents',
-      'library', 'fleet', 'chat', 'groups', 'notifications', 'keys', 'devices', 'security', 'privacy'
+      'library', 'fleet', 'chat', 'groups', 'notifications', 'keys', 'devices', 'security', 'privacy',
+      'ledger'
     ]);
     if (visitor && sessionTabs.has(this.state.tab) && this.state.tab !== 'map') {
       return this.renderSignInPrompt();
@@ -3211,6 +3214,9 @@ class Dashboard extends React.Component {
         authToken: this.state.siteToken
       });
       case 'map': return React.createElement(MapPage, null);
+      case 'ledger': return featureEnabled('ledger')
+        ? React.createElement(Ledger, { authToken: this.state.siteToken })
+        : this.renderHome();
       case 'notifications': return React.createElement(Notifications, {
         authToken: this.state.siteToken,
         onPendingCount: (n) => {
@@ -3555,7 +3561,8 @@ Dashboard.TITLE = TITLE;
 Dashboard.CHROME_CSS = CHROME_CSS;
 Dashboard.CSS = CSS + '\n' + (SiteLogin.CSS || '') + '\n' + (LogBrowser.CSS || '') + '\n' +
   (AppSearch.CSS || '') + '\n' + (Account.CSS || '') + '\n' + (DataSyncStatus.CSS || '') + '\n' +
-  (LinkedDevices.CSS || '') + '\n' + (Settings.CSS || '') + '\n' + (ActiveVoicePanel.CSS || '') + '\n' + CHROME_CSS;
+  (LinkedDevices.CSS || '') + '\n' + (Settings.CSS || '') + '\n' + (ActiveVoicePanel.CSS || '') + '\n' +
+  (Ledger.CSS || '') + '\n' + CHROME_CSS;
 Dashboard.resolveHash = resolveHash;
 Dashboard.offerPassportDeviceLink = offerPassportDeviceLink;
 

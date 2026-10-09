@@ -20,7 +20,8 @@ const SOURCE_FILES = [
   'functions/fabricDeviceLinkRelay.js',
   'functions/fabricDeviceLinkLocalHttp.js',
   'functions/liveRelayPeeringHttp.js',
-  'functions/groupVoiceHttp.js'
+  'functions/groupVoiceHttp.js',
+  'functions/ledgerHttp.js'
 ];
 
 /** Distinctive path tokens that must appear (backticks optional). */
@@ -45,6 +46,12 @@ const REQUIRED_NEEDLES = [
   '/corpus/sync',
   '/corpus/import',
   '/corpus/remove',
+  '/ledger',
+  '/ledger/summary',
+  '/ledger/stats',
+  '/ledger/export.csv',
+  '/ledger/ingest',
+  '/ledger/action',
   '/fs',
   '/activity-tree',
   '/activity-tree/publish',

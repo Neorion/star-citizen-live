@@ -13,7 +13,9 @@ const FEATURES = {
   // Files tab (advanced UI); runtime settings.documents.enable + Advanced mode.
   // Chat 📎 attach uses the same local catalog (always, not a remote Hub).
   documents: true,
-  library: false
+  library: false,
+  // Ledger tab: kiosk/terminal spend & income rebuilt from Game.log (local only).
+  ledger: true
 };
 
 module.exports = {

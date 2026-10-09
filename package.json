@@ -50,6 +50,7 @@
     "build:universe-explorer": "node scripts/build-universe-explorer.js",
     "build:browser": "node scripts/build.js && node scripts/build-universe-explorer.js",
     "replay": "node scripts/replay.js",
+    "ledger": "node scripts/ledger-ingest.js",
     "discord:events": "node scripts/discord-events.js",
     "discord:events:graphic": "node scripts/discord-events.js graphic --assets --png",
     "discord:events:graphic:permafleet": "node scripts/discord-events.js graphic --brand permafleet --assets --png",

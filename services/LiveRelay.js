@@ -47,6 +47,9 @@ try {
   };
 }
 const cumulativeHistory = require('../functions/cumulativeHistory');
+const ledgerHttp = require('../functions/ledgerHttp');
+const ledgerLocationNames = require('../functions/ledgerLocationNames');
+const { TransactionLedger } = require('./TransactionLedger');
 const gameLogMissionRegister = require('../functions/gameLogMissionRegister');
 const logCorpus = require('../functions/logCorpus');
 const historyLogShare = require('../functions/historyLogShare');
@@ -568,6 +571,14 @@ class StarCitizenService extends EventEmitter {
     this._historyFlushTimer = null;
     this._historyApplyLive = false; // true only after startup sync (avoids double heat on seed)
     this._historyGenerators = {}; // missionId → generator (for live mission:end typing)
+    // Transaction ledger: kiosk/terminal buys, sells and refinery orders rebuilt
+    // from Game.log (services/TransactionLedger.js — self-contained, own
+    // persistence under settingsDir/ledger.json). Local only, never shared.
+    this.ledger = new TransactionLedger({
+      file: this._ledgerFile(),
+      // Station / landing-zone ids the seed does not know are named from the wiki catalog.
+      resolveLocationFallback: (id) => ledgerLocationNames.resolveFromCatalog(id, locationCatalog)
+    });
     this._sessionQueues = Object.create(null);
     this._historySync = {
       status: 'idle', files: 0, fileIndex: 0, lines: 0, startedAt: null, finishedAt: null
@@ -5133,6 +5144,13 @@ class StarCitizenService extends EventEmitter {
    * explicit historyFile. Without either, cumulative state stays in-memory for
    * the process (unit tests) and is not loaded from a shared repo path.
    */
+  /** Ledger store beside history.json (null = memory only). */
+  _ledgerFile () {
+    if (this.settings.ledgerFile) return this.settings.ledgerFile;
+    if (this.settings.settingsDir) return path.join(this.settings.settingsDir, 'ledger.json');
+    return null;
+  }
+
   _historyFile () {
     if (this.settings.historyFile) return this.settings.historyFile;
     if (this.settings.settingsDir) return cumulativeHistory.historyPath(this.settings.settingsDir);
@@ -7620,6 +7638,14 @@ class StarCitizenService extends EventEmitter {
         if (!this._requireSession(req, send)) return;
         return send(200, this._analyticsDataset());
       }
+      // ---- Transaction ledger (functions/ledgerHttp.js) — local only (D-017). ----
+      if (await ledgerHttp.tryHandleLedger({
+        ledger: this.ledger,
+        hosted: this.settings.mode === 'server',
+        requireSession: (r, s) => this._requireSession(r, s),
+        needsAuth: (r) => this._enforceRemoteAuth(r) && !this._authPubkey(r),
+        knownLogFiles: () => this._discoverCorpusFileList().concat(this.settings.logfile ? [this.settings.logfile] : [])
+      }, req, res, { pathname, url, base, send, body, cors })) return;
       // Player log corpus: every Game.log + logbackup feeding cumulative Analyze.
       if (req.method === 'GET' && pathname === `${base}/corpus`) {
         if (!this._requireSession(req, send)) return;
@@ -7738,6 +7764,7 @@ class StarCitizenService extends EventEmitter {
           missionStats: this.missionStats(),
           kills: newest(this.kills),
           deaths: newest(this.deaths),
+          ledger: this.ledger.stats(),
           feed,
           sharing: {
             logs: this._shareLogsGlobal === true,
@@ -10540,6 +10567,9 @@ class StarCitizenService extends EventEmitter {
     const ev = parseLine(entry);
     const id = idFor(entry);
 
+    // Transaction ledger does its own extraction from the raw line (parser kinds untouched).
+    try { this.ledger.observe(entry); } catch (e) { this.emit('error', e); }
+
     if (ev.timestamp) this._lastLogEventAt = ev.timestamp;
     else this._lastLogEventAt = new Date().toISOString();
     this._updateDetectedShipFromEvent(ev);
@@ -10782,6 +10812,7 @@ class StarCitizenService extends EventEmitter {
       if (newFile || st.size < this._pos) {
         this._pos = 0; this._partial = '';
         this.emit('session:restart', { at: new Date().toISOString() });
+        try { this.ledger.flushPending(); } catch (_) { /* never break the poller */ }
       }
       this._ino = st.ino;
       if (st.size <= this._pos) return this._scheduleNextPoll();
