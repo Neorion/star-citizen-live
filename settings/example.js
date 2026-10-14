@@ -109,6 +109,15 @@ module.exports = {
   // Downstream orgs: this is how member machines boot into YOUR Group.
   // defaultGroupMessageId: '…',
 
+  // Shard capture (OFF by default). When on, the relay records which shard
+  // (<Join PU> id, e.g. pub_use1b_<build>_010), which replication endpoint and
+  // where in the verse it was handed between servers — into
+  // stores/gooncitizen/shard-capture.json only. Never shared with peers.
+  // Env alternative: SC_SHARD_CAPTURE=1. Read via GET …/shard (503 when off).
+  shard: {
+    enable: false
+  },
+
   // Initial State
   state: {
     status: 'STOPPED',

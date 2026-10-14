@@ -171,6 +171,8 @@ async function relaySettings () {
       officers: csv(process.env.SC_OFFICERS)
     },
     discord,
+    // Gated shard capture (which shard / server endpoint you are on); off unless asked for.
+    shard: Object.assign({ enable: process.env.SC_SHARD_CAPTURE === '1' }, localSettings.shard || {}),
     uplink: { intervalMs: 5000 },
     fabric: fabricBootBlock({
       env: process.env,

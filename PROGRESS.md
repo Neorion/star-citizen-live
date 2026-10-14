@@ -9,6 +9,51 @@ next. Each milestone closes with a short retro. Newest at the top.
 
 ---
 
+## Shard capture (gated backend data capture)
+**Date:** 2026-10-13 · branch `feat/shard-capture` (off `feature/rsi`)
+
+**Finding:** `Game.log` names the shard. `<Join PU> address[…] port[…]
+shard[pub_use1b_<build>_010]` is written on every join: environment, region
+(`use1b`, `euw1b`, `ape1a`, `apse2a`), build and shard number. Across one
+player's 1,696 logs: 2,523 joins, **444 distinct shards**, 4 regions; 38% of
+sessions joined more than one shard. The replication endpoint
+(`ViewName="Replicant ip:port"`) and our own actor's "Lost authority" resets
+(293) are also logged, and can be stamped with the last place the log
+mentioned (kiosk opened, quantum target, route start).
+
+**Built — OFF by default, no UI:** `settings.shard.enable` / `SC_SHARD_CAPTURE=1`
+turns on `functions/shardTracker.js` (pure state machine over
+`functions/shardSignals.js`) → `shard-capture.json` beside `history.json`
+(`functions/shardStore.js`) → `GET …/shard`, `…/shard/events`,
+`…/shard/export.csv`, `POST …/shard/rescan` (`functions/shardHttp.js`; all
+**503** when off). `LiveRelay` constructs nothing when the flag is off. The
+monitor exposes only `{ enabled }` plus the current shard id.
+
+**What the records claim:** `join` is verbatim from the log (verified);
+`handoff` (replicant endpoint changed mid-shard) and `authority` (own actor
+handed between servers) are **inferred** boundary evidence with the last
+known place and its own timestamp — whether a handoff is a server boundary or
+a replication-layer rebalance is not established. Join addresses are not a
+shard fingerprint: 258 of 444 shards were joined via more than one address,
+so **"same shard?" must compare shard ids, not addresses**.
+
+**Privacy:** records carry shard id, server address:port, place token and
+log basename — never the handle, GEID, session id or node id (tested). Local
+only; never in history, never published to peers.
+
+**Real-data run (counts only):** 54M lines in ~41 s → 1,252 unique joins,
+16 handoffs (8 with a place), 293 authority losses (139 with a place; top
+places `RR_P2_L4`, `RR_P5_L2`, `RR_P6_LEO`, `RR_P3_LEO`). `<Change Server>`
+start/end pairs (2,000+) are loading transitions with no server identity and
+are not stored.
+
+**Next:** the two-player test (do two org members on one shard read the same
+shard id? almost certainly yes — then a consent-gated "with you" marker is
+small); better place attribution (collision zones, inventory locations); a
+place → server table once more than one player contributes.
+
+---
+
 ## When you fly on own profile
 **Date:** 2026-08-21 · branch `feature/rsi`
 

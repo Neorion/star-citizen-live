@@ -611,6 +611,10 @@ Which wire to use is **[`docs/API-SURFACES.md`](docs/API-SURFACES.md)** — not
   `_syncCumulativeHistory()` — byte cursors in `log-cursors.json`, compact records
   in `history.json` under the store root. Live tail and peer `SCEventBatch`
   deaths/mission ends fold into the same store. Optional CLI: `npm run backfill`.
+- **Shard capture (GATED, off):** `settings.shard.enable` / `SC_SHARD_CAPTURE=1` →
+  `functions/shardTracker.js` → `shard-capture.json` → `GET …/shard*` (503 when off).
+  `<Join PU> shard[pub_<region>_<build>_<n>]` is the shard id; replicant handoffs and
+  authority losses are inferred boundary evidence. Local only, never shared. See `PROGRESS.md`.
 - **Hub sidechain / Beacon seal (D-015 / D-016 / D-018):** clients publish
   `GameStateSnapshot`; `relay.goon.vc` aggregates into `/services/rsi` **and**
   `/namespaces/<gooncitizenContractId>` on Hub `sidechain/STATE` so each Beacon

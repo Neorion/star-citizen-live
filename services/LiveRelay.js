@@ -48,6 +48,9 @@ try {
   };
 }
 const cumulativeHistory = require('../functions/cumulativeHistory');
+const shardHttp = require('../functions/shardHttp');
+const shardStore = require('../functions/shardStore');
+const { createShardTracker } = require('../functions/shardTracker');
 const gameLogMissionRegister = require('../functions/gameLogMissionRegister');
 const logCorpus = require('../functions/logCorpus');
 const historyLogShare = require('../functions/historyLogShare');
@@ -197,6 +200,10 @@ class StarCitizenService extends EventEmitter {
       uplink: { intervalMs: 5000 }, // Fabric SCEventBatch flush cadence (HTTPS uplink retired D-010)
       fabric: null, // { enable, listen, port, interface, peers, peersDb, relayAppMessages }
       settingsDir: null, // Hub-style named store root (stores/gooncitizen); register defaults beneath it
+      // Shard capture (GATED, off by default): which shard / replication endpoint this
+      // client is on and where it was handed between servers. Local only. Set
+      // `shard.enable` (env SC_SHARD_CAPTURE=1); `shard.file` overrides the store path.
+      shard: { enable: false, file: null },
       store: null // optional pre-started types/Store instance (Electron main / scripts/node.js)
     }, settings);
     this.settings.discord = Object.assign({
@@ -577,6 +584,10 @@ class StarCitizenService extends EventEmitter {
     this._historyFlushTimer = null;
     this._historyApplyLive = false; // true only after startup sync (avoids double heat on seed)
     this._historyGenerators = {}; // missionId → generator (for live mission:end typing)
+    // Shard capture is constructed only when enabled — off means no store, no file, no routes.
+    this.shardCapture = (this.settings.shard && this.settings.shard.enable)
+      ? { store: this._loadShardStore(), tracker: this._newShardTracker(), dirty: false, timer: null }
+      : null;
     this._sessionQueues = Object.create(null);
     this._historySync = {
       status: 'idle', files: 0, fileIndex: 0, lines: 0, startedAt: null, finishedAt: null
@@ -5207,6 +5218,60 @@ class StarCitizenService extends EventEmitter {
    * explicit historyFile. Without either, cumulative state stays in-memory for
    * the process (unit tests) and is not loaded from a shared repo path.
    */
+  // ---- Shard capture (gated; see functions/shardStore.js) ----
+
+  _shardFile () {
+    if (this.settings.shard && this.settings.shard.file) return this.settings.shard.file;
+    if (this.settings.settingsDir) return shardStore.storePath(this.settings.settingsDir);
+    return null;
+  }
+
+  _loadShardStore () {
+    try { return shardStore.loadStore(this._shardFile()); } catch (e) {
+      console.error('[STAR-CITIZEN] shard capture load failed:', e.message);
+      return shardStore.emptyStore();
+    }
+  }
+
+  _newShardTracker () {
+    return createShardTracker({ logFile: this.settings.logfile ? path.basename(this.settings.logfile) : null });
+  }
+
+  _markShardDirty () {
+    const sc = this.shardCapture;
+    if (!sc) return;
+    sc.dirty = true;
+    if (sc.timer || this.settings.mode === 'server') return;
+    sc.timer = setTimeout(() => { sc.timer = null; this._flushShardCapture(); }, 2000);
+    if (sc.timer.unref) sc.timer.unref();
+  }
+
+  _flushShardCapture () {
+    const sc = this.shardCapture;
+    if (!sc || !sc.dirty) return;
+    try { shardStore.saveStore(this._shardFile(), sc.store); sc.dirty = false; } catch (e) {
+      console.error('[STAR-CITIZEN] shard capture flush failed:', e.message);
+    }
+  }
+
+  /** Feed one live/replayed line to the shard tracker (no-op when capture is off). */
+  _feedShardCapture (entry) {
+    const sc = this.shardCapture;
+    if (!sc) return;
+    for (const e of sc.tracker.feed(entry)) {
+      if (shardStore.addEvent(sc.store, e)) this._markShardDirty();
+      this.emit('shard:' + e.type, e.record);
+    }
+  }
+
+  async _rescanShardCapture (files) {
+    const sc = this.shardCapture;
+    if (!sc) return { files: 0, lines: 0, added: 0, skippedDuplicates: 0 };
+    const out = await shardStore.rescanFiles(sc.store, files);
+    if (out.added) this._markShardDirty();
+    return out;
+  }
+
   _historyFile () {
     if (this.settings.historyFile) return this.settings.historyFile;
     if (this.settings.settingsDir) return cumulativeHistory.historyPath(this.settings.settingsDir);
@@ -7699,6 +7764,17 @@ class StarCitizenService extends EventEmitter {
         if (!this._requireSession(req, send)) return;
         return send(200, this._analyticsDataset());
       }
+      // ---- Shard capture (functions/shardHttp.js) — gated, local only (D-017). ----
+      if (await shardHttp.tryHandleShard({
+        enabled: !!this.shardCapture,
+        store: this.shardCapture ? this.shardCapture.store : null,
+        current: () => (this.shardCapture ? this.shardCapture.tracker.current() : null),
+        hosted: this.settings.mode === 'server',
+        requireSession: (r, s) => this._requireSession(r, s),
+        needsAuth: (r) => this._enforceRemoteAuth(r) && !this._authPubkey(r),
+        knownLogFiles: () => this._discoverCorpusFileList().concat(this.settings.logfile ? [this.settings.logfile] : []),
+        rescan: (files) => this._rescanShardCapture(files)
+      }, req, res, { pathname, url, base, send, body, cors })) return;
       // Player log corpus: every Game.log + logbackup feeding cumulative Analyze.
       if (req.method === 'GET' && pathname === `${base}/corpus`) {
         if (!this._requireSession(req, send)) return;
@@ -7817,6 +7893,10 @@ class StarCitizenService extends EventEmitter {
           missionStats: this.missionStats(),
           kills: newest(this.kills),
           deaths: newest(this.deaths),
+          // Gated shard capture: only the flag and the current shard id (no addresses) in the monitor.
+          shard: this.shardCapture
+            ? { enabled: true, shardId: (this.shardCapture.tracker.current().shard || {}).id || null }
+            : { enabled: false },
           feed,
             sharing: {
             logs: this._shareLogsGlobal === true,
@@ -10651,6 +10731,9 @@ class StarCitizenService extends EventEmitter {
   handleLogChange (entry) {
     const ev = parseLine(entry);
     const id = idFor(entry);
+
+    // Shard capture (gated) reads the raw line itself; parser kinds untouched.
+    try { this._feedShardCapture(entry); } catch (e) { this.emit('error', e); }
 
     if (ev.timestamp) this._lastLogEventAt = ev.timestamp;
     else this._lastLogEventAt = new Date().toISOString();
@@ -13934,6 +14017,8 @@ class StarCitizenService extends EventEmitter {
     if (this._pollTimer) { clearTimeout(this._pollTimer); this._pollTimer = null; }
     if (this._historyFlushTimer) { clearTimeout(this._historyFlushTimer); this._historyFlushTimer = null; }
     this._flushHistory();
+    if (this.shardCapture && this.shardCapture.timer) { clearTimeout(this.shardCapture.timer); this.shardCapture.timer = null; }
+    this._flushShardCapture();
     if (this.snapshotManager) this.snapshotManager.stop();
     if (this.discordBot) {
       try { await this.discordBot.stop(); } catch (_) { /* ignore */ }

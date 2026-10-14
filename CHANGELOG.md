@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] — Fabric-free rebuild (`feature/fabric-free-m1`)
 ### Added
+- **Shard capture (gated, off by default):** `SC_SHARD_CAPTURE=1` records which shard
+  (`<Join PU>` id), replication endpoint and where the client was handed between
+  servers, into a local `shard-capture.json`; `GET …/shard*` answer 503 when off.
+  No UI. Never shared with peers.
 - **Group voice:** Opt-in Federation-group voice with push-to-talk (**Shift+Tab**,
   rebindable from Chat ⚙ → Voice or Settings → Voice). Uncheck Push-to-talk for
   voice activity. Desktop captures the bind while another app is focused (hold

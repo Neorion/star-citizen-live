@@ -243,6 +243,10 @@ use `:id` (pubkey, hash, slug, snowflake — as implemented).
 | `POST` | `/corpus/sync` | Local-player; hosted 400. |
 | `POST` | `/corpus/import` | Local-player; hosted 400. |
 | `POST` | `/corpus/remove` | Local-player. |
+| `GET` | `/shard` | **also /**. GATED: 503 `{ enabled:false }` unless `settings.shard.enable` / `SC_SHARD_CAPTURE=1`. Session. Current shard id + endpoint, shards seen, handoffs by place. Local only. |
+| `GET` | `/shard/events` | **also /**. Gated. Session. `?kind=joins, handoffs or authority` and `limit`. |
+| `GET` | `/shard/export.csv` | **also /**. Gated. Session. CSV download. |
+| `POST` | `/shard/rescan` | **also /**. Gated; local-player, hosted 400. Body `{ path }` (known log) or `{ all: true }`. Idempotent. |
 | `GET` | `/fs` | Directory listing; hosted 400. Session. |
 | `GET` | `/activity-tree` | Session. |
 | `POST` | `/activity-tree/publish` | |

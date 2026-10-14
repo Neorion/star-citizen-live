@@ -20,7 +20,8 @@ const SOURCE_FILES = [
   'functions/fabricDeviceLinkRelay.js',
   'functions/fabricDeviceLinkLocalHttp.js',
   'functions/liveRelayPeeringHttp.js',
-  'functions/groupVoiceHttp.js'
+  'functions/groupVoiceHttp.js',
+  'functions/shardHttp.js'
 ];
 
 /** Distinctive path tokens that must appear (backticks optional). */
@@ -45,6 +46,10 @@ const REQUIRED_NEEDLES = [
   '/corpus/sync',
   '/corpus/import',
   '/corpus/remove',
+  '/shard',
+  '/shard/events',
+  '/shard/export.csv',
+  '/shard/rescan',
   '/fs',
   '/activity-tree',
   '/activity-tree/publish',
