@@ -25,6 +25,26 @@ function pathKey (p) {
   return process.platform === 'win32' ? abs.toLowerCase() : abs;
 }
 
+// One rescan at a time per store (a rescan re-reads whole log files).
+const rescanning = new WeakMap();
+
+/**
+ * Cross-origin guard for state-changing requests. A request with no Origin
+ * header (curl, same-origin tools) is allowed; a loopback Origin is allowed;
+ * any other Origin must match the request's own Host header.
+ * @param {Object} req Node http.IncomingMessage
+ * @returns {boolean} true when the request should be refused.
+ */
+function isCrossOrigin (req) {
+  const origin = req.headers && req.headers.origin;
+  if (!origin) return false;
+  let host;
+  try { host = new URL(String(origin)).host.toLowerCase(); } catch (_) { return true; }
+  const name = host.replace(/:[0-9]+$/, '');
+  if (name === 'localhost' || name === '127.0.0.1' || name === '[::1]') return false;
+  return host !== String(req.headers.host || '').toLowerCase();
+}
+
 const OFF = { enabled: false, error: 'Shard capture is off (set SC_SHARD_CAPTURE=1 or settings.shard.enable)' };
 
 /**
@@ -75,6 +95,7 @@ async function tryHandleShard (host, req, res, io) {
   if (req.method === 'POST' && is('/shard/rescan')) {
     if (host.hosted) { send(400, { error: 'shard rescan is a local-player operation' }); return true; }
     if (host.needsAuth(req)) { send(401, AUTH_REQUIRED); return true; }
+    if (isCrossOrigin(req)) { send(403, { error: 'cross-origin request refused' }); return true; }
     const d = await body();
     const known = new Map();
     for (const f of host.knownLogFiles()) known.set(pathKey(f), path.resolve(f));
@@ -85,7 +106,10 @@ async function tryHandleShard (host, req, res, io) {
       if (!hit) { send(400, { error: 'path is not a known log file (import it in the log browser first)' }); return true; }
       files = [hit];
     } else { send(400, { error: 'path or all:true required' }); return true; }
-    const result = await host.rescan(files.filter((f) => fs.existsSync(f)));
+    if (rescanning.get(host.store)) { send(409, { error: 'shard rescan already running' }); return true; }
+    rescanning.set(host.store, true);
+    let result;
+    try { result = await host.rescan(files.filter((f) => fs.existsSync(f))); } finally { rescanning.delete(host.store); }
     send(200, Object.assign({ type: 'ShardRescan' }, result));
     return true;
   }
@@ -93,4 +117,4 @@ async function tryHandleShard (host, req, res, io) {
   return true;
 }
 
-module.exports = { tryHandleShard };
+module.exports = { tryHandleShard, isCrossOrigin };

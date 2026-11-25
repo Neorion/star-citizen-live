@@ -52,6 +52,10 @@ shard id? almost certainly yes — then a consent-gated "with you" marker is
 small); better place attribution (collision zones, inventory locations); a
 place → server table once more than one player contributes.
 
+- **Hardening (2026-11-25):** `summary()` now uses null-prototype maps so a shard id like `__proto__` cannot corrupt `GET …/shard`; shard ids must match `[A-Za-z0-9_-]{1,64}` (checked in `shardSignals` and `addEvent`; place tokens over 200 chars dropped); CSV cells starting with `= + - @` / tab / CR are quote-prefixed against formula injection.
+- `POST …/shard/rescan` is single-flight (409 while one runs) and refuses a foreign `Origin` (403). In shared-LAN mode any signed-in peer can read the records (same session model as other read routes), so "local only" strictly means loopback.
+- Guide: `docs/SHARD-CAPTURE.md`.
+
 ---
 
 ## When you fly on own profile

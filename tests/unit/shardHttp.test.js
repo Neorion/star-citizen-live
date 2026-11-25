@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 
 const shardStore = require('../../functions/shardStore');
-const { tryHandleShard } = require('../../functions/shardHttp');
+const { tryHandleShard, isCrossOrigin } = require('../../functions/shardHttp');
 
 const BASE = '/services/star-citizen';
 const LINES = [
@@ -47,8 +47,8 @@ async function mount (knownFiles, overrides = {}) {
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
-  const request = (method, reqPath, payload) => new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, method, path: reqPath, headers: { 'Content-Type': 'application/json' } }, (res) => {
+  const request = (method, reqPath, payload, extra) => new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, method, path: reqPath, headers: Object.assign({ 'Content-Type': 'application/json' }, extra || {}) }, (res) => {
       let buf = ''; res.on('data', (c) => { buf += c; });
       res.on('end', () => { let b = buf; if (/json/.test(res.headers['content-type'] || '')) { try { b = JSON.parse(buf); } catch (_) {} } resolve({ status: res.statusCode, headers: res.headers, body: b }); });
     });
@@ -117,4 +117,47 @@ test('hosted mode refuses rescan; unauthenticated remote callers cannot read', a
     assert.strictEqual((await locked.request('GET', `${BASE}/shard/export.csv`)).status, 401);
     assert.strictEqual((await locked.request('POST', `${BASE}/shard/rescan`, { all: true })).status, 401);
   } finally { await locked.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+test('rescan: an overlapping rescan answers 409; a later one succeeds', async () => {
+  const { dir, file } = tmpLog();
+  let release;
+  let started;
+  const startedP = new Promise((resolve) => { started = resolve; });
+  const gate = new Promise((resolve) => { release = resolve; });
+  let calls = 0;
+  const app = await mount([file], { rescan: async () => { calls += 1; started(); await gate; return { files: 0, lines: 0, added: 0, skippedDuplicates: 0 }; } });
+  try {
+    const first = app.request('POST', `${BASE}/shard/rescan`, { all: true });
+    await startedP;
+    const second = await app.request('POST', `${BASE}/shard/rescan`, { all: true });
+    assert.strictEqual(second.status, 409);
+    assert.strictEqual(second.body.error, 'shard rescan already running');
+    release();
+    assert.strictEqual((await first).status, 200);
+    assert.strictEqual((await app.request('POST', `${BASE}/shard/rescan`, { all: true })).status, 200);
+    assert.strictEqual(calls, 2);
+  } finally { release(); await app.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('rescan: foreign Origin is refused (403); loopback Origin and no Origin are allowed', async () => {
+  const { dir, file } = tmpLog();
+  const app = await mount([file]);
+  try {
+    const foreign = await app.request('POST', `${BASE}/shard/rescan`, { all: true }, { Origin: 'https://evil.example' });
+    assert.strictEqual(foreign.status, 403);
+    assert.strictEqual(foreign.body.error, 'cross-origin request refused');
+    assert.strictEqual(app.store.joins.length, 0, 'nothing was scanned');
+    assert.strictEqual((await app.request('POST', `${BASE}/shard/rescan`, { all: true }, { Origin: 'http://localhost:5173' })).status, 200);
+    assert.strictEqual((await app.request('POST', `${BASE}/shard/rescan`, { all: true }, { Origin: 'http://127.0.0.1:3041' })).status, 200);
+    assert.strictEqual((await app.request('POST', `${BASE}/shard/rescan`, { all: true })).status, 200);
+    assert.strictEqual(isCrossOrigin({ headers: { origin: 'http://relay.test:3041', host: 'relay.test:3041' } }), false, 'same host as Host header');
+    assert.strictEqual(isCrossOrigin({ headers: { origin: 'null', host: 'relay.test:3041' } }), true);
+  } finally { await app.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('gated: 503 comes before the Origin check', async () => {
+  const app = await mount([], { enabled: false, store: null });
+  try {
+    assert.strictEqual((await app.request('POST', `${BASE}/shard/rescan`, { all: true }, { Origin: 'https://evil.example' })).status, 503);
+  } finally { await app.close(); }
 });

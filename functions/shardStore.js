@@ -55,6 +55,9 @@ function saveStore (file, store) {
   store.meta = out.meta;
 }
 
+const SHARD_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const MAX_PLACE = 200;
+
 const KIND = { join: 'joins', handoff: 'handoffs', authority: 'authority' };
 
 /**
@@ -64,12 +67,15 @@ const KIND = { join: 'joins', handoff: 'handoffs', authority: 'authority' };
 function addEvent (store, event) {
   const key = KIND[event && event.type];
   if (!key || !event.record || !event.record.id) return false;
+  let rec = event.record;
+  if (typeof rec.shardId === 'string' && !SHARD_ID_RE.test(rec.shardId)) return false;
+  if (typeof rec.place === 'string' && rec.place.length > MAX_PLACE) rec = Object.assign({}, rec, { place: null });
   const list = store[key];
-  if (list.some((r) => r.id === event.record.id)) return false;
+  if (list.some((r) => r.id === rec.id)) return false;
   // At the cap, anything older than the oldest kept record is dropped, not
   // rotated in — so re-scanning old files stays a no-op.
-  if (list.length >= CAP[key] && String(event.record.at) <= String(list[0].at)) return false;
-  list.push(event.record);
+  if (list.length >= CAP[key] && String(rec.at) <= String(list[0].at)) return false;
+  list.push(rec);
   list.sort((a, b) => String(a.at).localeCompare(String(b.at)));
   if (list.length > CAP[key]) list.splice(0, list.length - CAP[key]);
   return true;
@@ -80,7 +86,8 @@ function addEvent (store, event) {
  * places where handoffs / authority losses happened most. Counts only.
  */
 function summary (store) {
-  const shards = {};
+  // Null-prototype maps: keys come from log text, so `__proto__` must stay inert.
+  const shards = Object.create(null);
   const touch = (r) => {
     if (!r.shardId) return null;
     const s = shards[r.shardId] || (shards[r.shardId] = { shardId: r.shardId, region: r.region || null, build: r.build || null, joins: 0, handoffs: 0, authority: 0, firstSeen: r.at, lastSeen: r.at, endpoints: new Set() });
@@ -92,16 +99,16 @@ function summary (store) {
   for (const r of store.handoffs) { const s = touch(r); if (s) { s.handoffs += 1; s.endpoints.add(`${r.from.address}:${r.from.port}`); s.endpoints.add(`${r.to.address}:${r.to.port}`); } }
   for (const r of store.authority) { const s = touch(r); if (s) { s.authority += 1; if (r.replicant) s.endpoints.add(`${r.replicant.address}:${r.replicant.port}`); } }
   const byPlace = (rows) => {
-    const m = {};
+    const m = Object.create(null);
     for (const r of rows) { const k = r.place || '(unknown)'; m[k] = (m[k] || 0) + 1; }
     return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 25).map(([place, count]) => ({ place, count }));
   };
-  const regions = {};
+  const regions = Object.create(null);
   for (const s of Object.values(shards)) regions[s.region || '?'] = (regions[s.region || '?'] || 0) + 1;
   return {
     counts: { joins: store.joins.length, handoffs: store.handoffs.length, authority: store.authority.length },
     shards: Object.values(shards).map((s) => Object.assign({}, s, { endpoints: s.endpoints.size })).sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen))),
-    regions,
+    regions: Object.assign({}, regions),
     handoffsByPlace: byPlace(store.handoffs),
     authorityByPlace: byPlace(store.authority)
   };
@@ -112,7 +119,7 @@ function summary (store) {
  */
 function toCSV (store) {
   const cols = ['kind', 'at', 'shardId', 'region', 'build', 'place', 'placeKind', 'placeAt', 'fromAddress', 'fromPort', 'toAddress', 'toPort', 'logFile'];
-  const esc = (v) => { if (v == null) return ''; const s = String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const esc = (v) => { if (v == null) return ''; let s = String(v); if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const rows = [cols.join(',')];
   const push = (kind, r, from, to) => rows.push([kind, r.at, r.shardId, r.region, r.build, r.place, r.placeKind, r.placeAt,
     from && from.address, from && from.port, to && to.address, to && to.port, r.logFile].map(esc).join(','));
