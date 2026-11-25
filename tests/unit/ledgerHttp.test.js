@@ -61,7 +61,7 @@ async function mount (knownFiles, overrides = {}) {
     if (payload) req.write(JSON.stringify(payload));
     req.end();
   });
-  return { ledger, request, close: () => new Promise((resolve) => server.close(resolve)) };
+  return { ledger, request, port, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
 test('ingest -> rows -> summary -> stats -> csv -> correction over HTTP', async () => {
@@ -166,5 +166,104 @@ test('unrelated paths fall through to the next handler', async () => {
   try {
     assert.strictEqual((await app.request('GET', `${BASE}/analytics`)).body.error, 'unhandled');
     assert.strictEqual((await app.request('PUT', `${BASE}/ledger`)).body.error, 'unhandled');
+  } finally { await app.close(); }
+});
+
+// --- hardening: hosted corrections, length caps, single-flight ingest, origin guard, paging ---
+
+test('hosted mode refuses ledger corrections', async () => {
+  const hosted = await mount([], { hosted: true });
+  try {
+    const res = await hosted.request('POST', `${BASE}/ledger/action`, { action: 'learnItem', id: 'a', display: 'b' });
+    assert.strictEqual(res.status, 400);
+    assert.match(res.body.error, /local-player operation/);
+  } finally { await hosted.close(); }
+});
+
+test('ledger action rejects over-long id/display and strips control characters', async () => {
+  const app = await mount([]);
+  try {
+    assert.strictEqual((await app.request('POST', `${BASE}/ledger/action`, { action: 'learnItem', id: 'x'.repeat(201), display: 'ok' })).status, 400);
+    assert.strictEqual((await app.request('POST', `${BASE}/ledger/action`, { action: 'learnItem', id: 'x', display: 'y'.repeat(121) })).status, 400);
+    assert.strictEqual((await app.request('POST', `${BASE}/ledger/action`, { action: 'learnItem', id: 'x'.repeat(200), display: 'y'.repeat(120) })).status, 200);
+    const res = await app.request('POST', `${BASE}/ledger/action`, { action: 'learnItem', id: 'item1', display: 'Nice\u0000\u0007 Name\n' });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(app.ledger.overrides.items.item1, 'Nice Name');
+    // Only control characters -> empty display -> rejected.
+    assert.strictEqual((await app.request('POST', `${BASE}/ledger/action`, { action: 'learnItem', id: 'item2', display: '\u0001\u0002' })).status, 400);
+  } finally { await app.close(); }
+});
+
+test('an overlapping ingest answers 409 and the guard clears afterwards', async () => {
+  const { dir, file } = tmpLog();
+  const app = await mount([file]);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  app.ledger.ingestPaths = async () => { await gate; return { filesFound: 1, filesScanned: 1, filesSkippedUnchanged: 0, transactionsAdded: 0 }; };
+  try {
+    const first = app.request('POST', `${BASE}/ledger/ingest`, { all: true });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const second = await app.request('POST', `${BASE}/ledger/ingest`, { all: true });
+    assert.strictEqual(second.status, 409);
+    assert.match(second.body.error, /already running/);
+    release();
+    assert.strictEqual((await first).status, 200);
+    assert.strictEqual((await app.request('POST', `${BASE}/ledger/ingest`, { all: true })).status, 200);
+  } finally {
+    release();
+    await app.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('POST routes refuse a foreign Origin and accept loopback or same-host Origins', async () => {
+  const { dir, file } = tmpLog();
+  const app = await mount([file]);
+  const post = (reqPath, headers, payload) => new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: app.port, method: 'POST', path: reqPath, headers: Object.assign({ 'Content-Type': 'application/json' }, headers) }, (res) => {
+      let buf = '';
+      res.on('data', (c) => { buf += c; });
+      res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(buf) }));
+    });
+    req.on('error', reject);
+    req.end(JSON.stringify(payload));
+  });
+  try {
+    const act = { action: 'learnItem', id: 'a', display: 'b' };
+    for (const p of ['/ledger/action', '/ledger/ingest']) {
+      const bad = await post(`${BASE}${p}`, { Origin: 'http://evil.example' }, p.endsWith('action') ? act : { all: true });
+      assert.strictEqual(bad.status, 403, p);
+      assert.match(bad.body.error, /cross-origin/);
+    }
+    assert.strictEqual(app.ledger.overrides.items.a, undefined, 'refused before any mutation');
+    assert.strictEqual((await post(`${BASE}/ledger/action`, { Origin: `http://127.0.0.1:${app.port}` }, act)).status, 200);
+    assert.strictEqual((await post(`${BASE}/ledger/action`, { Origin: 'http://localhost:9999' }, act)).status, 200);
+    assert.strictEqual((await post(`${BASE}/ledger/action`, { Origin: 'http://[::1]:9999' }, act)).status, 200);
+    assert.strictEqual((await post(`${BASE}/ledger/action`, { Origin: 'http://relay.test:3041', Host: 'relay.test:3041' }, act)).status, 200, 'same host');
+    assert.strictEqual((await post(`${BASE}/ledger/action`, {}, act)).status, 200, 'no Origin header');
+  } finally {
+    await app.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('GET /ledger pages the newest rows with limit/offset and keeps total', async () => {
+  const app = await mount([]);
+  try {
+    for (let i = 1; i <= 10; i++) {
+      const ts = `2026-09-06T08:00:${String(i).padStart(2, '0')}.000Z`;
+      app.ledger.transactions[`id${i}`] = { id: `id${i}`, utcTs: ts, result: 'Success', direction: 'spend', kind: 'buy_commodity', amountAuec: i };
+    }
+    const all = await app.request('GET', `${BASE}/ledger`);
+    assert.strictEqual(all.body.data.length, 10);
+    const last3 = await app.request('GET', `${BASE}/ledger?limit=3`);
+    assert.strictEqual(last3.body.total, 10);
+    assert.deepStrictEqual(last3.body.data.map((r) => r.id), ['id8', 'id9', 'id10']);
+    const paged = await app.request('GET', `${BASE}/ledger?limit=3&offset=3`);
+    assert.deepStrictEqual(paged.body.data.map((r) => r.id), ['id5', 'id6', 'id7']);
+    const tail = await app.request('GET', `${BASE}/ledger?limit=5&offset=8`);
+    assert.deepStrictEqual(tail.body.data.map((r) => r.id), ['id1', 'id2']);
+    assert.strictEqual((await app.request('GET', `${BASE}/ledger?offset=50`)).body.data.length, 0);
+    assert.strictEqual((await app.request('GET', `${BASE}/ledger?limit=abc`)).body.data.length, 10, 'bad limit falls back to default');
   } finally { await app.close(); }
 });

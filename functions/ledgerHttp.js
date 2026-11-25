@@ -6,7 +6,8 @@
  * Read-only over data already on this node: nothing here publishes to Fabric
  * or Discord (where you shopped and what you spent stays local — D-017).
  *
- *   GET  {base}/ledger             rows (from, to, system, locationId, direction, kind, includeNonSuccess=1)
+ *   GET  {base}/ledger             rows (from, to, system, locationId, direction, kind, includeNonSuccess=1,
+ *                                  limit=5000 (max 20000), offset=0 — both applied to the NEWEST rows)
  *   GET  {base}/ledger/summary     spend / income / net (+ per system)
  *   GET  {base}/ledger/stats       counts (transactions, files ingested, names learned)
  *   GET  {base}/ledger/export.csv  CSV download
@@ -17,6 +18,38 @@
 
 const fs = require('fs');
 const path = require('path');
+
+/** Ingests started by this module, keyed by ledger: single-flight guard. */
+const RUNNING_INGESTS = new WeakMap();
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+const DEFAULT_LIMIT = 5000;
+const MAX_LIMIT = 20000;
+const MAX_ID_LEN = 200;
+const MAX_DISPLAY_LEN = 120;
+
+/**
+ * Cross-origin guard for state-changing routes. A browser page on another site
+ * sends an Origin header; refuse it unless it is loopback or the same host the
+ * request was addressed to. Requests with no Origin (non-browser clients) pass.
+ * @param {Object} req Node http request.
+ * @returns {boolean} true when the request is a foreign-origin browser request.
+ */
+function isCrossOrigin (req) {
+  const origin = req.headers && req.headers.origin;
+  if (!origin) return false;
+  let originHost;
+  try { originHost = new URL(String(origin)).host.toLowerCase(); } catch (_) { return true; }
+  const hostname = originHost.replace(/:\d+$/, '');
+  if (LOOPBACK_HOSTS.has(hostname)) return false;
+  return originHost !== String(req.headers.host || '').toLowerCase();
+}
+
+/** Clamp a query integer into [min, max], or return the default. */
+function intParam (raw, def, min, max) {
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, n));
+}
 
 /** Compare paths the way the filesystem does (realpath; case-insensitive on Windows). */
 function pathKey (p) {
@@ -53,7 +86,11 @@ async function tryHandleLedger (host, req, res, io) {
       kind: q('kind'),
       includeNonSuccess: url.searchParams.get('includeNonSuccess') === '1'
     });
-    send(200, { type: 'Collection', total: rows.length, data: rows });
+    // Rows are ascending by time: page from the newest end.
+    const limit = intParam(url.searchParams.get('limit'), DEFAULT_LIMIT, 1, MAX_LIMIT);
+    const offset = intParam(url.searchParams.get('offset'), 0, 0, Number.MAX_SAFE_INTEGER);
+    const end = Math.max(0, rows.length - offset);
+    send(200, { type: 'Collection', total: rows.length, data: rows.slice(Math.max(0, end - limit), end) });
     return true;
   }
   if (req.method === 'GET' && (pathname === `${base}/ledger/summary` || pathname === '/ledger/summary')) {
@@ -78,6 +115,7 @@ async function tryHandleLedger (host, req, res, io) {
   }
   if (req.method === 'POST' && (pathname === `${base}/ledger/ingest` || pathname === '/ledger/ingest')) {
     if (host.hosted) { send(400, { error: 'ledger ingest is a local-player operation' }); return true; }
+    if (isCrossOrigin(req)) { send(403, { error: 'cross-origin request refused' }); return true; }
     if (host.needsAuth(req)) { send(401, AUTH_REQUIRED); return true; }
     const d = await body();
     // Only files this node already knows as logs — never an arbitrary path from the request.
@@ -90,16 +128,24 @@ async function tryHandleLedger (host, req, res, io) {
       if (!hit) { send(400, { error: 'path is not a known log file (import it in the log browser first)' }); return true; }
       files = [hit];
     } else { send(400, { error: 'path or all:true required' }); return true; }
-    const result = await host.ledger.ingestPaths(files.filter((f) => fs.existsSync(f)));
+    if (RUNNING_INGESTS.has(host.ledger)) { send(409, { error: 'ledger ingest already running' }); return true; }
+    const run = host.ledger.ingestPaths(files.filter((f) => fs.existsSync(f)));
+    RUNNING_INGESTS.set(host.ledger, run);
+    let result;
+    try { result = await run; } finally { RUNNING_INGESTS.delete(host.ledger); }
     send(200, Object.assign({ type: 'LedgerIngest' }, result, host.ledger.stats()));
     return true;
   }
   if (req.method === 'POST' && (pathname === `${base}/ledger/action` || pathname === '/ledger/action')) {
+    if (host.hosted) { send(400, { error: 'ledger corrections are a local-player operation' }); return true; }
+    if (isCrossOrigin(req)) { send(403, { error: 'cross-origin request refused' }); return true; }
     if (host.needsAuth(req)) { send(401, AUTH_REQUIRED); return true; }
     const d = await body();
     const id = typeof d.id === 'string' ? d.id.trim() : '';
-    const display = typeof d.display === 'string' ? d.display.trim() : '';
+    // eslint-disable-next-line no-control-regex
+    const display = typeof d.display === 'string' ? d.display.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim() : '';
     if (!id || !display) { send(400, { error: 'id and display required' }); return true; }
+    if (id.length > MAX_ID_LEN || display.length > MAX_DISPLAY_LEN) { send(400, { error: 'id or display too long' }); return true; }
     if (d.action === 'learnLocation') host.ledger.learnLocation(id, display);
     else if (d.action === 'learnItem') host.ledger.learnItem(id, display);
     else { send(400, { error: 'unknown action' }); return true; }
@@ -109,4 +155,4 @@ async function tryHandleLedger (host, req, res, io) {
   return false;
 }
 
-module.exports = { tryHandleLedger };
+module.exports = { tryHandleLedger, isCrossOrigin };

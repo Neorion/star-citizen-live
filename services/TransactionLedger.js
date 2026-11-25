@@ -108,6 +108,15 @@ function toNumber (raw) {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Own-property read: a token such as `constructor` never returns an inherited function.
+ * @param {Object} obj
+ * @param {String} key
+ * @returns {*} The value, or undefined when `key` is not an own property.
+ */
+function own (obj, key) {
+  return obj != null && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
+}
+
 /** Deterministic short id, self-contained (this module never imports app/server.js's idFor). */
 function idFor (content) {
   return crypto.createHash('sha256').update(String(content)).digest('hex').slice(0, 32);
@@ -149,7 +158,7 @@ function resolveLocation (locationId, seed) {
   const decoded = decodeLocationId(locationId);
   if (!decoded) return { id: locationId, display: null, confidence: 'unresolved', reason: 'location id did not match the known grammar', decoded: null };
 
-  const bodyDisplay = (seed && seed.bodies && seed.bodies[decoded.bodyToken]) || decoded.bodyToken;
+  const bodyDisplay = (seed && own(seed.bodies, decoded.bodyToken)) || decoded.bodyToken;
   const outposts = (seed && seed.outposts) || [];
   const candidates = outposts.filter((o) =>
     o.bodyToken === decoded.bodyToken && o.function === decoded.function && o.faction === decoded.faction &&
@@ -173,7 +182,7 @@ function resolveLocation (locationId, seed) {
  * else the raw class name — never a guess. */
 function resolveItem (classIdOrName, seed) {
   const key = classIdOrName || '';
-  const known = seed && seed.items && seed.items[key];
+  const known = seed && own(seed.items, key);
   if (known) return { display: known, confidence: 'exact' };
   return { display: key || null, confidence: key ? 'unresolved' : 'unresolved' };
 }
@@ -183,7 +192,7 @@ function resolveItem (classIdOrName, seed) {
  * design (§4.3) — the harvested map has no independent confirmation, so this
  * is always reported 'inferred' when found, 'unresolved' otherwise. */
 function resolveCommodity (guid, learnedMap) {
-  const known = learnedMap && learnedMap[guid];
+  const known = learnedMap && own(learnedMap, guid);
   if (known) return { display: known, confidence: 'inferred' };
   return { display: null, confidence: 'unresolved' };
 }
@@ -278,6 +287,14 @@ function loadJsonSafe (file, fallback) {
 const DEFAULT_LOCATIONS_SEED = path.join(__dirname, '..', 'data', 'ledger', 'locations-seed.json');
 const DEFAULT_ITEMS_SEED = path.join(__dirname, '..', 'data', 'ledger', 'items-seed.json');
 
+/** Live pending queue cap: beyond this the oldest request is committed as 'Unknown'. */
+const MAX_PENDING = 200;
+
+/** New pairing context (see TransactionLedger constructor). */
+function newContext (file, buildId = null) {
+  return { pending: [], lastLocation: null, session: { file, buildId }, ingest: false };
+}
+
 class TransactionLedger {
   /**
    * @param {Object} opts
@@ -300,10 +317,12 @@ class TransactionLedger {
     this.overrides = { locations: {}, items: {} }; // operator corrections, keyed by raw id/class
     this._load();
 
-    // Runtime-only scratch (never persisted; rebuilt per session/file).
-    this._pending = [];       // FIFO of open buy/sell requests awaiting a shop_flow_response
-    this._lastLocation = null; // { locationId, player, ts } — most recent RequestLocationInventory
-    this._session = { file: 'live', buildId: null };
+    // Runtime-only scratch (never persisted). Pairing state lives in a context so a
+    // file ingest (its own context) can never disturb the live tail's context.
+    // ctx = { pending: FIFO of open requests, lastLocation: { locationId, player, ts }, session: { file, buildId } }
+    this._live = newContext('live');
+    this._dirty = false;
+    this._flushTimer = null;
   }
 
   // ---- persistence --------------------------------------------------
@@ -317,20 +336,43 @@ class TransactionLedger {
     this.overrides = data.overrides || { locations: {}, items: {} };
   }
 
+  /** Write the store now, atomically (tmp file then rename). */
   _persist () {
+    this._dirty = false;
     if (!this.file) return;
+    const tmp = `${this.file}.tmp`;
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      fs.writeFileSync(this.file, JSON.stringify({
+      fs.writeFileSync(tmp, JSON.stringify({
         transactions: this.transactions, cursors: this.cursors,
         commodityNames: this.commodityNames, overrides: this.overrides
       }));
+      fs.renameSync(tmp, this.file);
     } catch (_) { /* non-fatal — never break the caller over a disk hiccup */ }
   }
 
+  /** Mark the store changed and schedule one debounced write (2 s, unref'd timer).
+   * In-memory mode (`file: null`) never creates a timer. */
+  _markDirty () {
+    this._dirty = true;
+    if (!this.file || this._flushTimer) return;
+    this._flushTimer = setTimeout(() => {
+      this._flushTimer = null;
+      if (this._dirty) this._persist();
+    }, 2000);
+    if (this._flushTimer.unref) this._flushTimer.unref();
+  }
+
+  /** Cancel any pending debounce and write immediately if there are unsaved changes. */
+  flush () {
+    if (this._flushTimer) { clearTimeout(this._flushTimer); this._flushTimer = null; }
+    if (this._dirty) this._persist();
+  }
+
   // ---- session context (which file/build a batch of observe() calls belongs to) ----
+  /** Set the live tail's session (file/build). Never affects a running ingest. */
   setSession ({ file = 'live', buildId = null } = {}) {
-    this._session = { file, buildId };
+    this._live.session = { file, buildId };
   }
 
   // ---- resolution (kept live so operator corrections apply without re-parsing) ----
@@ -341,19 +383,19 @@ class TransactionLedger {
       try { alt = this.resolveLocationFallback(row.locationId); } catch (_) { alt = null; }
       if (alt && alt.display && alt.confidence) loc = Object.assign({}, loc, alt, { source: 'catalog' });
     }
-    const locOverride = row.locationId && this.overrides.locations[row.locationId];
+    const locOverride = row.locationId && own(this.overrides.locations, row.locationId);
     row.locationDisplay = locOverride || loc.display;
     row.locationConfidence = locOverride ? 'exact' : loc.confidence;
     row.locationSource = locOverride ? 'operator' : (loc.source || (loc.confidence === 'unresolved' ? null : 'seed'));
     row.system = loc.system || null;
 
     if (row.itemClass) {
-      const itemOverride = this.overrides.items[row.itemClass];
+      const itemOverride = own(this.overrides.items, row.itemClass);
       const item = resolveItem(row.itemClass, this.itemSeed);
       row.itemDisplay = itemOverride || item.display;
     }
     if (row.resourceGuid) {
-      const resOverride = this.overrides.items[row.resourceGuid];
+      const resOverride = own(this.overrides.items, row.resourceGuid);
       const res = resolveCommodity(row.resourceGuid, this.commodityNames);
       row.resourceDisplay = resOverride || res.display;
     }
@@ -364,7 +406,7 @@ class TransactionLedger {
    * or after growing a seed dictionary, so existing rows pick up the fix). */
   reresolveAll () {
     for (const row of Object.values(this.transactions)) this._resolveRow(row);
-    this._persist();
+    this._markDirty();
   }
 
   learnLocation (locationId, display) { this.overrides.locations[locationId] = display; this.reresolveAll(); }
@@ -372,38 +414,48 @@ class TransactionLedger {
 
   // ---- ingestion ------------------------------------------------------
   /** Feed one raw log line. Safe to call for every line of a live tail —
-   * lines this module doesn't care about are a fast no-op. */
-  observe (rawLine) {
+   * lines this module doesn't care about are a fast no-op.
+   * @param {String} rawLine
+   * @param {Object} [ctx] Pairing context; defaults to the live tail's.
+   * @returns {Object|null} The committed row when a response completed a pair.
+   */
+  observe (rawLine, ctx = this._live) {
     const ev = parseLedgerLine(rawLine);
     if (!ev) return null;
 
     if (ev.kind === 'location_request') {
-      this._lastLocation = { locationId: ev.locationId, player: ev.player, ts: ev.timestamp };
+      ctx.lastLocation = { locationId: ev.locationId, player: ev.player, ts: ev.timestamp };
       return null;
     }
     if (ev.kind === 'commodity_name_hint') {
-      if (ev.resourceGuid && ev.commodityName) this.commodityNames[ev.resourceGuid] = ev.commodityName;
+      if (ev.resourceGuid && ev.commodityName) {
+        this.commodityNames[ev.resourceGuid] = ev.commodityName;
+        if (!ctx.ingest) this._markDirty();
+      }
       return null;
     }
     if (ev.kind === 'shop_flow_response') {
-      const pending = this._pending.shift(); // pair by arrival order (§6.2) — never by field match
+      const pending = ctx.pending.shift(); // pair by arrival order (§6.2) — never by field match
       if (!pending) return null;
-      return this._commit(pending, ev);
+      return this._commit(pending, ev, ctx);
     }
     // One of the five request kinds: hold it until its response arrives.
-    this._pending.push(ev);
+    ctx.pending.push(ev);
+    if (ctx.pending.length > MAX_PENDING) this._commit(ctx.pending.shift(), { result: 'Unknown' }, ctx);
     return null;
   }
 
   /** Any request still waiting for a response at end-of-file/session becomes
-   * an explicit Unknown-result row rather than silently vanishing (§6.1). */
-  flushPending () {
-    const left = this._pending;
-    this._pending = [];
-    for (const ev of left) this._commit(ev, { result: 'Unknown' });
+   * an explicit Unknown-result row rather than silently vanishing (§6.1).
+   * @param {Object} [ctx] Pairing context; defaults to the live tail's.
+   */
+  flushPending (ctx = this._live) {
+    const left = ctx.pending;
+    ctx.pending = [];
+    for (const ev of left) this._commit(ev, { result: 'Unknown' }, ctx);
   }
 
-  _commit (requestEv, responseEv) {
+  _commit (requestEv, responseEv, ctx = this._live) {
     const direction = DIRECTION[requestEv.kind] || 'spend';
     const id = idFor([requestEv.timestamp, requestEv.shopId, requestEv.kioskId, requestEv.amount, requestEv.quantity].join('|'));
     if (this.transactions[id]) return this.transactions[id]; // idempotent — same event committed twice is a no-op
@@ -411,8 +463,8 @@ class TransactionLedger {
     const row = {
       id,
       utcTs: requestEv.timestamp,
-      sessionFile: this._session.file,
-      buildId: this._session.buildId,
+      sessionFile: ctx.session.file,
+      buildId: ctx.session.buildId,
       kind: requestEv.kind,
       direction,
       amountAuec: requestEv.amount,
@@ -424,13 +476,13 @@ class TransactionLedger {
       shopArchetype: requestEv.shopArchetype || null,
       shopId: requestEv.shopId || null,
       kioskId: requestEv.kioskId || null,
-      locationId: this._lastLocation ? this._lastLocation.locationId : null,
+      locationId: ctx.lastLocation ? ctx.lastLocation.locationId : null,
       result: responseEv.result || 'Unknown',
       verified: requestEv.verified
     };
     this._resolveRow(row);
     this.transactions[id] = row;
-    this._persist();
+    if (!ctx.ingest) this._markDirty(); // an ingest persists once, when its file closes
     return row;
   }
 
@@ -447,19 +499,32 @@ class TransactionLedger {
       return { skipped: true, reason: 'unchanged since last ingest' };
     }
 
-    this.setSession({ file: path.basename(abs), buildId: this._session.buildId });
+    // Fresh context per file: never touches the live tail's pairing state, and the
+    // last location does not carry over between files.
+    const ctx = newContext(path.basename(abs), this._live.session.buildId);
+    ctx.ingest = true;
     const before = Object.keys(this.transactions).length;
 
     return new Promise((resolve) => {
+      let done = false;
       const rl = readline.createInterface({ input: fs.createReadStream(abs), crlfDelay: Infinity });
-      rl.on('line', (line) => { try { this.observe(line); } catch (_) { /* one bad line never aborts the file */ } });
+      rl.on('line', (line) => { try { this.observe(line, ctx); } catch (_) { /* one bad line never aborts the file */ } });
       rl.on('close', () => {
-        this.flushPending();
+        if (done) return;
+        done = true;
+        this.flushPending(ctx);
         this.cursors[abs] = { size: stat.size, mtime: stat.mtimeMs };
-        this._persist();
+        this._dirty = true;
+        this.flush();
         resolve({ skipped: false, added: Object.keys(this.transactions).length - before });
       });
-      rl.on('error', () => resolve({ skipped: false, added: Object.keys(this.transactions).length - before, error: true }));
+      rl.on('error', () => {
+        if (done) return;
+        done = true;
+        this._dirty = true;
+        this.flush();
+        resolve({ skipped: false, added: Object.keys(this.transactions).length - before, error: true });
+      });
     });
   }
 
@@ -507,14 +572,14 @@ class TransactionLedger {
   summary (opts = {}) {
     const rows = this.query(opts);
     let spend = 0, income = 0;
-    const bySystem = {};
+    const bySystem = Object.create(null);
     for (const r of rows) {
       const amt = r.amountAuec || 0;
       if (r.direction === 'income') income += amt; else spend += amt;
       const sys = r.system || 'Unknown';
       bySystem[sys] = (bySystem[sys] || 0) + (r.direction === 'income' ? amt : -amt);
     }
-    return { count: rows.length, spend, income, net: income - spend, bySystem };
+    return { count: rows.length, spend, income, net: income - spend, bySystem: Object.assign({}, bySystem) };
   }
 
   /** CSV export — every column of the data model round-trips (§7). */
@@ -525,8 +590,10 @@ class TransactionLedger {
       'system', 'result', 'verified'];
     const esc = (v) => {
       if (v == null) return '';
-      const s = String(v);
-      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      let s = String(v);
+      // Spreadsheet formula injection: neutralise strings a spreadsheet would evaluate (numbers stay as-is).
+      if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     const lines = [cols.join(',')];
     for (const r of rows) lines.push(cols.map((c) => esc(r[c])).join(','));
@@ -538,7 +605,7 @@ class TransactionLedger {
       transactions: Object.keys(this.transactions).length,
       filesIngested: Object.keys(this.cursors).length,
       commodityNamesLearned: Object.keys(this.commodityNames).length,
-      pendingUnpaired: this._pending.length
+      pendingUnpaired: this._live.pending.length
     };
   }
 }

@@ -13965,6 +13965,7 @@ class StarCitizenService extends EventEmitter {
     if (this._pollTimer) { clearTimeout(this._pollTimer); this._pollTimer = null; }
     if (this._historyFlushTimer) { clearTimeout(this._historyFlushTimer); this._historyFlushTimer = null; }
     this._flushHistory();
+    try { this.ledger.flush(); } catch (_) { /* never block shutdown */ }
     if (this.snapshotManager) this.snapshotManager.stop();
     if (this.discordBot) {
       try { await this.discordBot.stop(); } catch (_) { /* ignore */ }

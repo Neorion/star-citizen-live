@@ -44,14 +44,23 @@ lines in and mounts the routes; parser kinds are untouched.
   the fork had marked unverified all occur with every field present, so they
   are now `verified:true`; the refinery-order line still carries no price
   under the documented field name and stays unverified.
-- **Verified:** only the commodity-buy request, the kiosk outcome line and the
-  kiosk location line were confirmed against real log lines; the other three
-  request shapes are built from the documented field list and are marked
-  `verified:false` — the tab labels such rows "unverified shape".
+- **Verified:** the commodity-buy, commodity-sell, kiosk item-buy and standard
+  item-buy request lines, the kiosk outcome line and the kiosk location line
+  are confirmed against real log lines (`verified:true` in `EVENT_TAGS`). The
+  refinery-order request, the standard-path outcome line and the commodity-name
+  hint are not (`verified:false`) — the tab labels such rows "unverified shape".
 - **Privacy:** local only (own file, never in history, never published to
   peers). Test fixtures carry placeholder handle/ids.
 - **Not done:** no per-location or per-item roll-ups yet; no map link; the
   item-class dictionary has one entry.
+- **Hardening (2026-11-25):** ingest runs in its own pairing context so a scan
+  can no longer mis-pair or flush the live tail; `ledger.json` is written
+  atomically with a 2 s debounce (`flush()` on stop, once per ingested file) and
+  the live pending queue is capped at 200; lookups are prototype-safe and CSV
+  cells starting `= + - @` are quote-prefixed. Routes: `/ledger/action` is
+  refused when hosted and length-capped, `/ledger/ingest` is single-flight (409),
+  both POSTs refuse a foreign `Origin`, and `GET /ledger` takes `limit`/`offset`.
+- **Guide:** `docs/LEDGER.md`.
 
 ---
 
