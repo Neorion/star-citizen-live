@@ -284,6 +284,20 @@ class StarCitizenService extends EventEmitter {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache, must-revalidate' });
         return res.end(html);
       }
+      // Mining rock-crack calculator: a standalone static page + its engine + baked
+      // reference data (DESIGN-mining-calculator.md). No parser/log coupling; remove
+      // this block + app/mining*.js|html + data/mining-reference.json to strip it.
+      if (req.method === 'GET' && (path === '/mining' || path === '/mining.html' || path === '/mining-calc.js' || path === '/mining-data.js')) {
+        const file = path === '/mining' ? 'mining.html' : path.slice(1);
+        const type = file.endsWith('.js') ? 'application/javascript; charset=utf-8' : 'text/html; charset=utf-8';
+        try { const body = fs.readFileSync(require('path').join(__dirname, file), 'utf8');
+          res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-cache, must-revalidate' }); return res.end(body);
+        } catch (_) { return send(404, { error: `${file} missing (run npm run build-mining)` }); }
+      }
+      if (req.method === 'GET' && path === `${base}/mining/reference`) {
+        try { return send(200, JSON.parse(fs.readFileSync(require('path').join(__dirname, '..', 'data', 'mining-reference.json'), 'utf8'))); }
+        catch (_) { return send(404, { error: 'data/mining-reference.json missing (run npm run build-mining)' }); }
+      }
       // Client-side OCR contract parser (loaded by the Cargo tab; runs in-browser).
       if (req.method === 'GET' && path === '/ocr-parse.js') {
         try { const js = this._ocrJs || (this._ocrJs = fs.readFileSync(require('path').join(__dirname, 'ocr-parse.js'), 'utf8'));

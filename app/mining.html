@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mining — rock-crack calculator</title>
+<style>
+  /* Permafleet dashboard tokens (same as app/ui.html) */
+  :root{
+    --bg:#0e1117; --panel:#161b22; --panel2:#1c232d; --line:#2a313c;
+    --text:#e6edf3; --muted:#8b949e; --accent:#3b82f6;
+    --good:#3fb950; --warn:#d29922; --raw:#6e7681; --kill:#f85149;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px}
+  header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);padding:12px 18px}
+  body.embed header{display:none}
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+  h1{font-size:17px;margin:0;font-weight:650}
+  .pill{padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+  .pill.acc{background:rgba(59,130,246,.15);color:var(--accent)}
+  .pill.warn{background:rgba(210,153,34,.18);color:var(--warn)}
+  .ctrl{margin-left:auto;display:flex;gap:12px;align-items:center;color:var(--muted);font-size:12.5px}
+  main{padding:16px 18px;display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  @media(max-width:820px){main{grid-template-columns:1fr;padding:12px 16px}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+  .panel h2{font-size:13px;margin:0;padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-weight:600}
+  .panel h2 .sub{color:var(--muted);font-weight:400;font-size:12px}
+  .panel h2 .btn{margin-left:auto}
+  .body{padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
+  .btn:hover{border-color:var(--accent)}
+  .chip{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer;line-height:1.4}
+  .chip.on{background:rgba(59,130,246,.15);color:var(--accent);border-color:var(--accent)}
+  .chip:disabled{opacity:.4;cursor:default}
+  .slrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .flab{font-size:11px;color:var(--muted);margin-right:3px;min-width:54px}
+  /* rock inputs: large, thumb-friendly */
+  .rock{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .field{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}
+  .field input{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:8px 9px;font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}
+  .field input:focus{outline:none;border-color:var(--accent)}
+  .field .u{font-size:11px;color:var(--muted);margin-top:3px}
+  /* loadout */
+  .mount{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+  .mount .mh{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+  .mount .mh b{color:var(--text)}
+  select{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 8px;font-size:13px;max-width:100%}
+  select:focus{outline:none;border-color:var(--accent)}
+  .modrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .modrow select{flex:1;min-width:150px}
+  .fire{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap}
+  .fire.on{background:rgba(210,153,34,.18);color:var(--warn);border-color:var(--warn)}
+  .fire.na{visibility:hidden}
+  .stat{font-size:11px;color:var(--muted)}
+  .stat b{color:var(--text);font-weight:600}
+  /* verdict */
+  .verdict{border-radius:10px;padding:14px 16px;border:1px solid var(--line);background:var(--panel2)}
+  .verdict.ok{border-color:rgba(63,185,80,.5);background:rgba(63,185,80,.08)}
+  .verdict.marginal{border-color:rgba(210,153,34,.5);background:rgba(210,153,34,.08)}
+  .verdict.short,.verdict.unbreakable{border-color:rgba(248,81,73,.5);background:rgba(248,81,73,.08)}
+  .verdict .big{font-size:26px;font-weight:700;line-height:1.15}
+  .verdict.ok .big{color:var(--good)} .verdict.marginal .big{color:var(--warn)} .verdict.short .big,.verdict.unbreakable .big{color:var(--kill)}
+  .verdict .why{font-size:12.5px;color:var(--muted);margin-top:4px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px}
+  .mc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .mc .l{font-size:12px;color:var(--muted)}
+  .mc .v{font-size:23px;font-weight:650;line-height:1.25;font-variant-numeric:tabular-nums}
+  .mc .d{font-size:11px;color:var(--muted);margin-top:2px}
+  .lbr{display:grid;grid-template-columns:minmax(0,1fr) 64px 120px;gap:8px;align-items:center;padding:6px 8px;font-size:12.5px;border-radius:6px}
+  .lbr .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lbr .t{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .bar{height:8px;background:var(--bg);border:1px solid var(--line);border-radius:999px;overflow:hidden;position:relative}
+  .bar i{display:block;height:100%;background:var(--good)}
+  .bar.marginal i{background:var(--warn)} .bar.short i,.bar.unbreakable i{background:var(--kill)}
+  .bar u{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--muted);opacity:.7}
+  .tips{display:flex;flex-direction:column;gap:5px}
+  .tip{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:6px 10px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);cursor:pointer}
+  .tip:hover{border-color:var(--accent)}
+  .tip .b{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:5px}
+  .b-good{background:rgba(63,185,80,.15);color:var(--good)} .b-warn{background:rgba(210,153,34,.18);color:var(--warn)}
+  .b-kill{background:rgba(248,81,73,.18);color:var(--kill)} .b-acc{background:rgba(59,130,246,.18);color:var(--accent)}
+  .b-raw{background:rgba(110,118,129,.18);color:var(--raw)}
+  .badge{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:5px;white-space:nowrap}
+  .empty{color:var(--muted);padding:14px;text-align:center;font-style:italic}
+  .honest{font-size:11.5px;color:var(--muted);line-height:1.5;padding:10px 14px;border-top:1px solid var(--line)}
+  .honest a{color:var(--accent);text-decoration:none}
+  input[type=range]{accent-color:var(--accent);width:120px}
+  .opt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <h1>⛏️ Mining — rock-crack calculator</h1>
+    <span id="ver" class="pill acc">…</span>
+    <span class="pill warn" title="Community model; CIG has not published the formula. See the note at the bottom.">community model · uncalibrated</span>
+    <div class="ctrl"><a href="/" style="color:var(--accent);text-decoration:none">← dashboard</a></div>
+  </div>
+</header>
+<main>
+  <section class="panel">
+    <h2>Rock <span class="sub">as shown by the scan</span><button class="btn" id="clear-rock">clear</button></h2>
+    <div class="body">
+      <div class="rock">
+        <div class="field"><label for="mass">Mass</label><input id="mass" type="number" inputmode="decimal" min="0" step="1" placeholder="0"><div class="u">kg</div></div>
+        <div class="field"><label for="res">Resistance</label><input id="res" type="number" inputmode="decimal" min="0" max="100" step="0.1" placeholder="0"><div class="u">%</div></div>
+        <div class="field"><label for="inst">Instability</label><input id="inst" type="number" inputmode="decimal" min="0" max="100" step="0.1" placeholder="0"><div class="u">% · advisory</div></div>
+      </div>
+      <div class="opt">
+        <span class="flab">Safety</span>
+        <input type="range" id="margin" min="0" max="30" step="5"><span id="margin-v">15 %</span>
+        <span class="flab" style="margin-left:6px">Multi-laser</span>
+        <button class="chip on" data-combine="per-head" title="Each head cracks its own share (conservative)">per-head</button>
+        <button class="chip" data-combine="pooled" title="Sum power, multiply every head's resistance bonus (optimistic)">pooled</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Loadout <span class="sub">saved on this device</span><button class="btn" id="reset-loadout">reset</button></h2>
+    <div class="body">
+      <div class="slrow" id="ships"><span class="flab">Ship</span></div>
+      <div id="mounts" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div class="slrow" id="gadgets"><span class="flab">Gadget</span></div>
+    </div>
+  </section>
+
+  <section class="panel" style="grid-column:1 / -1">
+    <h2>Verdict <span class="sub" id="verdict-sub"></span></h2>
+    <div class="body" id="out"><div class="empty">Enter the rock's mass and resistance.</div></div>
+    <div class="honest" id="honest"></div>
+  </section>
+</main>
+
+<script src="mining-calc.js"></script>
+<script src="mining-data.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const KEY = 'sc-mining-v1';
+  if (new URLSearchParams(location.search).get('embed') === '1') document.body.classList.add('embed');
+
+  const fmt = (n, d) => !isFinite(n) ? '∞' : Number(n).toLocaleString(undefined, { maximumFractionDigits: d == null ? 0 : d });
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const short = (name) => name.replace(/ Mining Laser$/, '').replace(/ Module$/, '');
+
+  let REF = null, S = null;
+
+  function defaults () {
+    return { ship: 'prospector', mounts: [{ head: 'helix-i-mining-laser', modules: [] }], gadget: null,
+      rock: { mass: '', resistance: '', instability: '' }, options: { combine: 'per-head', margin: 15 } };
+  }
+  function load () {
+    try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.mounts) return Object.assign(defaults(), s); } catch (_) {}
+    return defaults();
+  }
+  function save () { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (_) {} }
+
+  // ---------- loadout controls ----------
+  function ship () { return REF.ships.find(s => s.id === S.ship) || REF.ships[0]; }
+  function headsFor (size) { return REF.lasers.filter(l => l.size === size); }
+
+  function setShip (id) {
+    S.ship = id; const sh = ship();
+    const heads = headsFor(sh.size);
+    const prev = S.mounts;
+    S.mounts = [];
+    for (let i = 0; i < sh.mounts; i++) {
+      const strongest = heads.slice().sort((a, b) => b.power.max - a.power.max)[0] || {};
+      const keep = prev[i] && heads.some(h => h.id === prev[i].head) ? prev[i] : { head: strongest.id, modules: [] };
+      S.mounts.push(keep);
+    }
+    renderLoadout(); recompute();
+  }
+
+  function renderShips () {
+    const el = $('ships');
+    el.querySelectorAll('.chip').forEach(c => c.remove());
+    for (const s of REF.ships) {
+      const b = document.createElement('button');
+      b.className = 'chip' + (s.id === S.ship ? ' on' : ''); b.textContent = s.name.replace(/^(MISC|Drake|ARGO|Greycat) /, '');
+      b.title = `${s.mounts}× S${s.size} · ${s.note}`; b.dataset.ship = s.id;
+      if (!headsFor(s.size).length) b.disabled = true;
+      el.appendChild(b);
+    }
+  }
+
+  function renderGadgets () {
+    const el = $('gadgets');
+    el.querySelectorAll('.chip').forEach(c => c.remove());
+    const mk = (id, label, title) => { const b = document.createElement('button'); b.className = 'chip' + ((S.gadget || null) === id ? ' on' : ''); b.textContent = label; b.title = title || ''; b.dataset.gadget = id || ''; el.appendChild(b); };
+    mk(null, 'none');
+    for (const g of REF.gadgets) mk(g.id, g.name, [g.resistance ? `resistance ${g.resistance > 0 ? '+' : ''}${g.resistance}%` : '', g.instability ? `instability ${g.instability > 0 ? '+' : ''}${g.instability}%` : '', g.chargeWindow ? `window ${g.chargeWindow > 0 ? '+' : ''}${g.chargeWindow}%` : ''].filter(Boolean).join(' · ') || 'no crack-relevant effect');
+  }
+
+  function renderLoadout () {
+    renderShips(); renderGadgets();
+    const sh = ship(); const heads = headsFor(sh.size);
+    const box = $('mounts'); box.innerHTML = '';
+    S.mounts.forEach((m, i) => {
+      const head = REF.lasers.find(l => l.id === m.head) || heads[0];
+      if (head && m.head !== head.id) m.head = head.id;
+      const slots = head ? head.moduleSlots : 0;
+      m.modules = (m.modules || []).slice(0, slots);
+      while (m.modules.length < slots) m.modules.push(null);
+      const div = document.createElement('div'); div.className = 'mount';
+      const opts = heads.map(h => `<option value="${h.id}"${h.id === m.head ? ' selected' : ''}>${esc(short(h.name))} · ${fmt(h.power.max)} MW${h.resistance ? ` · res ${h.resistance > 0 ? '+' : ''}${h.resistance}%` : ''}</option>`).join('');
+      let html = `<div class="mh"><b>Laser ${sh.mounts > 1 ? i + 1 : ''}</b><span>S${sh.size}</span><select data-mount="${i}" class="head" style="margin-left:auto;flex:1;min-width:0">${opts}</select></div>`;
+      if (head) html += `<div class="stat">power <b>${fmt(head.power.min)}–${fmt(head.power.max)} MW</b> · resistance <b>${head.resistance > 0 ? '+' : ''}${head.resistance}%</b> · instability <b>${head.instability > 0 ? '+' : ''}${head.instability}%</b> · ${slots} module slot${slots === 1 ? '' : 's'}</div>`;
+      for (let k = 0; k < slots; k++) {
+        const cur = m.modules[k]; const mod = cur && REF.modules.find(x => x.id === cur.id);
+        const mopts = ['<option value="">— empty slot —</option>'].concat(REF.modules.filter(x => x.laserPower || x.resistance || x.instability || x.active).map(x =>
+          `<option value="${x.id}"${cur && cur.id === x.id ? ' selected' : ''}>${esc(short(x.name))} (${x.active ? 'active' : 'passive'})${x.laserPower ? ` · power ${x.laserPower > 0 ? '+' : ''}${x.laserPower}%` : ''}${x.resistance ? ` · res ${x.resistance > 0 ? '+' : ''}${x.resistance}%` : ''}</option>`)).join('');
+        const fire = mod && mod.active ? `<button class="fire${cur.active ? ' on' : ''}" data-mount="${i}" data-slot="${k}" title="Consumable: count it only when you will fire it (${mod.uses || '?'} uses${mod.duration ? ', ' + mod.duration : ''})">${cur.active ? '● firing' : '○ not fired'}</button>` : '<button class="fire na">·</button>';
+        html += `<div class="modrow"><select data-mount="${i}" data-slot="${k}" class="mod">${mopts}</select>${fire}</div>`;
+      }
+      div.innerHTML = html; box.appendChild(div);
+    });
+    $('margin').value = S.options.margin; $('margin-v').textContent = S.options.margin + ' %';
+    document.querySelectorAll('[data-combine]').forEach(b => b.classList.toggle('on', b.dataset.combine === S.options.combine));
+  }
+
+  // ---------- compute + render ----------
+  function recompute () {
+    const rock = { mass: parseFloat(S.rock.mass) || 0, resistance: parseFloat(S.rock.resistance) || 0, instability: parseFloat(S.rock.instability) || 0 };
+    const out = $('out');
+    if (!rock.mass) { out.innerHTML = '<div class="empty">Enter the rock\'s mass and resistance.</div>'; $('verdict-sub').textContent = ''; save(); return; }
+    const r = MiningCalc.compute({ rock, lasers: S.mounts.map(m => ({ head: m.head, modules: (m.modules || []).filter(Boolean) })), gadget: S.gadget || null,
+      options: { combine: S.options.combine, margin: S.options.margin / 100 } }, REF);
+    save();
+    const titles = { ok: 'Crackable', marginal: 'Crackable — barely', short: 'Not with this loadout', unbreakable: 'Unbreakable' };
+    const whys = {
+      ok: `Run every laser at <b>${fmt(r.throttle, 1)} %</b> throttle. ${r.bestSubset && r.bestSubset.heads.length < r.perLaser.length ? `Or just <b>${esc(r.bestSubset.heads.map(short).join(' + '))}</b> at ${fmt(r.bestSubset.throttle, 1)} %.` : ''}`,
+      marginal: `Needs <b>${fmt(r.throttle, 1)} %</b> throttle — inside your ${S.options.margin} % safety margin. Rounded scan values or instability can push this over.`,
+      short: `Needs <b>${fmt(r.throttle, 1)} %</b> throttle — you are <b>${fmt(r.shortfallMW)} MW</b> short at full power.`,
+      unbreakable: `Effective resistance reaches 100 % with this kit — no amount of power fractures it. Lower the resistance (gadget, Helix/Klein/Hofstede heads, Rime/Lifeline/Overrun modules).`
+    };
+    const rEffLabel = r.rEff <= rock.resistance ? `${fmt(r.rEff, 1)} % after your modifiers` : `<span style="color:var(--warn)">${fmt(r.rEff, 1)} % — your kit raises it</span>`;
+    let html = `<div class="verdict ${r.verdict}"><div class="big">${titles[r.verdict]}</div><div class="why">${whys[r.verdict]}</div></div>`;
+    html += `<div class="kpis">
+      <div class="mc"><div class="l">Power needed</div><div class="v">${fmt(r.pNeed)}</div><div class="d">MW at the cracking point</div></div>
+      <div class="mc"><div class="l">Power available</div><div class="v">${fmt(r.pAvailable)}</div><div class="d">MW · all heads, modules counted</div></div>
+      <div class="mc"><div class="l">Effective resistance</div><div class="v">${fmt(r.rEff, 1)}<span style="font-size:14px">%</span></div><div class="d">${rEffLabel}</div></div>
+      <div class="mc"><div class="l">Max mass at this resistance</div><div class="v">${r.massMax ? fmt(r.massMax) : '—'}</div><div class="d">kg · full throttle, no margin</div></div>
+      <div class="mc"><div class="l">Instability</div><div class="v"><span class="badge ${r.iBand === 'high' ? 'b-kill' : r.iBand === 'mid' ? 'b-warn' : 'b-good'}" style="font-size:16px">${fmt(r.iEff, 1)} %</span></div><div class="d">effective · advisory only</div></div>
+    </div>`;
+    if (r.perLaser.length) {
+      html += '<div>';
+      for (const l of r.perLaser) {
+        const t = isFinite(l.throttle) ? l.throttle : 100; const cls = isFinite(l.throttle) ? (l.throttle <= 100 - S.options.margin ? 'ok' : l.throttle <= 100 ? 'marginal' : 'short') : 'unbreakable';
+        html += `<div class="lbr"><span class="n">${esc(short(l.name))} <span class="stat">${fmt(l.pMax)} MW · res ×${l.resistanceFactor}</span></span><span class="t">${isFinite(l.throttle) ? fmt(l.throttle, 1) + ' %' : '∞'}</span><span class="bar ${cls}"><i style="width:${Math.min(100, t)}%"></i><u style="left:${100 - S.options.margin}%"></u></span></div>`;
+      }
+      if (r.perLaser.length > 1) html += `<div class="stat" style="padding:4px 8px">Solo: ${r.perLaser.map(l => `${esc(short(l.name))} ${isFinite(l.soloThrottle) ? fmt(l.soloThrottle, 1) + ' %' : '∞'}`).join(' · ')}</div>`;
+      html += '</div>';
+    }
+    if (r.tips.length) {
+      html += `<div><div class="stat" style="margin-bottom:6px">What would tip it — tap to apply</div><div class="tips">` + r.tips.map(t =>
+        `<div class="tip" data-tip="${t.kind}:${t.id}"><span class="b ${t.kind === 'gadget' ? 'b-acc' : 'b-warn'}">${t.kind === 'gadget' ? 'gadget' : 'fire'}</span><span>${esc(t.name)}${t.laser ? ` on ${esc(short(t.laser))}` : ''}</span><span style="margin-left:auto;font-variant-numeric:tabular-nums">${fmt(t.throttle, 1)} %</span></div>`).join('') + '</div></div>';
+    } else if (r.verdict === 'short' || r.verdict === 'unbreakable') {
+      html += `<div class="stat">No single gadget or unfired consumable gets this under ${100 - S.options.margin} %. ${r.perLaser.length < 3 ? 'Bring more lasers (MOLE / a second ship) or a stronger head.' : 'Try a stronger head or the pooled rule if your crew has seen this crack before.'}</div>`;
+    }
+    out.innerHTML = html;
+    $('verdict-sub').textContent = `${S.options.combine} rule · ${S.options.margin} % margin`;
+  }
+
+  function renderHonest () {
+    $('honest').innerHTML = `Community break model (P<sub>need</sub> = 0.2 × mass ÷ (1 − effective resistance)), not published by CIG — the same rule used by BreakabilityChart, GrimHEX and SCMINER. Multi-laser stacking is the one point those tools disagree on; "per-head" is the conservative default until org rocks calibrate it. ` +
+      `Item stats: <a href="https://star-citizen.wiki" target="_blank" rel="noopener">Star Citizen Wiki</a> game-file extraction (${esc(REF.gameVersion)}) + <a href="https://uexcorp.space" target="_blank" rel="noopener">UEX</a> module power factors; snapshot ${esc(String(REF.generatedAt).slice(0, 10))}. Instability is shown for awareness only.`;
+  }
+
+  // ---------- events ----------
+  function bind () {
+    for (const id of ['mass', 'res', 'inst']) {
+      const el = $(id); const key = id === 'mass' ? 'mass' : id === 'res' ? 'resistance' : 'instability';
+      el.value = S.rock[key];
+      el.addEventListener('input', () => { S.rock[key] = el.value; recompute(); });
+    }
+    $('clear-rock').addEventListener('click', () => { S.rock = { mass: '', resistance: '', instability: '' }; ['mass', 'res', 'inst'].forEach(i => { $(i).value = ''; }); recompute(); $('mass').focus(); });
+    $('reset-loadout').addEventListener('click', () => { const d = defaults(); S.ship = d.ship; S.mounts = d.mounts; S.gadget = null; S.options = d.options; renderLoadout(); recompute(); });
+    $('margin').addEventListener('input', () => { S.options.margin = parseInt($('margin').value, 10); $('margin-v').textContent = S.options.margin + ' %'; recompute(); });
+    document.querySelectorAll('[data-combine]').forEach(b => b.addEventListener('click', () => { S.options.combine = b.dataset.combine; document.querySelectorAll('[data-combine]').forEach(x => x.classList.toggle('on', x === b)); recompute(); }));
+    $('ships').addEventListener('click', (e) => { const b = e.target.closest('[data-ship]'); if (b && !b.disabled) setShip(b.dataset.ship); });
+    $('gadgets').addEventListener('click', (e) => { const b = e.target.closest('[data-gadget]'); if (!b) return; S.gadget = b.dataset.gadget || null; renderGadgets(); recompute(); });
+    $('mounts').addEventListener('change', (e) => {
+      const t = e.target; if (t.tagName !== 'SELECT') return;
+      const m = S.mounts[+t.dataset.mount];
+      if (t.classList.contains('head')) { m.head = t.value; m.modules = []; renderLoadout(); }
+      else { m.modules[+t.dataset.slot] = t.value ? { id: t.value, active: false } : null; renderLoadout(); }
+      recompute();
+    });
+    $('mounts').addEventListener('click', (e) => {
+      const b = e.target.closest('.fire'); if (!b || b.classList.contains('na')) return;
+      const cur = S.mounts[+b.dataset.mount].modules[+b.dataset.slot]; if (!cur) return;
+      cur.active = !cur.active; renderLoadout(); recompute();
+    });
+    $('out').addEventListener('click', (e) => {
+      const t = e.target.closest('[data-tip]'); if (!t) return;
+      const [kind, id] = t.dataset.tip.split(':');
+      if (kind === 'gadget') S.gadget = id;
+      else S.mounts.forEach(m => (m.modules || []).forEach(s => { if (s && s.id === id) s.active = true; }));
+      renderLoadout(); recompute();
+    });
+  }
+
+  function start (ref) {
+    REF = ref; S = load();
+    $('ver').textContent = 'SC ' + String(ref.gameVersion).replace(/-LIVE.*$/, '');
+    if (!REF.ships.some(s => s.id === S.ship)) S.ship = REF.ships[0].id;
+    if (S.mounts.length !== ship().mounts) setShip(S.ship); else renderLoadout();
+    bind(); renderHonest(); recompute();
+  }
+
+  if (window.MINING_REFERENCE) start(window.MINING_REFERENCE);
+  else fetch('/services/star-citizen/mining/reference').then(r => r.json()).then(start)
+    .catch(() => { $('out').innerHTML = '<div class="empty">Reference data missing — run <code>npm run build-mining</code>.</div>'; });
+})();
+</script>
+</body>
+</html>

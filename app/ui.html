@@ -138,6 +138,7 @@
     <button class="tab on" id="tab-live">Live feed</button>
     <button class="tab" id="tab-analyze">Analyze</button>
     <button class="tab" id="tab-cargo" style="display:none">🚚 Cargo</button>
+    <button class="tab" id="tab-mining" title="Rock-crack calculator (SC 4.10+)">⛏️ Mining</button>
     <button class="tab" id="tab-mesh" style="display:none">🕸 Mesh</button>
     <span class="sub" id="az-scope" style="color:var(--muted);font-size:12px"></span>
     <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
@@ -341,6 +342,10 @@
   </section>
 </main>
 
+<main id="view-mining" style="display:none;padding:0;grid-template-columns:1fr">
+  <!-- Mining rock-crack calculator: standalone page (app/mining.html) embedded here; also usable on its own at /mining -->
+  <iframe id="mining-frame" title="Mining calculator" style="width:100%;height:calc(100vh - 62px);border:0;background:var(--bg)"></iframe>
+</main>
 <main id="view-mesh" style="display:none">
   <section class="panel full">
     <h2>🕸 Fabric mesh <span class="sub">— peers this relay shares your events with (D-008). Nothing is sent anywhere until you say so, below.</span></h2>
@@ -1273,11 +1278,14 @@ poll();
     g('view-analyze').style.display=v==='analyze'?'':'none';
     g('view-cargo').style.display=v==='cargo'?'':'none';
     g('view-mesh').style.display=v==='mesh'?'':'none';
+    g('view-mining').style.display=v==='mining'?'':'none';
     g('live-filter').style.display=v==='live'?'':'none';
     g('tab-live').classList.toggle('on',v==='live');
     g('tab-analyze').classList.toggle('on',v==='analyze');
     g('tab-cargo').classList.toggle('on',v==='cargo');
     g('tab-mesh').classList.toggle('on',v==='mesh');
+    g('tab-mining').classList.toggle('on',v==='mining');
+    if(v==='mining'){ const f=g('mining-frame'); if(!f.src) f.src='/mining?embed=1'; }
     if(v==='analyze' && !D) fetchA();
     if(v==='analyze' && !ST && !stLoading) fetchStability();
     if(v==='cargo'){ runRoute(); loadVocab(); }
@@ -1287,6 +1295,7 @@ poll();
   g('tab-analyze').addEventListener('click',()=>show('analyze'));
   g('tab-cargo').addEventListener('click',()=>show('cargo'));
   g('tab-mesh').addEventListener('click',()=>show('mesh'));
+  g('tab-mining').addEventListener('click',()=>show('mining'));
   const tog=(key,v)=>{ if(!S[key])S[key]=new Set(); if(S[key].has(v))S[key].delete(v); else S[key].add(v); if(!S[key].size)S[key]=null; };
   g('view-analyze').addEventListener('click',(e)=>{
     const t=e.target.closest('[data-all],[data-multi],[data-clear],[data-reset],[data-oc],[data-ty],[data-fac],[data-pl],[data-ym],[data-allmonths],[data-nomonths]'); if(!t)return;
