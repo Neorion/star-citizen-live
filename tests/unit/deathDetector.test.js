@@ -253,3 +253,38 @@ test('ejected from a destroyed ship with no collision line is not called a colli
   const noSeat = noCollision.filter((l) => !/ClearDriver/.test(l));
   assert.strictEqual(closed(run(noSeat))[0].wasPilot, null);
 });
+
+test('evidence and items are capped; the incident is marked truncated', () => {
+  const collision = LINES[lineNo(/<FatalCollision>/) - 1];
+  const bodyLine = LINES[lineNo(/Item 'body_01_noMagicPocket/) - 1];
+  const many = [];
+  for (let i = 0; i < 500; i++) many.push(collision);
+  const rEvidence = closed(run(many))[0];
+  assert.strictEqual(rEvidence.evidence.length, 400);
+  assert.strictEqual(rEvidence.truncated, true);
+
+  const burst = [bodyLine];
+  for (let i = 0; i < 700; i++) burst.push(bodyLine);
+  const rItems = closed(run(burst))[0];
+  assert.strictEqual(rItems.items.length, 600);
+  assert.strictEqual(rItems.truncated, true);
+
+  assert.strictEqual(closed(run(LINES))[0].truncated, false, 'the real fixture is not truncated');
+});
+
+test('a trigger line without a timestamp still closes as unconfirmed after 5000 lines', () => {
+  const bare = LINES[lineNo(/<FatalCollision>/) - 1].replace(/^<[^>]*>\s*/, '');
+  assert.ok(!/^</.test(bare));
+  const det = createDeathDetector();
+  const events = [];
+  const feed = (n, l) => { for (const e of det.feed(n, l)) events.push(e); };
+  feed(1, bare);
+  assert.deepStrictEqual(events.map((e) => e.type), ['death.opened']);
+  for (let i = 2; i <= 5001; i++) feed(i, 'filler line without a clock');
+  assert.strictEqual(events.length, 1, 'not closed within 5000 lines');
+  feed(5002, 'filler line without a clock');
+  const last = events[events.length - 1];
+  assert.strictEqual(last.type, 'death.closed');
+  assert.strictEqual(last.report.status, 'unconfirmed');
+  assert.deepStrictEqual(det.flush(), [], 'nothing left open');
+});

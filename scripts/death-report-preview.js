@@ -24,6 +24,7 @@ const path = require('path');
 const esbuild = require('esbuild');
 
 const logCorpus = require('../functions/logCorpus');
+const { isLocalHost } = require('../functions/loopbackHost');
 const deathReportStore = require('../functions/deathReportStore');
 const { tryHandleDeathReports } = require('../functions/deathReportHttp');
 const DeathReports = require('../components/DeathReports');
@@ -140,6 +141,9 @@ async function main () {
       return chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
     };
     try {
+      // DNS-rebinding guard: this viewer has no auth, so only answer requests
+      // addressed to the loopback name:port it actually listens on.
+      if (!isLocalHost(req.headers.host, args.port)) return send(403, { error: 'forbidden host' });
       if (req.method === 'GET' && pathname === '/') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(html);

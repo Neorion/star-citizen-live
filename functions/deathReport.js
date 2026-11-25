@@ -287,6 +287,7 @@ function buildReport (incident, opts = {}) {
     cause: null,
     summary: null,
     modifiers,
+    truncated: !!incident.truncated,
     triggerAt: incident.triggerAt || null,
     incapacitatedAt: incident.incapacitatedAt || null,
     incapSource: incident.incapacitatedAt ? (incident.incapSource || 'during-incident') : null,

@@ -44,6 +44,13 @@ const SAME_DEATH_WINDOW_MS = 15 * 1000;
 // mistaken for the respawn. `respawnedAt` is therefore optional evidence.
 const CONFIRMED_LINGER_MS = 10 * 60 * 1000;
 const CONTROL_RELEASE_WINDOW_MS = 5 * 1000;
+// Bounds on one incident's memory. A runaway burst stops appending and marks
+// the incident `truncated` instead of growing without limit.
+const MAX_EVIDENCE = 400;
+const MAX_ITEMS = 600;
+// When the trigger / confirmation line carried no usable timestamp the log-time
+// timeouts cannot fire; fall back to counting fed lines.
+const NO_CLOCK_MAX_LINES = 5000;
 const CONTEXT_KINDS = new Set(['route', 'quantum_target', 'no_route', 'inventory_closed', 'cvar_displayinfo']);
 
 /** `<2026-09-28T00:52:17.679Z> …` -> epoch ms, without a regex (hot path). */
@@ -93,14 +100,26 @@ function createDeathDetector (opts = {}) {
   }
 
   function evidence (lineNo, sig) {
-    incident.evidence.push({ line: lineNo, at: sig.ts, signal: sig.signal });
+    if (incident.evidence.length >= MAX_EVIDENCE) incident.truncated = true;
+    else incident.evidence.push({ line: lineNo, at: sig.ts, signal: sig.signal });
     incident.lineEnd = lineNo;
+  }
+
+  /** Log time of a signal: its own stamp, else the last known line time (NaN if none). */
+  function sigMs (sig) {
+    const t = sig.ts ? Date.parse(sig.ts) : NaN;
+    return Number.isNaN(t) ? lastMs : t;
   }
 
   function open (lineNo, sig, events) {
     incident = {
       status: 'open',
       triggerAt: sig.ts,
+      triggerMs: sigMs(sig),
+      linesSinceOpen: 0,
+      linesSinceConfirm: 0,
+      truncated: false,
+      confirmedMs: NaN,
       triggerSignal: sig.signal,
       lineStart: lineNo,
       lineEnd: lineNo,
@@ -138,6 +157,7 @@ function createDeathDetector (opts = {}) {
     incident.status = 'confirmed';
     incident.confirmedAt = sig.ts;
     incident.confirmedLine = lineNo;
+    incident.confirmedMs = sigMs(sig);
   }
 
   /** Emit `death.confirmed` once per incident, when its evidence is complete enough to show. */
@@ -191,12 +211,12 @@ function createDeathDetector (opts = {}) {
       tryRespawn(events);
       if (!incident) return;
     }
-    if (incident.status === 'open' && ms - Date.parse(incident.triggerAt) > OPEN_TIMEOUT_MS) {
+    if (incident.status === 'open' && ms - incident.triggerMs > OPEN_TIMEOUT_MS) {
       close(events, 'timeout');
       return;
     }
     if (incident.status === 'confirmed' && !incident.burstOpen &&
-        ms - Date.parse(incident.confirmedAt) > CONFIRMED_LINGER_MS) {
+        ms - incident.confirmedMs > CONFIRMED_LINGER_MS) {
       close(events, 'timeout');
     }
   }
@@ -224,6 +244,16 @@ function createDeathDetector (opts = {}) {
     if (incident) {
       const ms = lineTime(line);
       if (!Number.isNaN(ms)) { lastMs = ms; tick(ms, events); }
+      // No usable clock on the trigger / confirmation: bound by fed lines instead.
+      if (incident) {
+        if (incident.status === 'open') {
+          incident.linesSinceOpen += 1;
+          if (Number.isNaN(incident.triggerMs) && incident.linesSinceOpen > NO_CLOCK_MAX_LINES) close(events, 'timeout');
+        } else if (incident.status === 'confirmed' && !incident.burstOpen) {
+          incident.linesSinceConfirm += 1;
+          if (Number.isNaN(incident.confirmedMs) && incident.linesSinceConfirm > NO_CLOCK_MAX_LINES) close(events, 'timeout');
+        }
+      }
     }
     const sig = matchSignal(line);
     if (!sig) return events;
@@ -349,7 +379,8 @@ function createDeathDetector (opts = {}) {
         } else if (!inBurst) {
           break; // a corpse-LOOT burst (starts with gear, not a body) — not a death
         }
-        incident.items.push({ itemClass: f.itemClass, port: f.port, classGuid: f.classGuid, kept: f.kept });
+        if (incident.items.length >= MAX_ITEMS) incident.truncated = true;
+        else incident.items.push({ itemClass: f.itemClass, port: f.port, classGuid: f.classGuid, kept: f.kept });
         if (!Number.isNaN(ms) && !(ms < incident.burstLastMs)) incident.burstLastMs = ms;
         incident.lineEnd = lineNo;
         break;

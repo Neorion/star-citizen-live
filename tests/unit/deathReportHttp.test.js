@@ -43,8 +43,9 @@ async function mount (overrides = {}) {
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
-  const request = (method, reqPath, payload) => new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, method, path: reqPath, headers: { 'Content-Type': 'application/json' } }, (res) => {
+  const request = (method, reqPath, payload, extraHeaders) => new Promise((resolve, reject) => {
+    const headers = Object.assign({ 'Content-Type': 'application/json' }, extraHeaders || {});
+    const req = http.request({ host: '127.0.0.1', port, method, path: reqPath, headers }, (res) => {
       let buf = '';
       res.on('data', (c) => { buf += c; });
       res.on('end', () => {
@@ -156,6 +157,51 @@ test('hosted mode refuses rescan; unauthenticated remote callers cannot read or 
     assert.strictEqual((await locked.request('DELETE', `${BASE}/deathreports/${'a'.repeat(32)}`)).status, 401);
     assert.strictEqual(locked.store.reports.length, 0);
   } finally { await locked.close(); }
+});
+
+test('an overlapping rescan is answered 409 and the guard clears afterwards', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let calls = 0;
+  const app = await mount({
+    rescan: async () => { calls += 1; await gate; return { files: 1, lines: 0, created: 0 }; }
+  });
+  try {
+    const first = app.request('POST', `${BASE}/deathreports/rescan`, { all: true });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const second = await app.request('POST', `${BASE}/deathreports/rescan`, { all: true });
+    assert.strictEqual(second.status, 409);
+    assert.deepStrictEqual(second.body, { error: 'death report rescan already running' });
+    release();
+    assert.strictEqual((await first).status, 200);
+    assert.strictEqual(calls, 1);
+    const third = await app.request('POST', `${BASE}/deathreports/rescan`, { all: true });
+    assert.strictEqual(third.status, 200);
+    assert.strictEqual(calls, 2);
+  } finally { release(); await app.close(); }
+});
+
+test('foreign Origin is refused (403) on POST rescan and DELETE; loopback Origin and no Origin pass', async () => {
+  const app = await mount();
+  try {
+    const evil = { Origin: 'https://evil.example.net' };
+    const post = await app.request('POST', `${BASE}/deathreports/rescan`, { all: true }, evil);
+    assert.strictEqual(post.status, 403);
+    assert.deepStrictEqual(post.body, { error: 'cross-origin request refused' });
+    const del = await app.request('DELETE', `${BASE}/deathreports/${'a'.repeat(32)}`, null, evil);
+    assert.strictEqual(del.status, 403);
+    assert.deepStrictEqual(del.body, { error: 'cross-origin request refused' });
+
+    const ok = await app.request('POST', `${BASE}/deathreports/rescan`, { all: true }, { Origin: 'http://localhost:3041' });
+    assert.strictEqual(ok.status, 200);
+    const ok2 = await app.request('POST', `${BASE}/deathreports/rescan`, { all: true }, { Origin: 'http://[::1]:3041' });
+    assert.strictEqual(ok2.status, 200);
+    // Same non-loopback host as the request's Host header is allowed.
+    const same = await app.request('DELETE', `${BASE}/deathreports/${'a'.repeat(32)}`, null, { Origin: 'http://relay.test:8080', Host: 'relay.test:8080' });
+    assert.strictEqual(same.status, 404);
+    // Reads are never origin-gated.
+    assert.strictEqual((await app.request('GET', `${BASE}/deathreports`, null, evil)).status, 200);
+  } finally { await app.close(); }
 });
 
 test('unrelated paths fall through to the next handler', async () => {

@@ -198,3 +198,21 @@ test('scrubLog replaces identifiers consistently and keeps line shapes', () => {
   assert.ok(text.includes('x: -245156.613818'));
   assert.ok(text.includes('<2026-01-01T00:00:03.000Z>'));
 });
+
+test('scrubLog --also replaces extra handles consistently as Pilot2, Pilot3', () => {
+  const raw = [
+    '<2026-01-01T00:00:00.000Z> Player[MainName] killed by Player[FriendOne] with FriendTwo nearby',
+    '<2026-01-01T00:00:01.000Z> Handle[FriendOne] joined; FriendTwo left; FriendOnely stays'
+  ].join('\n');
+  const { text } = scrubLog(raw, { handle: 'MainName', also: ['FriendOne', 'FriendTwo'] });
+  for (const leak of ['MainName', 'FriendOne]', 'FriendTwo']) assert.ok(!text.includes(leak), `leaked ${leak}`);
+  assert.match(text, /Player\[TestPilot\] killed by Player\[Pilot2\] with Pilot3 nearby/);
+  assert.match(text, /Handle\[Pilot2\] joined; Pilot3 left; FriendOnely stays/);
+});
+
+test('report carries truncated flag (false by default)', () => {
+  const r = deathReport.buildReport({ status: 'open', triggerAt: '2026-01-01T00:00:00.000Z', items: [], evidence: [] }, {});
+  assert.strictEqual(r.truncated, false);
+  const t = deathReport.buildReport({ status: 'open', triggerAt: '2026-01-01T00:00:00.000Z', items: [], evidence: [], truncated: true }, {});
+  assert.strictEqual(t.truncated, true);
+});

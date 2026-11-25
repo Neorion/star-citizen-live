@@ -5,7 +5,7 @@
  * Scrub a real Game.log slice so it can be committed as a test fixture
  * without identifying the player who captured it.
  *
- *   node scripts/scrub-log-fixture.js <in.log> <out.log> --handle <RealHandle>
+ *   node scripts/scrub-log-fixture.js <in.log> <out.log> --handle <RealHandle> [--also <OtherHandle> ...]
  *
  * Line shapes are preserved exactly (the parser honesty rule needs real
  * formats), only identifying values are replaced:
@@ -21,6 +21,14 @@
  * Item *class* GUIDs are game data shared by every player and are kept.
  *
  * The handle is passed on the command line so this file never contains one.
+ *
+ * LIMITS: it replaces only the ONE handle passed with --handle (case-sensitive),
+ * plus any handles given with --also (-> Pilot2, Pilot3, ...), IPv4 addresses,
+ * 32-hex ids, 9+ digit integers, accountId, node_id GUIDs and the Executable
+ * path. It does NOT remove other players' handles you did not name, IPv6
+ * addresses, hostnames/hardware strings, or user-profile paths on other lines.
+ * Always review the output by eye and run the privacy-guard test before
+ * committing a fixture.
  */
 
 const fs = require('fs');
@@ -36,7 +44,7 @@ function escapeRe (s) {
 
 /**
  * @param {string} text Raw log text.
- * @param {{ handle?: string }} [opts]
+ * @param {{ handle?: string, also?: Array<string> }} [opts] `also`: extra handles, replaced by Pilot2, Pilot3, ... in order.
  * @returns {{ text: string, ids: number }} Scrubbed text + count of remapped ids.
  */
 function scrubLog (text, opts = {}) {
@@ -55,6 +63,9 @@ function scrubLog (text, opts = {}) {
   if (opts.handle) {
     out = out.replace(new RegExp(`(?<![A-Za-z0-9_])${escapeRe(opts.handle)}(?![A-Za-z0-9_])`, 'g'), PLACEHOLDER_HANDLE);
   }
+  (opts.also || []).filter(Boolean).forEach((other, i) => {
+    out = out.replace(new RegExp(`(?<![A-Za-z0-9_])${escapeRe(other)}(?![A-Za-z0-9_])`, 'g'), `Pilot${i + 2}`);
+  });
   out = out
     .replace(/(Executable: ).*StarCitizen\.exe/g, (_, p) => p + DEFAULT_EXE)
     .replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, PLACEHOLDER_IP)
@@ -72,12 +83,17 @@ function main (argv) {
   const args = argv.slice(2);
   const hi = args.indexOf('--handle');
   const handle = hi >= 0 ? args[hi + 1] : null;
-  const files = args.filter((a, i) => a !== '--handle' && i !== hi + 1);
+  const also = [];
+  const files = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--handle') i++;
+    else if (args[i] === '--also') { if (args[i + 1]) also.push(args[i + 1]); i++; } else files.push(args[i]);
+  }
   if (files.length !== 2) {
-    console.error('usage: node scripts/scrub-log-fixture.js <in.log> <out.log> --handle <RealHandle>');
+    console.error('usage: node scripts/scrub-log-fixture.js <in.log> <out.log> --handle <RealHandle> [--also <OtherHandle> ...]');
     process.exit(1);
   }
-  const result = scrubLog(fs.readFileSync(files[0], 'utf8'), { handle });
+  const result = scrubLog(fs.readFileSync(files[0], 'utf8'), { handle, also });
   fs.writeFileSync(files[1], result.text);
   console.log(`scrubbed ${files[0]} -> ${files[1]} (${result.ids} ids remapped)`);
 }

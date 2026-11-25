@@ -64,6 +64,15 @@ current deps), overlay toast in the in-game HUD, "show on map", fixtures for
 other death types. `npm run deaths:preview` serves the tab standalone, without
 the Fabric packages, for a quick look.
 
+- **Hardening (2026-11-25):** rescan is single-flight (409 while one runs) and
+  the rescan/DELETE routes refuse a foreign `Origin` (403); the preview viewer
+  rejects non-loopback `Host` headers (403, DNS-rebinding guard); the detector
+  caps evidence (400) / items (600) and flags `truncated`, and closes incidents
+  whose trigger line had no timestamp after 5,000 lines; the fixture scrubber
+  documents its LIMITS and gained `--also <Handle>`.
+- **Switch:** `FEATURES.deaths` in `constants.js` hides the tab and toast only; the routes stay mounted.
+- **Guide:** `docs/DEATHS.md` (what the tab shows, routes, storage, privacy, limits).
+
 ---
 
 ## When you fly on own profile
